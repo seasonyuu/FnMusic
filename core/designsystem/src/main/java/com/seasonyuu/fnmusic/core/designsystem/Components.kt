@@ -1,0 +1,220 @@
+package com.seasonyuu.fnmusic.core.designsystem
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.rounded.SkipNext
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import com.kyant.shapes.Capsule
+import com.seasonyuu.fnmusic.core.model.PlayerState
+import com.seasonyuu.fnmusic.core.model.Track
+
+@Composable
+fun FnGradientBackground(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
+    ) { content() }
+}
+
+@Composable
+fun CoverImage(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    requestSizePx: Int? = null,
+) {
+    Surface(modifier = modifier.clip(RoundedCornerShape(8.dp)), color = FnCard) {
+        if (url == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(FnIcons.Library, contentDescription = contentDescription, tint = FnTextTertiary)
+            }
+        } else {
+            val context = LocalContext.current
+            val model = remember(url, requestSizePx) {
+                if (requestSizePx != null) {
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .size(requestSizePx, requestSizePx)
+                        .build()
+                } else {
+                    url
+                }
+            }
+            AsyncImage(model = model, contentDescription = contentDescription, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        }
+    }
+}
+
+@Composable
+fun TrackRow(
+    track: Track,
+    coverUrl: String?,
+    onClick: () -> Unit,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CoverImage(coverUrl, track.title, Modifier.size(48.dp))
+        Column(Modifier.weight(1f)) {
+            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(
+                    track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
+                    track.album?.name?.takeIf(String::isNotBlank),
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = FnTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+@Composable
+fun MiniPlayer(
+    state: PlayerState,
+    onToggle: () -> Unit,
+    onNext: () -> Unit,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    coverModifier: Modifier = Modifier,
+    playerMorphProgress: Float = 0f,
+    onPlayerBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    onCoverBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+) {
+    val current = state.current ?: return
+    val backdrop = LocalFnBackdrop.current
+    Column(
+        modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .onGloballyPositioned { onPlayerBoundsChanged(it.boundsInRoot()) }
+            .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
+            .then(
+                if (backdrop != null) {
+                    Modifier.drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { Capsule() },
+                        effects = {
+                            vibrancy()
+                            blur(10.dp.toPx())
+                            lens(20.dp.toPx(), 20.dp.toPx())
+                        },
+                        highlight = {
+                            Highlight.Default.copy(alpha = 0.32f)
+                        },
+                        shadow = {
+                            Shadow(alpha = 0.28f)
+                        },
+                        innerShadow = {
+                            InnerShadow(radius = 6.dp, alpha = 0.3f)
+                        },
+                        onDrawSurface = {
+                            drawRect(Color(0x8014121B))
+                        },
+                    )
+                } else {
+                    Modifier.background(Color(0xE624202E), Capsule())
+                },
+            )
+            .clip(Capsule())
+            .clickable(onClick = onOpen),
+    ) {
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CoverImage(
+                current.coverUrl,
+                current.track.title,
+                coverModifier
+                    .size(42.dp)
+                    .onGloballyPositioned { onCoverBoundsChanged(it.boundsInRoot()) },
+            )
+            Column(Modifier.weight(1f)) {
+                Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    current.track.artists.joinToString(" / ") { it.name },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = FnTextSecondary,
+                    maxLines = 1,
+                )
+            }
+            Row {
+                IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
+                    Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+                }
+                IconButton(
+                    onClick = onNext,
+                    enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != com.seasonyuu.fnmusic.core.model.RepeatMode.Off,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Rounded.SkipNext, "下一首")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LoadingPane(message: String = "正在加载…") {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = FnAccent)
+            Spacer(Modifier.height(12.dp))
+            Text(message, color = FnTextSecondary)
+        }
+    }
+}

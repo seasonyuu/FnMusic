@@ -1,0 +1,121 @@
+# FnMusic
+
+An unofficial third-party Android client for the music service of [fnOS](https://www.fnos.net/) (飞牛OS), built against the observed behavior of the current fnOS Music web client. It does not use or declare any official fnOS public API.
+
+![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)
+![Min SDK](https://img.shields.io/badge/MinSdk-26%20%28Android%208.0%29-3DDC84)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
+![Media3](https://img.shields.io/badge/Media3-ExoPlayer%201.7-FF6F00)
+
+> **Disclaimer**: This project is an unofficial client for personal sideloading. It is not affiliated with or endorsed by fnOS. All trademarks belong to their respective owners.
+
+<!-- Screenshots: to be added. Suggested: phone home / now playing / playlist. -->
+
+Current version `0.1.0`, early development stage — APIs and build setup may change without notice.
+
+## Features
+
+**Connection & sign-in**
+
+- FN Connect discovery, relay activation, and username/password sign-in.
+- Custom HTTPS NAS address; plain-HTTP LAN addresses require explicit user confirmation.
+- On cold start, the persisted token is validated against the protected `user/me` endpoint and refreshed by automatic re-login when expired, so the app never boots into an empty library.
+
+**Music library**
+
+- Home, library, search, favorites, recently played, albums, artists, and playlists.
+
+**Playback**
+
+- Media3 background playback with notification and lock-screen controls.
+- HTTP range streaming with a 512 MiB LRU media cache.
+- LRC lyrics, playback position restore, previous and next track.
+
+**Favorites & playlists**
+
+- Favorite writes and `track_play` recently-played reporting.
+- Playlist creation, rename, default covers, deletion, adding tracks, single/bulk track removal, and cleanup of dead tracks.
+
+**Adaptive layout**
+
+- Bottom navigation bar on phones, `NavigationRail` on medium screens, and a persistent sidebar on large screens.
+
+## Installation
+
+No release channel yet — build from source:
+
+1. Prepare the environment:
+   - Android SDK 37;
+   - JDK 21 (Gradle provisions the build toolchain from [`gradle/gradle-daemon-jvm.properties`](gradle/gradle-daemon-jvm.properties); the compile target is Java 17).
+2. Clone and build the debug APK:
+
+   ```bash
+   git clone <repository-url>
+   cd fn-music
+   ./gradlew :app:assembleDebug
+   ```
+
+3. Install the output at `app/build/outputs/apk/debug/app-debug.apk`.
+
+If your user-level Gradle config has a proxy that is not currently running, disable it for a single invocation:
+
+```bash
+./gradlew :app:assembleDebug -Dhttp.proxyHost= -Dhttps.proxyHost=
+```
+
+## Architecture & Tech Stack
+
+Single-Activity + Jetpack Compose, layered into modules:
+
+| Module | Responsibility |
+|---|---|
+| `:app` | App entry, navigation shell, and dependency wiring (`AppGraph` / `AppModule`) |
+| `:core:model` | Domain models |
+| `:core:network` | fnOS Music API client: FN Connect discovery, relay activation, `authx` signing, session maintenance |
+| `:core:player` | Media3 playback service, background playback, and media session |
+| `:core:designsystem` | Theming, liquid-glass style components, and dynamic bottom bar behavior |
+| `:data` | Repository layer: Room / DataStore, LRC parsing, optimistic favorites |
+| `:feature:session` | Connection and sign-in UI |
+| `:feature:music` | Music UI |
+
+Key dependencies: Kotlin 2.4, Compose BOM (Material 3 + adaptive), Media3 1.7 (ExoPlayer / media3-session / OkHttp DataSource), Hilt, Room, DataStore, Paging 3, OkHttp + Retrofit, kotlinx.serialization, Coil 3, and [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) (liquid glass effects).
+
+## API Documentation & Verification
+
+[`api.md`](api.md) (written in Chinese) documents the observed fnOS Music web protocol: FN Connect discovery, the relay handshake, the `authx` signing algorithm, and the music endpoints. It contains no account credentials, cookies, or tokens.
+
+[`scripts/`](scripts/) holds the verification tooling:
+
+| Script | Purpose |
+|---|---|
+| `verify_fn_connect.py` | Full FN Connect flow verification (entry → discovery → relay → sign-in → read-only probes) |
+| `verify_api.py` | Read/write probes against the music service; emits a redacted JSON report |
+| `test_verify_fn_connect.py` | Offline unit tests for the verifiers |
+
+Credentials for real-NAS write verification are read only from the untracked `.env` (template in [`.env.example`](.env.example)); verification reports (`*-verification-report.json`) are never committed.
+
+## Tests
+
+```bash
+./gradlew testDebugUnitTest
+python3 scripts/test_verify_fn_connect.py -v
+```
+
+## Security & Privacy
+
+- Login digest, tokens, and connection config are encrypted with Keystore-wrapped AES-GCM keys.
+- The password digest remains valid for replay login; logs must never record digests, cookies, tokens, request bodies, or media identifiers.
+- HTTPS always validates against system CAs; the app offers no option to skip certificate verification.
+- Plain HTTP is accepted only for loopback, RFC 1918, link-local, or IPv6 ULA addresses; the network interceptor re-checks redirect targets.
+- Playlist write request bodies were verified through a full temporary-playlist lifecycle; the verifier cleans up in `finally`.
+
+## Assets & Trademarks
+
+The logo, Montserrat font, home decoration images, and some navigation SVGs come from the user's current fnOS Music web build and are used for personal sideloading only. Sources, build hashes, and file digests are listed in [`docs/web-assets/manifest.json`](docs/web-assets/manifest.json). Library covers are always loaded through the NAS API and never enter the repository.
+
+To distribute the app publicly, re-verify the licensing of fnOS branding, logo, fonts, icons, and decoration assets first.
+
+## License
+
+No open-source license has been chosen yet. The code is provided for personal learning and use only.

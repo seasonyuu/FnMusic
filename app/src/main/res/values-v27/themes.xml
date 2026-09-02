@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.FnMusic" parent="Theme.FnMusic.Base">
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

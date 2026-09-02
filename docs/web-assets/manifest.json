@@ -1,0 +1,59 @@
+{
+  "capturedAt": "2026-08-25T22:30:00+08:00",
+  "webBuild": "1bc04b5291c26a46d918139138b992d2-Cy3oDk0H.js",
+  "scope": "Personal sideload build only",
+  "assets": [
+    {
+      "target": "core/designsystem/src/main/res/drawable-nodpi/fn_music_logo.png",
+      "sourcePath": "/music/static/assets/1e5d2423ad11c20a0db10f5311c5ec43-wwLa2awt.png",
+      "sha256": "7b6c76c73bc9679e96a616786486fe3106a720aba63871c29f230fc58891f21c"
+    },
+    {
+      "target": "core/designsystem/src/main/res/drawable-nodpi/home_roam_art.png",
+      "sourcePath": "/music/static/assets/15cc321b4f0fee9808015b5096042bd3-DBck34IX.png",
+      "sha256": "811cb1a4dc5dbaa82ca618154e54439438f856f8bc12ca0fdaf97ef8ce9f3081"
+    },
+    {
+      "target": "core/designsystem/src/main/res/drawable-nodpi/home_favorite_art.png",
+      "sourcePath": "/music/static/assets/ec67dc69375cf72dda509b489d31eb32-BVgRJO7f.png",
+      "sha256": "6317a53cccfa3f18cd5e86fdd3fc1c9fb383d3bdcf9af435a0a63dc1a075080f"
+    },
+    {
+      "target": "core/designsystem/src/main/res/drawable-nodpi/home_recent_art.png",
+      "sourcePath": "/music/static/assets/daace4696e347e2e49d2cf9be1b75729-qRvmgRf8.png",
+      "sha256": "3c8053090d70384ce47494bc34372cfb102e0b4e76cd478cf628cef9d4784d79"
+    },
+    {
+      "target": "core/designsystem/src/main/res/font/montserrat_regular.ttf",
+      "sourcePath": "/music/static/fonts/Montserrat-Regular.ttf",
+      "sha256": "f5a3f02c4a72f1da11c6dadf4fd78c07b2f145a34ed46eb875ed0da28cbd348c"
+    },
+    {
+      "target": "core/designsystem/src/main/res/font/montserrat_medium.ttf",
+      "sourcePath": "/music/static/fonts/Montserrat-Medium.ttf",
+      "sha256": "7d557ed5f56b95c2be4a712e09c9636c864a5ec49bd124fe4f2973bee128ecfb"
+    },
+    {
+      "target": "core/designsystem/src/main/res/font/montserrat_semibold.ttf",
+      "sourcePath": "/music/static/fonts/Montserrat-SemiBold.ttf",
+      "sha256": "ef7b80ad18d3afab1c769972452d1e2e44c20ba12a7b1cb1c6d662525c8558ae"
+    }
+  ],
+  "inlineSvg": {
+    "source": "Rendered navigation in the same Web build",
+    "raw": "docs/web-assets/navigation-icons.svg",
+    "androidImplementation": "core/designsystem/src/main/java/com/seasonyuu/fnmusic/core/designsystem/FnIcons.kt",
+    "icons": ["home", "favorite", "recent", "album", "library"]
+  },
+  "homeCardIcon": {
+    "name": "roam",
+    "raw": "docs/web-assets/home-card-icons.svg",
+    "androidImplementation": "core/designsystem/src/main/java/com/seasonyuu/fnmusic/core/designsystem/FnIcons.kt",
+    "source": "Roam card component in the observed Web build"
+  },
+  "excluded": [
+    "User library covers",
+    "Track, album, artist and playlist identifiers",
+    "Cookies, tokens and credentials"
+  ]
+}
