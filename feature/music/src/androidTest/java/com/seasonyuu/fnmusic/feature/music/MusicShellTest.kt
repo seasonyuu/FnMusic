@@ -1,6 +1,11 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
+
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
@@ -8,6 +13,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -514,7 +520,7 @@ class MusicShellTest {
     }
 
     @Test
-    fun playerOmitsUnavailableShuffleAndRepeatButExposesQueue() {
+    fun playerQueueUsesTheImmersivePlayerShell() {
         val first = Track(TrackId("track-one"), "第一首")
         val second = Track(TrackId("track-two"), "第二首")
         val player = PlayerState(
@@ -531,9 +537,406 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("开启随机播放").assertDoesNotExist()
         compose.onNodeWithContentDescription("循环已关闭，点击切换为列表循环").assertDoesNotExist()
         compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithText("待播队列", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
 
-        compose.onNodeWithText("待播队列").assertIsDisplayed()
-        compose.onNodeWithText("第二首").assertIsDisplayed()
+        compose.onNodeWithText("待播队列", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("第二首", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("仅保留当前", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("player-queue-entry").assertIsSelected()
+        compose.onNodeWithTag("player-bottom-controls").assertIsDisplayed()
+
+        compose.onNodeWithTag("player-queue-header").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-queue-header").fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithTag("player-queue-entry").assertIsNotSelected()
+
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-queue-header").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("player-queue-entry").assertIsSelected()
+    }
+
+    @Test
+    fun queueModeSelectsTracksAndDispatchesLocalReordering() {
+        val tracks = (1..4).map { index ->
+            Track(TrackId("queue-$index"), "队列曲目 $index")
+        }
+        val player = PlayerState(
+            queue = tracks.map { PlayableTrack(it, "https://music.invalid/${it.id.value}") },
+            currentIndex = 0,
+            durationMs = 180_000,
+        )
+        var selected: Int? = null
+        var moved: Pair<Int, Int>? = null
+        setContent(
+            playerState = player,
+            onSkipToQueueItem = { selected = it },
+            onMoveQueueItem = { from, to -> moved = from to to },
+        )
+
+        compose.onNodeWithText("队列曲目 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithText("待播队列", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("队列曲目 2", useUnmergedTree = true).performClick()
+        org.junit.Assert.assertEquals(1, selected)
+
+        compose.onNodeWithContentDescription("长按拖动排序：队列曲目 3").performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveTo(center + Offset(0f, -180f), delayMillis = 500)
+            up()
+        }
+        org.junit.Assert.assertEquals(2 to 1, moved)
+    }
+
+    @Test
+    fun shuffledQueueDisplaysAndEditsActualPlaybackOrder() {
+        val tracks = (0..4).map { PlayableTrack(Track(TrackId("shuffle-$it"), "随机曲目 $it"), "https://music.invalid/$it") }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 4, shuffleEnabled = true,
+            playbackOrder = listOf(2, 4, 0, 3, 1), durationMs = 180_000))
+        var selected: Int? = null
+        val moves = mutableListOf<Pair<Int, Int>>()
+        setContent(playerStateProvider = { player.value }, onSkipToQueueItem = { selected = it }, onMoveQueueItem = { from, to ->
+            moves += from to to
+            val order = player.value.playbackOrder.toMutableList()
+            val source = order.indexOf(from)
+            val destination = order.indexOf(to)
+            order.add(destination, order.removeAt(source))
+            player.value = player.value.copy(playbackOrder = order)
+        })
+        compose.onNodeWithText("随机曲目 4").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-queue-row-shuffle-0").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-row-shuffle-2").assertDoesNotExist()
+        compose.onNodeWithText("随机曲目 0", useUnmergedTree = true).performClick()
+        assertEquals(0, selected)
+        val first = compose.onNodeWithContentDescription("长按拖动排序：随机曲目 0").fetchSemanticsNode().boundsInRoot
+        val third = compose.onNodeWithContentDescription("长按拖动排序：随机曲目 1").fetchSemanticsNode().boundsInRoot
+        compose.onRoot().performTouchInput {
+            down(third.center)
+            moveTo(first.center, delayMillis = 700)
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals(listOf(1 to 0), moves)
+        assertEquals(listOf(1, 0, 3), player.value.upcomingQueueIndices)
+    }
+
+    @Test
+    fun queueSwipeRevealsRemovalWithoutPlayingAndClosesOnScroll() {
+        val tracks = (0..15).map { PlayableTrack(Track(TrackId("swipe-$it"), "左滑曲目 $it"), "https://music.invalid/$it") }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 0, durationMs = 180_000))
+        var selected: Int? = null
+        var removed: Int? = null
+        setContent(playerStateProvider = { player.value }, onSkipToQueueItem = { selected = it }, onRemoveFromQueue = { index ->
+            removed = index
+            player.value = player.value.copy(queue = player.value.queue.filterIndexed { i, _ -> i != index })
+        })
+        compose.onNodeWithText("左滑曲目 0").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-queue-row-swipe-1").performTouchInput {
+            swipe(start = Offset(width * .7f, center.y), end = Offset(width * .2f, center.y), durationMillis = 450)
+        }
+        compose.waitForIdle()
+        assertEquals(null, selected)
+        compose.onNodeWithContentDescription("从待播队列移除：左滑曲目 1").assertIsDisplayed()
+        captureQueueScreenshot("queue-swipe")
+        compose.onNodeWithContentDescription("从待播队列移除：左滑曲目 1").performClick()
+        compose.waitForIdle()
+        assertEquals(1, removed)
+        assertEquals(tracks.first().queueEntryId, player.value.current?.queueEntryId)
+        compose.onNodeWithTag("player-queue-row-swipe-1").assertDoesNotExist()
+        compose.onNodeWithTag("player-queue-row-swipe-2").performTouchInput {
+            swipe(start = Offset(width * .7f, center.y), end = Offset(width * .2f, center.y), durationMillis = 450)
+        }
+        compose.onNodeWithContentDescription("从待播队列移除：左滑曲目 2").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(start = center + Offset(0f, 80f), end = center - Offset(0f, 80f), durationMillis = 800)
+        }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("从待播队列移除：左滑曲目 2").assertDoesNotExist()
+    }
+
+    @Test
+    fun duplicateQueueEntriesRetainIdentityAfterDraggingAndRemoval() {
+        val current = PlayableTrack(Track(TrackId("duplicate-current"), "重复队列测试"), "https://music.invalid/current")
+        val first = PlayableTrack(Track(TrackId("duplicate"), "重复第一项"), "https://music.invalid/duplicate")
+        val second = first.copy(track = first.track.copy(title = "重复第二项"), queueEntryId = "second-occurrence")
+        val player = mutableStateOf(PlayerState(queue = listOf(current, first, second), currentIndex = 0, durationMs = 180_000))
+        var removedId: String? = null
+        setContent(playerStateProvider = { player.value }, onMoveQueueItem = { from, to ->
+            player.value = player.value.copy(queue = player.value.queue.toMutableList().also { it.add(to, it.removeAt(from)) })
+        }, onRemoveFromQueue = { index ->
+            removedId = player.value.queue[index].queueEntryId
+            player.value = player.value.copy(queue = player.value.queue.filterIndexed { i, _ -> i != index })
+        })
+        compose.onNodeWithText("重复队列测试").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        val firstHandle = compose.onNodeWithContentDescription("长按拖动排序：重复第一项").fetchSemanticsNode().boundsInRoot
+        val secondHandle = compose.onNodeWithContentDescription("长按拖动排序：重复第二项").fetchSemanticsNode().boundsInRoot
+        compose.onRoot().performTouchInput {
+            down(secondHandle.center)
+            moveTo(firstHandle.center, delayMillis = 700)
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals(listOf(current.queueEntryId, second.queueEntryId, first.queueEntryId), player.value.queue.map { it.queueEntryId })
+        val row = compose.onNodeWithText("重复第二项", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        compose.onRoot().performTouchInput {
+            swipe(start = row.center, end = row.center - Offset(180f, 0f), durationMillis = 450)
+        }
+        compose.onNodeWithContentDescription("从待播队列移除：重复第二项").performClick()
+        compose.waitForIdle()
+        assertEquals(second.queueEntryId, removedId)
+        assertEquals(listOf(current.queueEntryId, first.queueEntryId), player.value.queue.map { it.queueEntryId })
+    }
+
+    @Test
+    fun queueModeRevealsPlaybackHistoryOnlyAfterPullingDown() {
+        val historyTrack = Track(TrackId("history-track"), "已播放歌曲")
+        val currentTrack = Track(TrackId("history-current"), "当前歌曲")
+        val upcomingTrack = Track(TrackId("history-upcoming"), "待播歌曲")
+        val player = PlayerState(
+            queue = listOf(
+                PlayableTrack(historyTrack, "https://music.invalid/history"),
+                PlayableTrack(currentTrack, "https://music.invalid/current"),
+                PlayableTrack(upcomingTrack, "https://music.invalid/upcoming"),
+            ),
+            playbackHistory = listOf(PlayableTrack(historyTrack, "https://music.invalid/history")),
+            currentIndex = 1,
+            durationMs = 180_000,
+        )
+        var selectedHistory: Int? = null
+        var clearRequests = 0
+        setContent(
+            playerState = player,
+            onSkipToHistoryItem = { selectedHistory = it },
+            onClearPlaybackHistory = { clearRequests += 1 },
+        )
+
+        compose.onNodeWithText("当前歌曲").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.onNodeWithTag("player-playback-history").assertIsNotDisplayed()
+        compose.onNodeWithTag("player-queue-row-history-current").assertDoesNotExist()
+        compose.onNodeWithTag("player-queue-row-history-upcoming").assertIsDisplayed()
+
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(
+                start = center - Offset(0f, 160f),
+                end = center + Offset(0f, 260f),
+                durationMillis = 600,
+            )
+        }
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-playback-history").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        compose.onNodeWithText("播放记录").assertIsDisplayed()
+        compose.onNodeWithContentDescription("播放记录：已播放歌曲").performClick()
+        org.junit.Assert.assertEquals(0, selectedHistory)
+        compose.onNodeWithContentDescription("清空播放记录").performClick()
+        org.junit.Assert.assertEquals(1, clearRequests)
+    }
+
+    @Test
+    fun queueModeControlsStayPinnedWhileTheQueueScrolls() {
+        val tracks = (1..24).map { index ->
+            Track(TrackId("pinned-queue-$index"), "固定控制测试 $index")
+        }
+        val player = PlayerState(
+            queue = tracks.map { PlayableTrack(it, "https://music.invalid/${it.id.value}") },
+            currentIndex = 0,
+            durationMs = 180_000,
+        )
+        setContent(playerState = player)
+
+        compose.onNodeWithText("固定控制测试 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-queue-mode-controls").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(start = center + Offset(0f, 200f), end = center - Offset(0f, 200f), durationMillis = 800)
+        }
+        compose.waitForIdle()
+        val titleTop = compose.onNodeWithTag("player-queue-title").fetchSemanticsNode().boundsInRoot.top
+        val controlsTop = compose.onNodeWithTag("player-queue-mode-controls").fetchSemanticsNode().boundsInRoot.top
+        val viewportTop = compose.onNodeWithTag("player-queue-list").fetchSemanticsNode().boundsInRoot.top
+        assertEquals(viewportTop, controlsTop, 1f)
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(start = center + Offset(0f, 120f), end = center - Offset(0f, 120f), durationMillis = 800)
+        }
+        compose.waitForIdle()
+        val scrolledControlsTop = compose.onNodeWithTag("player-queue-mode-controls").fetchSemanticsNode().boundsInRoot.top
+        assertEquals(controlsTop, scrolledControlsTop, 1f)
+        assertEquals(titleTop, compose.onNodeWithTag("player-queue-title").fetchSemanticsNode().boundsInRoot.top, 1f)
+        captureQueueScreenshot("queue-pinned")
+    }
+
+    @Test
+    fun historyPullMovesRealCoverWithHeaderAndCanReachEveryHistoryRow() {
+        val tracks = (1..12).map { PlayableTrack(Track(TrackId("continuous-$it"), "连续滚动 $it"), "https://music.invalid/$it") }
+        val player = PlayerState(queue = tracks, playbackHistory = tracks.take(8), currentIndex = 8, durationMs = 180_000)
+        setContent(playerState = player)
+        compose.onNodeWithText("连续滚动 9").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        val headerBefore = compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top
+        val coverBefore = compose.onNodeWithTag("player-queue-cover", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(start = center, end = center + Offset(0f, 90f), durationMillis = 1000)
+        }
+        compose.waitForIdle()
+        val headerAfter = compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top
+        val coverAfter = compose.onNodeWithTag("player-queue-cover", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        assertTrue("下拉应连续移动歌曲栏，而不是等待展开阈值", headerAfter > headerBefore + 20f)
+        assertEquals(headerAfter - headerBefore, coverAfter - coverBefore, 1f)
+        compose.onNodeWithTag("player-queue-list")
+            .performScrollToNode(hasContentDescription("播放记录：连续滚动 1"))
+        compose.onNodeWithContentDescription("播放记录：连续滚动 1").assertIsDisplayed()
+    }
+
+
+    @Test
+    fun draggingNearBottomScrollsBeyondInitiallyVisibleRows() {
+        val tracks = (1..24).map { PlayableTrack(Track(TrackId("edge-$it"), "边缘拖动 $it"), "https://music.invalid/$it") }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 0, durationMs = 180_000))
+        val moves = mutableListOf<Pair<Int, Int>>()
+        setContent(playerStateProvider = { player.value }, onMoveQueueItem = { from, to ->
+            moves += from to to
+            player.value = player.value.copy(queue = player.value.queue.toMutableList().also { it.add(to, it.removeAt(from)) })
+        })
+        compose.onNodeWithText("边缘拖动 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        val handle = compose.onNodeWithContentDescription("长按拖动排序：边缘拖动 2").fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onNodeWithTag("player-queue-list").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        compose.onRoot().performTouchInput {
+            down(handle.center)
+            moveTo(Offset(handle.center.x, viewport.bottom - 12f), delayMillis = 700)
+        }
+        compose.mainClock.advanceTimeBy(2400)
+        compose.onRoot().performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertTrue("持续拖在可视底边应滚出屏外歌曲并继续重排", moves.any { it.second >= 8 })
+        assertEquals("edge-2", player.value.queue[moves.last().second].track.id.value)
+    }
+
+    @Test
+    fun queueKeepsCurrentAnchorAcrossTrackChangesAndResetsForNewSession() {
+        val tracks = (1..12).map { PlayableTrack(Track(TrackId("anchor-$it"), "滚动锚点 $it"), "https://music.invalid/$it") }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 0, durationMs = 180_000))
+        setContent(playerStateProvider = { player.value })
+        compose.onNodeWithText("滚动锚点 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        val initialTop = compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { player.value = player.value.copy(currentIndex = 1, playbackHistory = tracks.take(1)) }
+        compose.waitForIdle()
+        assertEquals(initialTop, compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithContentDescription("播放记录：滚动锚点 1").assertIsNotDisplayed()
+        compose.onNodeWithTag("player-queue-row-anchor-3").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-list").performTouchInput {
+            swipe(start = center, end = center + Offset(0f, 200f), durationMillis = 800)
+        }
+        compose.onNodeWithContentDescription("播放记录：滚动锚点 1").assertIsDisplayed()
+        compose.runOnIdle {
+            player.value = PlayerState(queue = tracks.reversed(), currentIndex = 0, playbackSessionId = 1, durationMs = 180_000)
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-playback-history").assertDoesNotExist()
+        assertEquals(initialTop, compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top, 1f)
+    }
+
+    @Test
+    fun emptyUpcomingQueueStillStartsWithHistoryOutsideViewport() {
+        val tracks = (1..9).map { PlayableTrack(Track(TrackId("empty-$it"), "空待播 $it"), "https://music.invalid/$it") }
+        setContent(playerState = PlayerState(queue = tracks, playbackHistory = tracks.take(8), currentIndex = 8))
+        compose.onNodeWithText("空待播 9").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        assertEquals(
+            compose.onNodeWithTag("player-queue-list").fetchSemanticsNode().boundsInRoot.top,
+            compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot.top,
+            1f,
+        )
+        compose.onNodeWithContentDescription("播放记录：空待播 8").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun queueLastRowScrollsAbovePersistentPlaybackControls() {
+        val tracks = (1..24).map { index ->
+            Track(TrackId("queue-bottom-$index"), "末项可见测试 $index")
+        }
+        val player = PlayerState(
+            queue = tracks.map { PlayableTrack(it, "https://music.invalid/${it.id.value}") },
+            currentIndex = 0,
+            durationMs = 180_000,
+        )
+        setContent(playerState = player)
+
+        compose.onNodeWithText("末项可见测试 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        val finalRowTag = "player-queue-row-queue-bottom-24"
+        repeat(8) {
+            compose.onNodeWithTag("player-queue-list").performTouchInput {
+                swipe(
+                    start = center + Offset(0f, 220f),
+                    end = center - Offset(0f, 260f),
+                    durationMillis = 500,
+                )
+            }
+        }
+        compose.waitForIdle()
+
+        val finalRow = compose.onNodeWithTag(finalRowTag, useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val controls = compose.onNodeWithTag("player-bottom-controls", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "队列末项不能落在常驻播放控制区域下方",
+            finalRow.bottom <= controls.top,
+        )
+    }
+
+    @Test
+    fun closingQueueFromLyricsReturnsToDefaultPlayerWithoutShowingLyricsAgain() {
+        val track = Track(TrackId("queue-return-track"), "队列返回测试")
+        val player = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/queue-return")),
+            currentIndex = 0,
+            durationMs = 180_000,
+        )
+        setContent(playerState = player)
+
+        compose.onNodeWithText("队列返回测试").performClick()
+        compose.onNodeWithContentDescription("展开完整歌词").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-lyrics-header").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-queue-header").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitUntil(timeoutMillis = 2_000) {
+            compose.onAllNodesWithTag("player-queue-header").fetchSemanticsNodes().isEmpty()
+        }
+
+        compose.onNodeWithTag("player-lyrics-header").assertDoesNotExist()
+        compose.onNodeWithTag("player-track-metadata").assertIsDisplayed()
     }
 
     @Test
@@ -1305,6 +1708,13 @@ class MusicShellTest {
         org.junit.Assert.assertEquals(playlist.id to listOf(first.id), removed)
     }
 
+    private fun captureQueueScreenshot(name: String) {
+        val directory = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("queue-screenshots")!!
+        java.io.File(directory, "$name.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
     private fun setContent(
         state: MusicUiState = MusicUiState(loading = false),
         playerState: PlayerState = PlayerState(),
@@ -1318,6 +1728,11 @@ class MusicShellTest {
         onPlayNext: (Track) -> Unit = {},
         onTrackSort: (TrackSort) -> Unit = {},
         onRoam: () -> Unit = {},
+        onSkipToQueueItem: (Int) -> Unit = {},
+        onSkipToHistoryItem: (Int) -> Unit = {},
+        onClearPlaybackHistory: () -> Unit = {},
+        onMoveQueueItem: (Int, Int) -> Unit = { _, _ -> },
+        onRemoveFromQueue: (Int) -> Unit = {},
         onCreatePlaylist: (String, String?, TrackId?) -> Unit = { _, _, _ -> },
         onAddTrackToPlaylist: (PlaylistId, TrackId) -> Unit = { _, _ -> },
         onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit = { _, _ -> },
@@ -1359,9 +1774,11 @@ class MusicShellTest {
                     onSeek = onSeek,
                     onPrevious = {},
                     onNext = {},
-                    onSkipToQueueItem = {},
-                    onRemoveFromQueue = {},
-                    onKeepCurrentQueueItem = {},
+                    onSkipToQueueItem = onSkipToQueueItem,
+                    onSkipToHistoryItem = onSkipToHistoryItem,
+                    onClearPlaybackHistory = onClearPlaybackHistory,
+                    onMoveQueueItem = onMoveQueueItem,
+                    onRemoveFromQueue = onRemoveFromQueue,
                     onToggleShuffle = onToggleShuffle,
                     onCycleRepeatMode = onCycleRepeatMode,
                     onCacheSizeChange = {},
