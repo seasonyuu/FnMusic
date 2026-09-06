@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.core.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
@@ -9,6 +10,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.ListenableFuture
 import com.seasonyuu.fnmusic.core.model.PlayableTrack
 import com.seasonyuu.fnmusic.core.model.PlayerController
@@ -29,7 +31,12 @@ class Media3PlayerController(context: Context) : PlayerController {
     override val state: StateFlow<PlayerState> = mutableState.asStateFlow()
     private val controllerFuture: ListenableFuture<MediaController>
     private var queue: List<PlayableTrack> = emptyList()
+    private var playbackHistory: List<PlayableTrack> = emptyList()
+    private var observedCurrent: PlayableTrack? = null
+    private var playbackSessionId = 0L
     private var isRoaming = false
+    private var pendingTimeline = false
+    private var pendingRemovalOrder: List<String>? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     init {
@@ -56,16 +63,30 @@ class Media3PlayerController(context: Context) : PlayerController {
 
     override fun play(items: List<PlayableTrack>, startIndex: Int, isRoaming: Boolean) {
         if (items.isEmpty()) return
-        queue = items
+        pendingRemovalOrder = null
+        queue = items.map { it.asNewQueueEntry() }
+        playbackSessionId++
+        playbackHistory = emptyList()
+        observedCurrent = queue[startIndex.coerceIn(queue.indices)]
         this.isRoaming = isRoaming
+        publishPendingState(
+            startIndex,
+            0L,
+            if (isRoaming) false else state.value.shuffleEnabled,
+            if (isRoaming) RepeatMode.Off else state.value.repeatMode,
+        )
+        val requestSession = playbackSessionId
         withController { controller ->
-            controller.setMediaItems(items.map { it.toMediaItem() }, startIndex.coerceIn(items.indices), 0L)
+            if (requestSession != playbackSessionId) return@withController
+            controller.setMediaItems(queue.map { it.toMediaItem() }, startIndex.coerceIn(queue.indices), 0L)
+            pendingTimeline = false
             if (isRoaming) {
                 controller.shuffleModeEnabled = false
                 controller.repeatMode = Player.REPEAT_MODE_OFF
             }
             controller.prepare()
             controller.play()
+            publishState()
         }
     }
 
@@ -77,10 +98,18 @@ class Media3PlayerController(context: Context) : PlayerController {
         repeatMode: RepeatMode,
     ) {
         if (items.isEmpty()) return
-        queue = items
+        pendingRemovalOrder = null
+        queue = items.map { it.asNewQueueEntry() }
+        playbackSessionId++
+        playbackHistory = emptyList()
+        observedCurrent = queue[startIndex.coerceIn(queue.indices)]
         isRoaming = false
+        publishPendingState(startIndex, positionMs, shuffleEnabled, repeatMode)
+        val requestSession = playbackSessionId
         withController { controller ->
-            controller.setMediaItems(items.map { it.toMediaItem() }, startIndex.coerceIn(items.indices), positionMs.coerceAtLeast(0))
+            if (requestSession != playbackSessionId) return@withController
+            controller.setMediaItems(queue.map { it.toMediaItem() }, startIndex.coerceIn(queue.indices), positionMs.coerceAtLeast(0))
+            pendingTimeline = false
             controller.shuffleModeEnabled = shuffleEnabled
             controller.repeatMode = when (repeatMode) {
                 RepeatMode.Off -> Player.REPEAT_MODE_OFF
@@ -89,11 +118,60 @@ class Media3PlayerController(context: Context) : PlayerController {
             }
             controller.prepare()
             controller.pause()
+            publishState()
+        }
+    }
+
+    private fun publishPendingState(index: Int, position: Long, shuffle: Boolean, repeat: RepeatMode) {
+        pendingTimeline = true
+        mutableState.value = PlayerState(
+            queue = queue,
+            playbackSessionId = playbackSessionId,
+            currentIndex = index.coerceIn(queue.indices),
+            positionMs = position.coerceAtLeast(0),
+            durationMs = (queue[index.coerceIn(queue.indices)].track.durationSeconds * 1000).toLong(),
+            shuffleEnabled = shuffle,
+            repeatMode = repeat,
+            isRoaming = isRoaming,
+        )
+    }
+
+    override fun updateTracks(tracks: List<PlayableTrack>) {
+        val byId = tracks.associateBy { it.track.id }
+        fun PlayableTrack.updated(): PlayableTrack {
+            val updated = byId[track.id] ?: return this
+            return copy(track = updated.track, coverUrl = updated.coverUrl)
+        }
+        val updatedQueue = queue.map { it.updated() }
+        if (updatedQueue == queue) return
+        queue = updatedQueue
+        playbackHistory = playbackHistory.map { it.updated() }
+        observedCurrent = observedCurrent?.updated()
+        mutableState.value = mutableState.value.copy(queue = queue, playbackHistory = playbackHistory)
+        val requestSession = playbackSessionId
+        withController { controller ->
+            if (requestSession != playbackSessionId) return@withController
+            queue.forEachIndexed { index, item ->
+                if (index < controller.mediaItemCount && item.track.id in byId) {
+                    val existing = controller.getMediaItemAt(index)
+                    val metadata = item.toMediaItem().mediaMetadata
+                    if (existing.mediaId == item.track.id.value && existing.mediaMetadata != metadata) {
+                        // Keep the source URI and playback state; only replace metadata.
+                        controller.replaceMediaItem(index, existing.buildUpon().setMediaMetadata(metadata).build())
+                    }
+                }
+            }
+            publishState()
         }
     }
 
     override fun clear() {
+        pendingRemovalOrder = null
+        playbackSessionId++
+        pendingTimeline = false
         queue = emptyList()
+        playbackHistory = emptyList()
+        observedCurrent = null
         isRoaming = false
         mutableState.value = PlayerState()
         withController { controller ->
@@ -109,56 +187,112 @@ class Media3PlayerController(context: Context) : PlayerController {
     override fun skipPrevious() = withController(MediaController::seekToPreviousMediaItem)
     override fun skipTo(index: Int) = withController { controller ->
         if (index in queue.indices) {
+            prepareHistoryTransition(queue[index])
             controller.seekTo(index, 0L)
             controller.play()
         }
     }
+    override fun skipToHistoryItem(index: Int) = withController { controller ->
+        val target = playbackHistory.getOrNull(index) ?: return@withController
+        val queueIndex = queue.indexOfFirst { it.queueEntryId == target.queueEntryId }
+        if (queueIndex < 0) return@withController
+        if (controller.shuffleModeEnabled) {
+            editShuffle(controller, QueueSessionCommands.REPLAY, listOf(target.queueEntryId), expectedCurrent = true)
+            return@withController
+        }
+        // Keep the pending suffix intact when replaying an already played item.
+        // [A, B, C*, D] -> [B, C, A*, D], rather than seeking back to A in place.
+        val destination = historyReplayDestination(queueIndex, controller.currentMediaItemIndex, queue.size)
+        prepareHistoryTransition(target)
+        queue = queue.toMutableList().also { it.add(destination, it.removeAt(queueIndex)) }
+        controller.moveMediaItem(queueIndex, destination)
+        controller.seekTo(destination, 0L)
+        controller.play()
+    }
+    override fun clearPlaybackHistory() {
+        playbackHistory = emptyList()
+        publishState()
+    }
     override fun playNext(item: PlayableTrack) = withController { controller ->
+        val entry = item.asNewQueueEntry()
         if (queue.isEmpty()) {
-            queue = listOf(item)
-            controller.setMediaItem(item.toMediaItem())
+            queue = listOf(entry)
+            playbackSessionId++
+            playbackHistory = emptyList()
+            observedCurrent = entry
+            controller.setMediaItem(entry.toMediaItem())
             controller.prepare()
             controller.play()
         } else {
             val insertAt = (controller.currentMediaItemIndex + 1).coerceIn(0, queue.size)
-            queue = queue.toMutableList().also { it.add(insertAt, item) }
-            controller.addMediaItem(insertAt, item.toMediaItem())
+            queue = queue.toMutableList().also { it.add(insertAt, entry) }
+            controller.addMediaItem(insertAt, entry.toMediaItem())
+            if (controller.shuffleModeEnabled) editShuffle(controller, QueueSessionCommands.NEXT, listOf(entry.queueEntryId))
         }
     }
     override fun append(items: List<PlayableTrack>) = withController { controller ->
         if (items.isEmpty()) return@withController
+        val entries = items.map { it.asNewQueueEntry() }
         if (queue.isEmpty()) {
-            queue = items
-            controller.setMediaItems(items.map { it.toMediaItem() })
+            queue = entries
+            playbackSessionId++
+            playbackHistory = emptyList()
+            observedCurrent = entries.first()
+            controller.setMediaItems(entries.map { it.toMediaItem() })
             controller.prepare()
             controller.play()
         } else {
-            queue = queue + items
-            controller.addMediaItems(items.map { it.toMediaItem() })
+            queue = queue + entries
+            controller.addMediaItems(entries.map { it.toMediaItem() })
+            if (controller.shuffleModeEnabled) editShuffle(controller, QueueSessionCommands.APPEND, entries.map { it.queueEntryId })
         }
+    }
+    override fun moveQueueItem(fromIndex: Int, toIndex: Int) = withController { controller ->
+        if (fromIndex !in queue.indices || toIndex !in queue.indices || fromIndex == toIndex) {
+            return@withController
+        }
+        if (controller.shuffleModeEnabled) {
+            editShuffle(
+                controller, QueueSessionCommands.MOVE, listOf(queue[fromIndex].queueEntryId),
+                target = queue[toIndex].queueEntryId, expectedCurrent = true,
+            )
+            return@withController
+        }
+        val currentIndex = controller.currentMediaItemIndex
+        val upcoming = (currentIndex + 1 until queue.size).toList() +
+            if (controller.repeatMode == Player.REPEAT_MODE_ALL) (0 until currentIndex).toList() else emptyList()
+        val destination = if (fromIndex in upcoming && toIndex in upcoming) {
+            naturalQueueMoveDestination(upcoming, fromIndex, toIndex)
+        } else toIndex
+        queue = queue.toMutableList().also { items ->
+            items.add(destination, items.removeAt(fromIndex))
+        }
+        // Media3 owns the active index, including the case where the currently
+        // playing item crosses another queue entry, so publishState remains the
+        // single source of truth for the UI after the move.
+        controller.moveMediaItem(fromIndex, destination)
     }
     override fun removeFromQueue(index: Int) = withController { controller ->
         if (index in queue.indices) {
+            val removed = queue[index]
+            if (controller.shuffleModeEnabled) {
+                pendingRemovalOrder = mutableState.value.orderedQueueIndices.mapNotNull { queue.getOrNull(it)?.queueEntryId }
+                    .filterNot { it == removed.queueEntryId }
+            }
             queue = queue.toMutableList().also { it.removeAt(index) }
+            playbackHistory = playbackHistory.filterNot { it.queueEntryId == removed.queueEntryId }
             controller.removeMediaItem(index)
             if (queue.isEmpty()) mutableState.value = PlayerState()
         }
-    }
-    override fun keepCurrentOnly() = withController { controller ->
-        val currentIndex = controller.currentMediaItemIndex
-        val current = queue.getOrNull(currentIndex) ?: return@withController
-        val wasPlaying = controller.isPlaying
-        val position = controller.currentPosition.coerceAtLeast(0)
-        queue = listOf(current)
-        controller.setMediaItem(current.toMediaItem(), position)
-        controller.prepare()
-        if (wasPlaying) controller.play() else controller.pause()
     }
     override fun setRoaming(enabled: Boolean) {
         isRoaming = enabled
         publishState()
     }
-    override fun setShuffle(enabled: Boolean) = withController { it.shuffleModeEnabled = enabled }
+    override fun setShuffle(enabled: Boolean) = withController {
+        pendingRemovalOrder = null
+        it.shuffleModeEnabled = enabled
+    }
     override fun setRepeatMode(mode: RepeatMode) = withController {
         it.repeatMode = when (mode) {
             RepeatMode.Off -> Player.REPEAT_MODE_OFF
@@ -175,15 +309,33 @@ class Media3PlayerController(context: Context) : PlayerController {
                 .setTitle(track.title)
                 .setArtist(track.artists.joinToString(" / ") { it.name })
                 .setAlbumTitle(track.album?.name)
+                .setExtras(Bundle().apply { putString(QUEUE_ENTRY_ID, queueEntryId) })
                 .also { builder -> coverUrl?.let { builder.setArtworkUri(it.toUri()) } }
                 .build(),
         )
         .build()
 
     private fun publishState() {
+        if (pendingTimeline) return
         val controller = runCatching { if (controllerFuture.isDone) controllerFuture.get() else null }.getOrNull() ?: return
+        val current = queue.getOrNull(controller.currentMediaItemIndex)
+        val nativeOrder = controller.playbackOrderIndices()
+        val pendingOrder = pendingRemovalOrder
+        val nativeIds = nativeOrder.mapNotNull { queue.getOrNull(it)?.queueEntryId }
+        if (pendingOrder == nativeIds || !controller.shuffleModeEnabled) pendingRemovalOrder = null
+        // MediaController temporarily replaces shuffled order with natural order
+        // while masking a removal. Preserve the known order until the session replies.
+        val publishedOrder = pendingRemovalOrder?.mapNotNull { id ->
+            queue.indexOfFirst { it.queueEntryId == id }.takeIf { it >= 0 }
+        } ?: nativeOrder
+        if (current?.queueEntryId != observedCurrent?.queueEntryId) {
+            playbackHistory = updatedPlaybackHistory(playbackHistory, observedCurrent, current)
+            observedCurrent = current
+        }
         mutableState.value = PlayerState(
             queue = queue,
+            playbackHistory = playbackHistory,
+            playbackSessionId = playbackSessionId,
             currentIndex = controller.currentMediaItemIndex,
             isPlaying = controller.isPlaying,
             positionMs = controller.currentPosition.coerceAtLeast(0),
@@ -196,7 +348,42 @@ class Media3PlayerController(context: Context) : PlayerController {
             },
             isRoaming = isRoaming,
             error = mutableState.value.error,
+            playbackOrder = publishedOrder,
         )
+    }
+
+    private fun prepareHistoryTransition(target: PlayableTrack) {
+        val previous = observedCurrent ?: mutableState.value.current
+        if (previous?.queueEntryId == target.queueEntryId) return
+        playbackHistory = updatedPlaybackHistory(playbackHistory, previous, target)
+        observedCurrent = target
+    }
+
+    private fun PlayableTrack.asNewQueueEntry() = copy(queueEntryId = java.util.UUID.randomUUID().toString())
+
+    private fun editShuffle(
+        controller: MediaController,
+        operation: String,
+        entries: List<String>,
+        target: String? = null,
+        expectedCurrent: Boolean = false,
+    ) {
+        val requestSession = playbackSessionId
+        val args = Bundle().apply {
+            putString(QueueSessionCommands.OPERATION, operation)
+            putStringArrayList(QueueSessionCommands.ENTRIES, ArrayList(entries))
+            putString(QueueSessionCommands.TARGET, target)
+            if (expectedCurrent) putString(QueueSessionCommands.CURRENT, queue.getOrNull(controller.currentMediaItemIndex)?.queueEntryId)
+        }
+        val result = controller.sendCustomCommand(QueueSessionCommands.editShuffle, args)
+        result.addListener({
+            if (requestSession == playbackSessionId) {
+                if (runCatching { result.get().resultCode }.getOrNull() != SessionResult.RESULT_SUCCESS) {
+                    mutableState.value = mutableState.value.copy(error = "队列已变化，请重试")
+                }
+                publishState()
+            }
+        }, ContextCompat.getMainExecutor(appContext))
     }
 
     private fun withController(block: (MediaController) -> Unit) {

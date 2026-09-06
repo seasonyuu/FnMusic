@@ -26,7 +26,9 @@ class AppGraph(context: Context) {
     val events = MusicPlaybackEventReporter(network.api)
     val settings = SettingsStore(context)
     val catalogCache = CatalogCache(context, network.json)
-    val database = Room.databaseBuilder(context, FnMusicDatabase::class.java, "fn_music.db").build()
+    val database = Room.databaseBuilder(context, FnMusicDatabase::class.java, "fn_music.db")
+        .addMigrations(FnMusicDatabase.MIGRATION_1_2)
+        .build()
     val player = Media3PlayerController(context)
 
     fun coverUrl(coverId: String?, size: Int): String? = coverId?.let { network.baseUrlProvider.coverUrl(it, size) }

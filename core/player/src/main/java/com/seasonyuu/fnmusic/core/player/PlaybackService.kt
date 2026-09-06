@@ -51,7 +51,9 @@ class PlaybackService : MediaSessionService() {
                 if (mediaItem?.mediaId != reportedMediaId) reportedMediaId = null
             }
         })
-        session = MediaSession.Builder(this, player).build()
+        session = MediaSession.Builder(this, player)
+            .setCallback(QueueSessionCallback(player, packageName))
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

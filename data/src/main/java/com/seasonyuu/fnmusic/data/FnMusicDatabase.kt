@@ -9,6 +9,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "playback_queue")
@@ -19,6 +21,7 @@ data class PlaybackQueueEntity(
     val isCurrent: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val repeatMode: String = "Off",
+    val trackJson: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
@@ -40,7 +43,15 @@ interface PlaybackQueueDao {
     }
 }
 
-@Database(entities = [PlaybackQueueEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PlaybackQueueEntity::class], version = 2, exportSchema = false)
 abstract class FnMusicDatabase : RoomDatabase() {
     abstract fun playbackQueue(): PlaybackQueueDao
+
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE playback_queue ADD COLUMN trackJson TEXT")
+            }
+        }
+    }
 }

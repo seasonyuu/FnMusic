@@ -165,10 +165,16 @@ data class PlayableTrack(
     val track: Track,
     val streamUrl: String,
     val coverUrl: String? = null,
+    /** Identifies one queue occurrence, including duplicate songs. Copies keep this identity. */
+    val queueEntryId: String = java.util.UUID.randomUUID().toString(),
 )
 
 data class PlayerState(
     val queue: List<PlayableTrack> = emptyList(),
+    /** Local-only history for the active playback list. It is deliberately not persisted. */
+    val playbackHistory: List<PlayableTrack> = emptyList(),
+    /** Changes only when a different playback list is started or restored. */
+    val playbackSessionId: Long = 0,
     val currentIndex: Int = -1,
     val isPlaying: Boolean = false,
     val positionMs: Long = 0,
@@ -177,9 +183,28 @@ data class PlayerState(
     val repeatMode: RepeatMode = RepeatMode.Off,
     val isRoaming: Boolean = false,
     val error: String? = null,
+    /** Media3 timeline indices in playback order, including its actual shuffle order. */
+    val playbackOrder: List<Int> = emptyList(),
 ) {
     val current: PlayableTrack?
         get() = queue.getOrNull(currentIndex)
+
+    val orderedQueueIndices: List<Int>
+        get() = playbackOrder.ifEmpty { queue.indices.toList() }
+
+    val upcomingQueueIndices: List<Int>
+        get() {
+            val order = orderedQueueIndices
+            val position = order.indexOf(currentIndex)
+            if (position < 0) return emptyList()
+            return order.drop(position + 1) + if (repeatMode == RepeatMode.All) order.take(position) else emptyList()
+        }
+
+    val canSkipNext: Boolean
+        get() = isRoaming || upcomingQueueIndices.isNotEmpty() || (current != null && repeatMode != RepeatMode.Off)
+
+    val canSkipPrevious: Boolean
+        get() = orderedQueueIndices.indexOf(currentIndex) > 0 || (current != null && repeatMode != RepeatMode.Off)
 }
 
 interface SessionRepository {
@@ -199,6 +224,8 @@ interface PlayerController {
         shuffleEnabled: Boolean,
         repeatMode: RepeatMode,
     )
+    /** Refreshes matching metadata without changing queue order or playback position. */
+    fun updateTracks(tracks: List<PlayableTrack>)
     fun clear()
     fun pause()
     fun resume()
@@ -206,10 +233,14 @@ interface PlayerController {
     fun skipNext()
     fun skipPrevious()
     fun skipTo(index: Int)
+    /** Plays an entry from the active list's local playback history. */
+    fun skipToHistoryItem(index: Int)
+    fun clearPlaybackHistory()
     fun playNext(item: PlayableTrack)
     fun append(items: List<PlayableTrack>)
+    /** Reorders the local playback queue. This never changes a saved playlist. */
+    fun moveQueueItem(fromIndex: Int, toIndex: Int)
     fun removeFromQueue(index: Int)
-    fun keepCurrentOnly()
     fun setRoaming(enabled: Boolean)
     fun setShuffle(enabled: Boolean)
     fun setRepeatMode(mode: RepeatMode)

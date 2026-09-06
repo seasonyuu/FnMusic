@@ -16,7 +16,6 @@ import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.AlbumId
 import com.seasonyuu.fnmusic.core.model.ArtistId
 import com.seasonyuu.fnmusic.core.model.PlaylistId
-import com.seasonyuu.fnmusic.data.PlaybackQueueEntity
 import com.seasonyuu.fnmusic.data.SearchItem
 import com.seasonyuu.fnmusic.feature.music.MusicUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,7 +64,19 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         .cachedIn(viewModelScope)
     private var searchJob: Job? = null
     private var detailJob: Job? = null
-    private var queueRestored = false
+    private val queueRecovery = PlaybackQueueRecovery(
+        json = graph.network.json,
+        read = { graph.database.playbackQueue().observe().first() },
+        write = { graph.database.playbackQueue().replace(it) },
+        state = { player.value },
+        playable = graph::playable,
+        fetch = { graph.catalog.trackMetadata(it).track },
+        restore = { saved ->
+            graph.player.restore(saved.queue, saved.currentIndex, saved.positionMs, saved.shuffleEnabled, saved.repeatMode)
+        },
+        update = { tracks -> graph.player.updateTracks(tracks.map(graph::playable)) },
+        isActive = { session.value is SessionState.Ready },
+    )
     private var roamQueue: RoamQueue? = null
     private var roamGeneration = 0L
     private val requestedRoamIds = mutableSetOf<String>()
@@ -73,6 +84,13 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     init {
         viewModelScope.launch { graph.session.reconnect() }
+        viewModelScope.launch {
+            session.collectLatest { value ->
+                if (value is SessionState.Ready) {
+                    while (!queueRecovery.recover()) delay(30_000)
+                }
+            }
+        }
         viewModelScope.launch {
             session.collectLatest { value ->
                 if (value is SessionState.Ready) {
@@ -104,9 +122,14 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             graph.settings.cacheBytes.collect { bytes -> mutableMusic.value = mutableMusic.value.copy(cacheBytes = bytes) }
         }
         viewModelScope.launch {
+            player.map { Triple(it.queue, it.currentIndex, it.shuffleEnabled to it.repeatMode) }
+                .distinctUntilChanged()
+                .collect { persistQueueSafely() }
+        }
+        viewModelScope.launch {
             while (true) {
                 delay(5_000)
-                persistQueue(player.value)
+                persistQueueSafely()
             }
         }
     }
@@ -127,7 +150,6 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                 val recent = graph.catalog.recent(30)
                 val playlists = graph.catalog.playlists()
                 graph.favorites.seed(tracks + favorites + recent)
-                restoreQueueOnce()
                 val refreshed = mutableMusic.value.copy(
                     loading = false,
                     tracks = tracks,
@@ -462,6 +484,8 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         }
     }
     fun skipToQueueItem(index: Int) = graph.player.skipTo(index)
+    fun skipToHistoryItem(index: Int) = graph.player.skipToHistoryItem(index)
+    fun clearPlaybackHistory() = graph.player.clearPlaybackHistory()
     fun playNext(track: Track) {
         exitRoamMode()
         graph.player.playNext(graph.playable(track))
@@ -470,13 +494,13 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         exitRoamMode()
         graph.player.append(listOf(graph.playable(track)))
     }
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        exitRoamMode()
+        graph.player.moveQueueItem(fromIndex, toIndex)
+    }
     fun removeFromQueue(index: Int) {
         exitRoamMode()
         graph.player.removeFromQueue(index)
-    }
-    fun keepCurrentQueueItem() {
-        exitRoamMode()
-        graph.player.keepCurrentOnly()
     }
     fun toggleShuffle() {
         if (!player.value.isRoaming) graph.player.setShuffle(!player.value.shuffleEnabled)
@@ -504,45 +528,18 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             graph.player.clear()
             graph.session.logout(clearCredentials = true)
             graph.catalogCache.clear()
-            graph.database.playbackQueue().replace(emptyList())
-            queueRestored = false
+            queueRecovery.clear()
         }
     }
 
-    private suspend fun persistQueue(state: PlayerState) {
-        if (session.value !is SessionState.Ready) return
-        graph.database.playbackQueue().replace(
-            state.queue.mapIndexed { index, item ->
-                PlaybackQueueEntity(
-                    trackGuid = item.track.id.value,
-                    queueIndex = index,
-                    positionMs = if (index == state.currentIndex) state.positionMs else 0,
-                    isCurrent = index == state.currentIndex,
-                    shuffleEnabled = state.shuffleEnabled,
-                    repeatMode = state.repeatMode.name,
-                )
-            },
-        )
-    }
-
-    private suspend fun restoreQueueOnce() {
-        if (queueRestored) return
-        queueRestored = true
-        val saved = graph.database.playbackQueue().observe().first()
-        if (saved.isEmpty()) return
-        val restored = saved.mapNotNull { row ->
-            runCatching { row to graph.playable(graph.catalog.trackMetadata(TrackId(row.trackGuid)).track) }.getOrNull()
+    private suspend fun persistQueueSafely() {
+        try {
+            queueRecovery.persist()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A temporary storage failure must not stop subsequent saves.
         }
-        if (restored.isEmpty()) return
-        val current = restored.indexOfFirst { it.first.isCurrent }.takeIf { it >= 0 } ?: 0
-        val settings = restored[current].first
-        graph.player.restore(
-            items = restored.map { it.second },
-            startIndex = current,
-            positionMs = settings.positionMs,
-            shuffleEnabled = settings.shuffleEnabled,
-            repeatMode = runCatching { RepeatMode.valueOf(settings.repeatMode) }.getOrDefault(RepeatMode.Off),
-        )
     }
 
     private fun beginRoamRequest(): Long {

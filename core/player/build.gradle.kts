@@ -13,6 +13,7 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     api(project(":core:model"))
     implementation(project(":core:network"))
     implementation(libs.androidx.core.ktx)
