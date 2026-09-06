@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
                 val music by viewModel.music.collectAsState()
                 val player by viewModel.player.collectAsState()
                 if (session is SessionState.Ready) {
-                    if (music.loading && music.tracks.isEmpty() && music.albums.isEmpty() && music.playlists.isEmpty()) {
+                    if (player.current == null && music.loading && music.tracks.isEmpty() && music.albums.isEmpty() && music.playlists.isEmpty()) {
                         MusicLoadingScreen()
                     } else {
                         MusicShell(
@@ -69,8 +69,10 @@ class MainActivity : ComponentActivity() {
                             onPrevious = viewModel::skipPrevious,
                             onNext = viewModel::skipNext,
                             onSkipToQueueItem = viewModel::skipToQueueItem,
+                            onSkipToHistoryItem = viewModel::skipToHistoryItem,
+                            onClearPlaybackHistory = viewModel::clearPlaybackHistory,
+                            onMoveQueueItem = viewModel::moveQueueItem,
                             onRemoveFromQueue = viewModel::removeFromQueue,
-                            onKeepCurrentQueueItem = viewModel::keepCurrentQueueItem,
                             onToggleShuffle = viewModel::toggleShuffle,
                             onCycleRepeatMode = viewModel::cycleRepeatMode,
                             onCacheSizeChange = viewModel::setCacheSize,

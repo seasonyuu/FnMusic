@@ -39,6 +39,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -101,6 +106,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
@@ -153,6 +159,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -164,6 +171,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.compositionLocalOf
@@ -176,6 +184,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -197,6 +209,8 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -241,6 +255,7 @@ import com.seasonyuu.fnmusic.core.designsystem.TrackRow
 import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.Artist
 import com.seasonyuu.fnmusic.core.model.PlayerState
+import com.seasonyuu.fnmusic.core.model.PlayableTrack
 import com.seasonyuu.fnmusic.core.model.LyricLine
 import com.seasonyuu.fnmusic.core.model.RepeatMode
 import com.seasonyuu.fnmusic.core.model.Playlist
@@ -259,6 +274,7 @@ import com.seasonyuu.fnmusic.data.SearchItem
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
@@ -381,8 +397,10 @@ fun MusicShell(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSkipToQueueItem: (Int) -> Unit,
+    onSkipToHistoryItem: (Int) -> Unit,
+    onClearPlaybackHistory: () -> Unit,
+    onMoveQueueItem: (Int, Int) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
-    onKeepCurrentQueueItem: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeatMode: () -> Unit,
     onCacheSizeChange: (Long) -> Unit,
@@ -394,12 +412,12 @@ fun MusicShell(
     var playerOpen by remember { mutableStateOf(false) }
     var playerComposed by remember { mutableStateOf(false) }
     var playerPage by remember { mutableStateOf(PlayerPage.NowPlaying) }
-    var queueReturnPage by remember { mutableStateOf(PlayerPage.NowPlaying) }
     var miniPlayerBounds by remember { mutableStateOf<Rect?>(null) }
     var miniCoverBounds by remember { mutableStateOf<Rect?>(null) }
     val playerMorphProgress = remember { Animatable(0f) }
     val lyricsMorphProgress = remember { Animatable(0f) }
     var actionTrack by remember { mutableStateOf<Track?>(null) }
+    var queueActionEntryId by remember { mutableStateOf<String?>(null) }
     var playlistPickerTrack by remember { mutableStateOf<Track?>(null) }
     var deletePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
     var purgePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
@@ -435,7 +453,7 @@ fun MusicShell(
     }
     BackHandler(enabled = playerComposed || layer != ContentLayer.Browser) {
         when {
-            playerComposed && playerPage == PlayerPage.Queue -> playerPage = queueReturnPage
+            playerComposed && playerPage == PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
             playerComposed && playerPage == PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
             playerComposed -> closePlayer()
             else -> detail = null
@@ -443,7 +461,10 @@ fun MusicShell(
     }
     CompositionLocalProvider(
         LocalContentColor provides FnTextPrimary,
-        LocalTrackAction provides { track -> actionTrack = track },
+        LocalTrackAction provides { track ->
+            queueActionEntryId = null
+            actionTrack = track
+        },
     ) {
         FnProgressiveSystemBars(showTopBlur = !playerComposed) {
             SharedTransitionLayout sharedTransition@ {
@@ -472,7 +493,7 @@ fun MusicShell(
                     label = "player-page",
                 ) { page ->
                     when (page) {
-                        PlayerPage.NowPlaying -> NowPlayingScreen(
+                        PlayerPage.NowPlaying, PlayerPage.Queue -> NowPlayingScreen(
                             state = playerState,
                             musicState = state,
                             coverModifier = with(this@sharedTransition) {
@@ -502,13 +523,6 @@ fun MusicShell(
                             onSeek = onSeek,
                             onPrevious = onPrevious,
                             onNext = onNext,
-                        )
-                        PlayerPage.Queue -> QueueScreen(
-                            state = playerState,
-                            onBack = { playerPage = PlayerPage.NowPlaying },
-                            onSelect = onSkipToQueueItem,
-                            onRemove = onRemoveFromQueue,
-                            onKeepCurrentOnly = onKeepCurrentQueueItem,
                         )
                     }
                 }
@@ -719,25 +733,31 @@ fun MusicShell(
                     expandedTarget = playerOpen,
                     progress = playerMorphProgress,
                     contentCoverProgress = lyricsMorphProgress.value,
-                    showCover = playerPage != PlayerPage.Queue,
+                    // The stable queue paints its own scrolling artwork. The overlay
+                    // owns it only while morphing between player presentations.
+                    showCover = playerPage != PlayerPage.Queue || lyricsMorphProgress.value < 0.999f,
+                    followContentCover = playerPage != PlayerPage.NowPlaying,
                     onRequestClose = ::closePlayer,
                     onClosed = {
                         playerComposed = false
                         playerPage = PlayerPage.NowPlaying
                     },
                     onCoverClick = {
-                        if (playerPage == PlayerPage.Lyrics) {
-                            playerPage = PlayerPage.NowPlaying
+                        when (playerPage) {
+                            PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
+                            PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
+                            PlayerPage.NowPlaying -> Unit
                         }
                     },
                 ) { targetCoverModifier, lyricsCoverModifier, dragModifier, contentModifier ->
                     when (playerPage) {
-                        PlayerPage.NowPlaying, PlayerPage.Lyrics -> NowPlayingLyricsScreen(
+                        PlayerPage.NowPlaying, PlayerPage.Lyrics, PlayerPage.Queue -> NowPlayingLyricsScreen(
                             state = playerState,
                             musicState = state,
                             highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
                                 ?: playerState.current?.coverUrl,
                             lyricsMode = playerPage == PlayerPage.Lyrics,
+                            queueMode = playerPage == PlayerPage.Queue,
                             lyricsProgress = lyricsMorphProgress,
                             modifier = contentModifier,
                             dragModifier = dragModifier,
@@ -747,20 +767,24 @@ fun MusicShell(
                             onSeek = onSeek,
                             onPrevious = onPrevious,
                             onNext = onNext,
+                            onToggleShuffle = onToggleShuffle,
+                            onCycleRepeatMode = onCycleRepeatMode,
                             onToggleFavorite = onToggleFavorite,
                             onOpenLyrics = { playerPage = PlayerPage.Lyrics },
                             onCloseLyrics = { playerPage = PlayerPage.NowPlaying },
+                            onCloseQueue = { playerPage = PlayerPage.NowPlaying },
                             onOpenQueue = {
-                                queueReturnPage = playerPage
                                 playerPage = PlayerPage.Queue
                             },
-                        )
-                        PlayerPage.Queue -> QueueScreen(
-                            state = playerState,
-                            onBack = { playerPage = queueReturnPage },
-                            onSelect = onSkipToQueueItem,
-                            onRemove = onRemoveFromQueue,
-                            onKeepCurrentOnly = onKeepCurrentQueueItem,
+                            onSelectQueueItem = onSkipToQueueItem,
+                            onSelectHistoryItem = onSkipToHistoryItem,
+                            onClearPlaybackHistory = onClearPlaybackHistory,
+                            onMoveQueueItem = onMoveQueueItem,
+                            onRemoveQueueItemDirect = onRemoveFromQueue,
+                            onRemoveQueueItem = { index, track ->
+                                queueActionEntryId = playerState.queue.getOrNull(index)?.queueEntryId
+                                actionTrack = track
+                            },
                         )
                     }
                 }
@@ -773,7 +797,10 @@ fun MusicShell(
             TrackActionSheet(
                 track = track,
                 coverUrl = coverUrl(track.coverId, 160),
-                onDismiss = { actionTrack = null },
+            onDismiss = {
+                actionTrack = null
+                queueActionEntryId = null
+            },
                 onPlayNext = { onPlayNext(track); actionTrack = null },
                 onAddToQueue = { onAddToQueue(track); actionTrack = null },
                 onAddToPlaylist = { playlistPickerTrack = track; actionTrack = null },
@@ -790,6 +817,14 @@ fun MusicShell(
                     detail = LibraryDetail.TrackPage(track)
                     onLoadTrackMetadata(track.id)
                     actionTrack = null
+                },
+                onRemoveFromQueue = queueActionEntryId?.let { entryId ->
+                    {
+                        playerState.queue.indexOfFirst { it.queueEntryId == entryId }
+                            .takeIf { it >= 0 && it != playerState.currentIndex }?.let(onRemoveFromQueue)
+                        actionTrack = null
+                        queueActionEntryId = null
+                    }
                 },
             )
         }
@@ -2137,6 +2172,7 @@ private fun TrackActionSheet(
     onAddToQueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onRemoveFromPlaylist: (() -> Unit)?,
+    onRemoveFromQueue: (() -> Unit)?,
     onAlbum: (() -> Unit)?,
     onArtist: (() -> Unit)?,
     onInfo: () -> Unit,
@@ -2164,6 +2200,7 @@ private fun TrackActionSheet(
         onAlbum?.let { ActionSheetRow(Icons.Rounded.Album, "查看专辑", it) }
         onArtist?.let { ActionSheetRow(Icons.Rounded.Person, "查看歌手", it) }
         onRemoveFromPlaylist?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从歌单移除", it) }
+        onRemoveFromQueue?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从待播队列移除", it) }
         ActionSheetRow(Icons.Rounded.Info, "歌曲信息", onInfo)
         Spacer(Modifier.height(24.dp))
     }
@@ -2535,6 +2572,7 @@ private fun PlayerMorphOverlay(
     progress: Animatable<Float, *>,
     contentCoverProgress: Float,
     showCover: Boolean,
+    followContentCover: Boolean,
     onRequestClose: () -> Unit,
     onClosed: () -> Unit,
     onCoverClick: () -> Unit,
@@ -2548,6 +2586,7 @@ private fun PlayerMorphOverlay(
     val current = state.current ?: return
     val density = LocalDensity.current
     val animationScope = rememberCoroutineScope()
+    val expressiveMotion = remember { MotionScheme.expressive() }
     var targetCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
     var lyricsCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
     var dragOffsetPx by remember(current.track.id) { mutableFloatStateOf(0f) }
@@ -2589,7 +2628,7 @@ private fun PlayerMorphOverlay(
                 if (targetCoverBounds != null) {
                     progress.animateTo(
                         1f,
-                        tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        expressiveMotion.slowSpatialSpec(),
                     )
                 }
             } else {
@@ -2600,7 +2639,7 @@ private fun PlayerMorphOverlay(
                         -dismissVelocityPxPerSecond / remainingVerticalPx
                     progress.animateTo(
                         0f,
-                        spring(dampingRatio = 0.9f, stiffness = 430f),
+                        expressiveMotion.slowSpatialSpec(),
                         initialVelocity = progressVelocity,
                     )
                     dragOffsetPx = 0f
@@ -2608,7 +2647,7 @@ private fun PlayerMorphOverlay(
                 } else {
                     progress.animateTo(
                         0f,
-                        tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                        expressiveMotion.slowSpatialSpec(),
                     )
                 }
                 onClosed()
@@ -2665,7 +2704,7 @@ private fun PlayerMorphOverlay(
                 .graphicsLayer { alpha = 0f },
             Modifier
                 .onGloballyPositioned {
-                    if (lyricsCoverBounds == null) lyricsCoverBounds = it.boundsInRoot()
+                    if (followContentCover || lyricsCoverBounds == null) lyricsCoverBounds = it.boundsInRoot()
                 }
                 .graphicsLayer { alpha = 0f },
             dragModifier,
@@ -2813,6 +2852,7 @@ private fun NowPlayingLyricsScreen(
     musicState: MusicUiState,
     highResolutionCoverUrl: String?,
     lyricsMode: Boolean,
+    queueMode: Boolean,
     lyricsProgress: Animatable<Float, *>,
     largeCoverModifier: Modifier,
     lyricsCoverModifier: Modifier,
@@ -2822,30 +2862,41 @@ private fun NowPlayingLyricsScreen(
     onSeek: (Long) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeatMode: () -> Unit,
     onToggleFavorite: (Track) -> Unit,
     onOpenLyrics: () -> Unit,
     onCloseLyrics: () -> Unit,
+    onCloseQueue: () -> Unit,
     onOpenQueue: () -> Unit,
+    onSelectQueueItem: (Int) -> Unit,
+    onSelectHistoryItem: (Int) -> Unit,
+    onClearPlaybackHistory: () -> Unit,
+    onMoveQueueItem: (Int, Int) -> Unit,
+    onRemoveQueueItem: (Int, Track) -> Unit,
+    onRemoveQueueItemDirect: (Int) -> Unit,
 ) {
     val current = state.current ?: return
+    val immersiveMode = lyricsMode || queueMode
+    val expressiveMotion = remember { MotionScheme.expressive() }
     val controlsVisibility = remember(current.track.id) { Animatable(1f) }
-    val defaultContentVisibility = remember(current.track.id) {
-        Animatable(if (lyricsMode) 0f else 1f)
+    val defaultContentVisibility = remember {
+        Animatable(if (immersiveMode) 0f else 1f)
     }
-    val lyricsHeaderVisibility = remember(current.track.id) {
-        Animatable(if (lyricsMode) 1f else 0f)
+    val lyricsHeaderVisibility = remember {
+        Animatable(if (immersiveMode) 1f else 0f)
     }
-    val lyricsListVisibility = remember(current.track.id) {
-        Animatable(if (lyricsMode) 1f else 0f)
+    val lyricsListVisibility = remember {
+        Animatable(if (immersiveMode) 1f else 0f)
     }
-    val lyricsChromeVisibility = remember(current.track.id) {
-        Animatable(if (lyricsMode) 1f else 0f)
+    val lyricsChromeVisibility = remember {
+        Animatable(if (immersiveMode) 1f else 0f)
     }
     var controlsActivity by remember(current.track.id) { mutableStateOf(0) }
     val playbackActiveIndex = activeLyricIndex(musicState.lyrics, state.positionMs)
     val favorite = musicState.favoriteOverrides[current.track.id] ?: current.track.isFavorite
-    val canGoPrevious = state.currentIndex > 0 || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
-    val canGoNext = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
+    val canGoPrevious = state.canSkipPrevious
+    val canGoNext = state.canSkipNext
     val lyricsListState = rememberLazyListState()
     val density = LocalDensity.current
     val playerBackgroundBackdrop = rememberLayerBackdrop()
@@ -2864,6 +2915,8 @@ private fun NowPlayingLyricsScreen(
     var lyricsPositionReady by remember(current.track.id) { mutableStateOf(false) }
     var manualScrollActivity by remember(current.track.id) { mutableStateOf(0) }
     var pendingSeekPositionMs by remember(current.track.id) { mutableStateOf<Long?>(null) }
+    var lastImmersiveContentWasLyrics by remember { mutableStateOf(lyricsMode) }
+    var playerRootTopPx by remember { mutableFloatStateOf(0f) }
     val activeIndex = activeLyricIndex(
         musicState.lyrics,
         pendingSeekPositionMs ?: state.positionMs,
@@ -2880,6 +2933,9 @@ private fun NowPlayingLyricsScreen(
         onSeek(positionMs)
     }
 
+    LaunchedEffect(immersiveMode, lyricsMode) {
+        if (immersiveMode) lastImmersiveContentWasLyrics = lyricsMode
+    }
     LaunchedEffect(playbackActiveIndex, pendingSeekPositionMs) {
         val pendingPosition = pendingSeekPositionMs ?: return@LaunchedEffect
         if (playbackActiveIndex == activeLyricIndex(musicState.lyrics, pendingPosition)) {
@@ -2916,8 +2972,8 @@ private fun NowPlayingLyricsScreen(
         }
     }
 
-    LaunchedEffect(lyricsMode, current.track.id) {
-        if (lyricsMode) {
+    LaunchedEffect(immersiveMode) {
+        if (immersiveMode) {
             launch {
                 defaultContentVisibility.animateTo(
                     0f,
@@ -2927,7 +2983,7 @@ private fun NowPlayingLyricsScreen(
             launch {
                 lyricsProgress.animateTo(
                     1f,
-                    tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    expressiveMotion.defaultSpatialSpec(),
                 )
             }
             launch {
@@ -2951,7 +3007,7 @@ private fun NowPlayingLyricsScreen(
                         tween(durationMillis = 80, easing = FastOutLinearInEasing),
                     )
                 }
-                snapshotFlow { lyricsPositionReady }.first { it }
+                if (lyricsMode) snapshotFlow { lyricsPositionReady }.first { it }
                 snapshotFlow { lyricsProgress.value }.first { it >= 0.995f }
                 delay(60)
                 lyricsListVisibility.animateTo(
@@ -2983,7 +3039,7 @@ private fun NowPlayingLyricsScreen(
                 val coverAnimation = launch {
                     lyricsProgress.animateTo(
                         0f,
-                        tween(durationMillis = 300, easing = FastOutLinearInEasing),
+                        expressiveMotion.defaultSpatialSpec(),
                     )
                 }
                 launch {
@@ -3003,8 +3059,8 @@ private fun NowPlayingLyricsScreen(
             }
         }
     }
-    LaunchedEffect(lyricsMode, controlsActivity, current.track.id) {
-        if (!lyricsMode) {
+    LaunchedEffect(lyricsMode, queueMode, controlsActivity, current.track.id) {
+        if (!lyricsMode || queueMode) {
             controlsVisibility.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
         } else {
             controlsVisibility.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
@@ -3015,7 +3071,6 @@ private fun NowPlayingLyricsScreen(
     }
     LaunchedEffect(activeIndex, followCurrent, lyricsMode) {
         if (!lyricsMode) {
-            lyricsPositionReady = false
             return@LaunchedEffect
         }
         if (!followCurrent || activeIndex < 0 || musicState.lyrics.isEmpty()) {
@@ -3092,6 +3147,7 @@ private fun NowPlayingLyricsScreen(
             modifier
                 .fillMaxSize()
                 .background(FnBackgroundBottom)
+                .onGloballyPositioned { playerRootTopPx = it.boundsInRoot().top }
                 .testTag("now-playing-lyrics-container"),
     ) {
         val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
@@ -3115,7 +3171,14 @@ private fun NowPlayingLyricsScreen(
         val lyricsListAlpha = lyricsListVisibility.value.coerceIn(0f, 1f)
         val lyricsChromeAlpha = lyricsChromeVisibility.value.coerceIn(0f, 1f)
         val controlsAlpha = lerpFloat(1f, controlsVisibility.value, p)
+        val defaultContentTranslation = if (!immersiveMode && !lastImmersiveContentWasLyrics) {
+            0f
+        } else {
+            with(density) { -8.dp.toPx() } * (1f - defaultContentAlpha)
+        }
+        val headerTapInteractionSource = remember(current.track.id) { MutableInteractionSource() }
         val controlsTranslationPx = with(density) { 176.dp.toPx() } * (1f - controlsAlpha)
+        var bottomControlsTopPx by remember { mutableFloatStateOf(Float.NaN) }
         val controlsBottomPadding = with(density) {
             lerpFloat(
                 (safeBottom + 244.dp).toPx(),
@@ -3123,6 +3186,17 @@ private fun NowPlayingLyricsScreen(
                 1f - controlsAlpha,
             ).toDp()
         }
+        // The controls are an overlay rather than a layout sibling of the queue. Use
+        // their measured top edge instead of guessing their height, so the queue can
+        // always scroll its final row above the persistent playback controls.
+        val queueBottomPadding = bottomControlsTopPx
+            .takeIf { it.isFinite() }
+            ?.let { controlsTop ->
+                with(density) {
+                    (maxHeight.toPx() - (controlsTop - playerRootTopPx)).coerceAtLeast(0f).toDp() + 16.dp
+                }
+            }
+            ?: controlsBottomPadding
 
         Box(
             Modifier
@@ -3167,13 +3241,19 @@ private fun NowPlayingLyricsScreen(
                 .size(largeCoverSize)
                 .then(largeCoverModifier),
         )
-        Box(
+        if (lyricsMode || (!queueMode && lastImmersiveContentWasLyrics)) Box(
             Modifier
                 .align(Alignment.TopStart)
-                .offset(x = lyricsHorizontalPadding, y = lyricsHeaderTop)
-                .size(lyricsCoverSize)
-                .then(lyricsCoverModifier),
-        )
+                .offset(
+                    x = lyricsHorizontalPadding,
+                    y = lyricsHeaderTop,
+                )
+                .zIndex(3f)
+                .size(lyricsCoverSize),
+        ) {
+            // Lyrics retain a fixed cover anchor; the queue measures its scroll item.
+            Box(Modifier.fillMaxSize().then(lyricsCoverModifier))
+        }
 
         Box(
             Modifier
@@ -3203,7 +3283,7 @@ private fun NowPlayingLyricsScreen(
                 .padding(horizontal = contentHorizontalPadding)
                 .graphicsLayer {
                     alpha = defaultContentAlpha
-                    translationY = -8.dp.toPx() * (1f - defaultContentAlpha)
+                    translationY = defaultContentTranslation
                 }
                 .then(if (defaultContentAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -3315,91 +3395,182 @@ private fun NowPlayingLyricsScreen(
             }
         }
 
-        Row(
-            Modifier
-                .align(Alignment.TopStart)
-                .padding(start = lyricsHorizontalPadding, top = lyricsHeaderTop, end = lyricsHorizontalPadding)
-                .height(lyricsCoverSize)
-                .fillMaxWidth()
-                .zIndex(3f)
-                .graphicsLayer {
-                    alpha = lyricsHeaderAlpha
-                }
-                .then(if (lyricsHeaderAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier)
-                .clickable(enabled = lyricsMode) {
-                    revealControls()
-                    onCloseLyrics()
-                }
-                .testTag("player-lyrics-header"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Spacer(Modifier.size(lyricsCoverSize + 12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(current.track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    current.track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
-                    color = FnTextSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            IconButton(
-                onClick = { revealControls(); onToggleFavorite(current.track.copy(isFavorite = favorite)) },
-                modifier = Modifier.size(44.dp),
-            ) {
-                Icon(
-                    if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    "收藏",
-                    tint = if (favorite) FnAccent else FnTextSecondary,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .pointerInput(current.track.id) {
-                        detectTapGestures {
-                            revealControls()
-                            onMore(current.track)
-                        }
+        val compactHeader: @Composable (Modifier, Boolean) -> Unit = { headerModifier, inQueue ->
+            Row(
+                headerModifier
+                    .height(lyricsCoverSize)
+                    .fillMaxWidth()
+                    .zIndex(3f)
+                    .clickable(
+                        interactionSource = headerTapInteractionSource,
+                        indication = null,
+                        enabled = immersiveMode,
+                    ) {
+                        revealControls()
+                        if (inQueue) onCloseQueue() else onCloseLyrics()
                     }
-                    .semantics {
-                        contentDescription = "更多操作"
-                        onClick {
-                            revealControls()
-                            onMore(current.track)
-                            true
-                        }
-                    }
-                    .testTag("player-lyrics-more-action"),
-                contentAlignment = Alignment.Center,
+                    .testTag(if (inQueue) "player-queue-header" else "player-lyrics-header"),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .drawPlainBackdrop(
-                            backdrop = playerBackgroundBackdrop,
-                            shape = { CircleShape },
-                            effects = {
-                                blur(18.dp.toPx())
-                                runtimeShaderEffect(
-                                    "FnPlayerLyricsMoreTint",
-                                    playerChromeTintShader,
-                                    "content",
-                                ) {
-                                    setColorUniform("tint", Color(0xFF211A22))
-                                    setFloatUniform("tintIntensity", 0.58f)
-                                }
+                if (inQueue) {
+                    Box(Modifier.size(lyricsCoverSize).testTag("player-queue-cover")) {
+                        if (queueMode) Box(Modifier.fillMaxSize().then(lyricsCoverModifier))
+                        CoverImage(
+                            current.coverUrl, current.track.title,
+                            Modifier.fillMaxSize().graphicsLayer {
+                                alpha = if (queueMode && p >= 0.999f) 1f else 0f
                             },
-                        ),
-                )
-                Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = 0.82f))
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                } else {
+                    Spacer(Modifier.size(lyricsCoverSize + 12.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(current.track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        current.track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
+                        color = FnTextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .pointerInput(current.track.id, favorite) {
+                            detectTapGestures {
+                                revealControls()
+                                onToggleFavorite(current.track.copy(isFavorite = favorite))
+                            }
+                        }
+                        .semantics {
+                            contentDescription = "收藏"
+                            onClick {
+                                revealControls()
+                                onToggleFavorite(current.track.copy(isFavorite = favorite))
+                                true
+                            }
+                        }
+                        .testTag("player-lyrics-favorite-action"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .drawPlainBackdrop(
+                                backdrop = playerBackgroundBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    blur(18.dp.toPx())
+                                    runtimeShaderEffect(
+                                        "FnPlayerLyricsFavoriteTint",
+                                        playerChromeTintShader,
+                                        "content",
+                                    ) {
+                                        setColorUniform("tint", Color(0xFF211A22))
+                                        setFloatUniform("tintIntensity", 0.58f)
+                                    }
+                                },
+                            ),
+                    )
+                    Icon(
+                        if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        "收藏",
+                        tint = if (favorite) FnAccent else FnTextSecondary,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .pointerInput(current.track.id) {
+                            detectTapGestures {
+                                revealControls()
+                                onMore(current.track)
+                            }
+                        }
+                        .semantics {
+                            contentDescription = "更多操作"
+                            onClick {
+                                revealControls()
+                                onMore(current.track)
+                                true
+                            }
+                        }
+                        .testTag("player-lyrics-more-action"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .drawPlainBackdrop(
+                                backdrop = playerBackgroundBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    blur(18.dp.toPx())
+                                    runtimeShaderEffect(
+                                        "FnPlayerLyricsMoreTint",
+                                        playerChromeTintShader,
+                                        "content",
+                                    ) {
+                                        setColorUniform("tint", Color(0xFF211A22))
+                                        setFloatUniform("tintIntensity", 0.58f)
+                                    }
+                                },
+                            ),
+                    )
+                    Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = 0.82f))
+                }
             }
+
+        }
+        if (lyricsMode || (!queueMode && lastImmersiveContentWasLyrics)) {
+            compactHeader(
+                Modifier.align(Alignment.TopStart)
+                    .padding(start = lyricsHorizontalPadding, top = lyricsHeaderTop, end = lyricsHorizontalPadding)
+                    .graphicsLayer { alpha = lyricsHeaderAlpha }
+                    .then(if (lyricsHeaderAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier),
+                false,
+            )
         }
 
-        Box(Modifier.fillMaxSize()) {
-        if (p > 0.01f) {
+        // Scroll content must remain above the background's header tint.
+        Box(Modifier.fillMaxSize().zIndex(2f)) {
+        AnimatedVisibility(
+            visible = queueMode,
+            enter = fadeIn(tween(durationMillis = 180, delayMillis = 24, easing = LinearOutSlowInEasing)),
+            exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
+            modifier = Modifier.zIndex(2f),
+            label = "player-queue-content",
+        ) {
+            QueuePlayerContent(
+                state = state,
+                topPadding = lyricsHeaderTop,
+                bottomPadding = queueBottomPadding,
+                alpha = 1f,
+                onSelect = { index -> revealControls(); onSelectQueueItem(index) },
+                onSelectHistoryItem = { index -> revealControls(); onSelectHistoryItem(index) },
+                onClearPlaybackHistory = onClearPlaybackHistory,
+                currentHeader = {
+                    compactHeader(Modifier.padding(horizontal = lyricsHorizontalPadding - 16.dp, vertical = 0.dp), true)
+                },
+                onMove = onMoveQueueItem,
+                onRemove = onRemoveQueueItemDirect,
+                onMore = onRemoveQueueItem,
+                onToggleShuffle = { revealControls(); onToggleShuffle() },
+                onCycleRepeatMode = { revealControls(); onCycleRepeatMode() },
+            )
+        }
+        AnimatedVisibility(
+            visible = !queueMode && (lyricsMode || lastImmersiveContentWasLyrics) && p > 0.01f,
+            enter = fadeIn(tween(durationMillis = 180, delayMillis = 24, easing = LinearOutSlowInEasing)),
+            exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
+            label = "player-lyrics-content",
+        ) {
         if (musicState.lyrics.isEmpty()) {
             Box(
                 Modifier
@@ -3547,7 +3718,7 @@ private fun NowPlayingLyricsScreen(
                 .fillMaxWidth()
                 // Keep the header fully protected, then give the blur enough room
                 // to dissolve before the backdrop layer reaches its clipped edge.
-                .height(lyricsHeaderTop + lyricsCoverSize + 90.dp)
+                .height(if (queueMode) lyricsHeaderTop else lyricsHeaderTop + lyricsCoverSize + 90.dp)
                 .zIndex(1f)
                 .graphicsLayer { alpha = lyricsChromeAlpha }
                 .drawPlainBackdrop(
@@ -3610,6 +3781,9 @@ private fun NowPlayingLyricsScreen(
                 .graphicsLayer {
                     alpha = controlsAlpha
                     translationY = controlsTranslationPx
+                }
+                .onGloballyPositioned { coordinates ->
+                    bottomControlsTopPx = coordinates.boundsInRoot().top
                 }
                 .then(if (lyricsMode && controlsAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier)
                 .testTag("player-bottom-controls"),
@@ -3711,7 +3885,11 @@ private fun NowPlayingLyricsScreen(
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         PlayerQueueOrRoamEntry(
                             isRoaming = state.isRoaming,
-                            onOpenQueue = { revealControls(); onOpenQueue() },
+                            selected = queueMode,
+                            onOpenQueue = {
+                                revealControls()
+                                if (queueMode) onCloseQueue() else onOpenQueue()
+                            },
                         )
                     }
                 }
@@ -3742,8 +3920,8 @@ private fun NowPlayingScreen(
     val activeIndex = activeLyricIndex(musicState.lyrics, state.positionMs)
     val activeLine = musicState.lyrics.getOrNull(activeIndex)
     val favorite = musicState.favoriteOverrides[current.track.id] ?: current.track.isFavorite
-    val canGoPrevious = state.currentIndex > 0 || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
-    val canGoNext = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
+    val canGoPrevious = state.canSkipPrevious
+    val canGoNext = state.canSkipNext
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -3778,7 +3956,7 @@ private fun NowPlayingScreen(
                         }
                         Text("正在播放", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text("${state.currentIndex + 1} / ${state.queue.size}", color = FnTextSecondary, style = tabularLabelStyle())
-                        PlayerQueueOrRoamEntry(state.isRoaming, onOpenQueue)
+                        PlayerQueueOrRoamEntry(state.isRoaming, onOpenQueue = onOpenQueue)
                     }
                 }
             }
@@ -3885,6 +4063,7 @@ private fun NowPlayingScreen(
 @Composable
 private fun PlayerQueueOrRoamEntry(
     isRoaming: Boolean,
+    selected: Boolean = false,
     onOpenQueue: () -> Unit,
 ) {
     if (isRoaming) {
@@ -3900,9 +4079,18 @@ private fun PlayerQueueOrRoamEntry(
     } else {
         IconButton(
             onClick = onOpenQueue,
-            modifier = Modifier.size(48.dp).testTag("player-queue-entry"),
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(if (selected) FnTextPrimary.copy(alpha = .14f) else Color.Transparent)
+                .semantics { this.selected = selected }
+                .testTag("player-queue-entry"),
         ) {
-            Icon(Icons.AutoMirrored.Rounded.QueueMusic, "打开待播队列", tint = FnTextSecondary)
+            Icon(
+                Icons.AutoMirrored.Rounded.QueueMusic,
+                "打开待播队列",
+                tint = if (selected) FnTextPrimary else FnTextSecondary,
+            )
         }
     }
 }
@@ -3919,8 +4107,8 @@ private fun LyricsScreen(
 ) {
     val current = state.current ?: return
     val playbackActiveIndex = activeLyricIndex(lyrics, state.positionMs)
-    val canGoPrevious = state.currentIndex > 0 || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
-    val canGoNext = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.shuffleEnabled || state.repeatMode != RepeatMode.Off
+    val canGoPrevious = state.canSkipPrevious
+    val canGoNext = state.canSkipNext
     val listState = rememberLazyListState()
     var followCurrent by remember(current.track.id) { mutableStateOf(true) }
     var manualScrollActivity by remember(current.track.id) { mutableStateOf(0) }
@@ -4081,81 +4269,503 @@ private fun LyricsScreen(
     }
 }
 
+/**
+ * The queue lives in the same immersive player shell as lyrics.  It deliberately
+ * owns only the central scroll region so the playback and volume controls stay
+ * stable while users browse or reorder upcoming tracks.
+ */
+private data class QueueDisplayItem(val key: String, val item: PlayableTrack)
+
+private fun PlayerState.upcomingDisplayItems(): List<QueueDisplayItem> = upcomingQueueIndices.mapNotNull { index ->
+    queue.getOrNull(index)?.let { QueueDisplayItem("upcoming:${it.queueEntryId}", it) }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun QueueScreen(
+private fun QueuePlayerContent(
     state: PlayerState,
-    onBack: () -> Unit,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    alpha: Float,
     onSelect: (Int) -> Unit,
+    onSelectHistoryItem: (Int) -> Unit,
+    onClearPlaybackHistory: () -> Unit,
+    currentHeader: @Composable () -> Unit,
+    onMove: (Int, Int) -> Unit,
     onRemove: (Int) -> Unit,
-    onKeepCurrentOnly: () -> Unit,
+    onMore: (Int, Track) -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeatMode: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(state.currentIndex, state.current?.track?.id) {
-        if (state.currentIndex in state.queue.indices) {
-            listState.animateScrollToItem((state.currentIndex - 2).coerceAtLeast(0))
+    // History is before the initial anchor, not an independently animated panel.
+    // Stable keys preserve this anchor when the current song/history changes.
+    val historyCount = state.playbackHistory.size
+    // The spacer separates the final history row from the current-song summary.
+    val currentHeaderIndex = if (historyCount == 0) 0 else historyCount + 2
+    val listState = remember(state.playbackSessionId) {
+        LazyListState(firstVisibleItemIndex = currentHeaderIndex)
+    }
+    val density = LocalDensity.current
+    val edgeThresholdPx = with(density) { 64.dp.toPx() }
+    val maxAutoScrollPerFramePx = with(density) { 12.dp.toPx() }
+    var displayedQueue by remember(state.playbackSessionId) { mutableStateOf(state.upcomingDisplayItems()) }
+    var draggedKey by remember { mutableStateOf<String?>(null) }
+    var draggedCenterY by remember { mutableFloatStateOf(0f) }
+    var autoScrollPerFramePx by remember { mutableFloatStateOf(0f) }
+    val latestState by rememberUpdatedState(state)
+    val latestMove by rememberUpdatedState(onMove)
+    var revealedKey by remember { mutableStateOf<String?>(null) }
+
+    fun queueIndex(entry: QueueDisplayItem): Int = latestState.queue.indexOfFirst { it.queueEntryId == entry.item.queueEntryId }
+
+    fun finishDrag() {
+        val key = draggedKey ?: return
+        val original = latestState.upcomingDisplayItems()
+        val source = original.indexOfFirst { it.key == key }
+        val destination = displayedQueue.indexOfFirst { it.key == key }
+        if (source >= 0 && destination >= 0 && source != destination && original.size == displayedQueue.size) {
+            latestMove(queueIndex(original[source]), queueIndex(original[destination]))
+        }
+        draggedKey = null
+        autoScrollPerFramePx = 0f
+    }
+
+    // LazyListState's initial index can be clamped before conditional history
+    // rows have been measured. Re-apply the current-song anchor once after the
+    // queue enters composition so history starts above the viewport.
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(currentHeaderIndex)
+    }
+
+    fun updateDrag() {
+        val key = draggedKey ?: return
+        val source = displayedQueue.indexOfFirst { it.key == key }
+        if (source < 0) return
+        val info = listState.layoutInfo
+        val stickyControls = info.visibleItemsInfo.firstOrNull { it.key == "queue-modes" }
+        val topEdge = maxOf(0f, stickyControls?.let { (it.offset + it.size).toFloat() } ?: 0f)
+        val bottomEdge = info.viewportEndOffset.toFloat()
+        val firstPending = info.visibleItemsInfo.firstOrNull { it.key == displayedQueue.firstOrNull()?.key }
+        val lastPending = info.visibleItemsInfo.firstOrNull { it.key == displayedQueue.lastOrNull()?.key }
+        // While dragging upward, keep scrolling until the first pending row reaches
+        // the sticky controls. Do not continue into the history/current header.
+        val pendingAbove = firstPending == null || firstPending.offset < topEdge
+        val pendingBelow = lastPending == null || lastPending.offset + lastPending.size > bottomEdge
+        autoScrollPerFramePx = when {
+            pendingAbove && draggedCenterY < topEdge + edgeThresholdPx ->
+                -maxAutoScrollPerFramePx * ((topEdge + edgeThresholdPx - draggedCenterY) / edgeThresholdPx).coerceIn(0f, 1f)
+            pendingBelow && draggedCenterY > bottomEdge - edgeThresholdPx ->
+                maxAutoScrollPerFramePx * ((draggedCenterY - bottomEdge + edgeThresholdPx) / edgeThresholdPx).coerceIn(0f, 1f)
+            else -> 0f
+        }
+        val targetInfo = info.visibleItemsInfo
+            .filter { item -> item.offset + item.size > topEdge && displayedQueue.any { it.key == item.key } }
+            .minByOrNull { abs(it.offset + it.size / 2f - draggedCenterY) } ?: return
+        val target = displayedQueue.indexOfFirst { it.key == targetInfo.key }
+        // Wait for the preceding local move to be laid out before crossing again.
+        val currentInfo = info.visibleItemsInfo.firstOrNull { it.key == key }
+        val firstQueueIndex = currentHeaderIndex + 2
+        if (currentInfo != null && currentInfo.index != firstQueueIndex + source) return
+        if (target == source || target < 0) return
+        displayedQueue = displayedQueue.toMutableList().also { it.add(target, it.removeAt(source)) }
+    }
+
+    LaunchedEffect(state.queue, state.currentIndex, state.playbackOrder, state.repeatMode, state.error) {
+        // External queue changes end the gesture before an old index can affect another entry.
+        draggedKey = null
+        autoScrollPerFramePx = 0f
+        displayedQueue = state.upcomingDisplayItems()
+    }
+    LaunchedEffect(state.playbackSessionId, state.current?.queueEntryId) {
+        draggedKey = null
+        revealedKey = null
+        autoScrollPerFramePx = 0f
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) revealedKey = null }
+    }
+    LaunchedEffect(draggedKey) {
+        while (draggedKey != null) {
+            withFrameNanos { }
+            if (abs(autoScrollPerFramePx) > 0.5f) {
+                // The pointer stays in viewport coordinates. Only the underlying
+                // list moves; translating the pointer too would double the scroll.
+                listState.scrollBy(autoScrollPerFramePx)
+            }
+            updateDrag()
         }
     }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
+
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .padding(top = topPadding, bottom = bottomPadding)
+            .graphicsLayer { this.alpha = alpha }
+            .then(if (alpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回播放界面")
-            }
-            Column(Modifier.weight(1f)) {
-                Text("待播队列", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (state.shuffleEnabled) "${state.queue.size} 首 · 随机播放中" else "${state.queue.size} 首",
-                    color = FnTextSecondary,
-                    style = tabularBodyStyle(),
-                )
-            }
-            TextButton(onClick = onKeepCurrentOnly, enabled = state.queue.size > 1) { Text("仅保留当前") }
-        }
+        // Even an empty pending queue must leave enough scroll range to start at
+        // the current header with every history row above the viewport.
+        val tailPadding = (maxHeight - 78.dp - 66.dp - 48.dp - 68.dp * displayedQueue.size)
+            .coerceAtLeast(48.dp)
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding = edgeToEdgeContentPadding(top = 12.dp, bottom = 12.dp),
+            userScrollEnabled = draggedKey == null,
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    // Fade the songs themselves, not just the artwork behind them.
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Black,
+                            ((size.height - 40.dp.toPx()).coerceAtLeast(0f) / size.height.coerceAtLeast(1f)) to Color.Black,
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }.testTag("player-queue-list"),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = tailPadding),
         ) {
-            itemsIndexed(state.queue, key = { index, item -> "${item.track.id.value}:$index" }) { index, item ->
-                val current = index == state.currentIndex
-                Surface(
-                    color = if (current) FnCard else Color.Transparent,
-                    contentColor = FnTextPrimary,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+            if (state.playbackHistory.isNotEmpty()) {
+                item(key = "history-title") {
                     Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(index) }
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        Modifier.fillMaxWidth().height(52.dp)
+                            .padding(horizontal = 8.dp)
+                            .testTag("player-playback-history"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("播放记录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "清空", color = FnTextSecondary,
+                            modifier = Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onClearPlaybackHistory,
+                            ).padding(12.dp).semantics { contentDescription = "清空播放记录" },
+                        )
+                    }
+                }
+                itemsIndexed(
+                    state.playbackHistory,
+                    key = { _, item -> "history:" + item.queueEntryId },
+                ) { index, item ->
+                    Row(
+                        Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelectHistoryItem(index) },
+                            ).semantics { contentDescription = "播放记录：${item.track.title}" },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("${index + 1}", color = if (current) FnAccent else FnTextSecondary, style = tabularBodyStyle(), modifier = Modifier.width(28.dp))
-                        CoverImage(item.coverUrl, item.track.title, Modifier.size(52.dp))
+                        CoverImage(item.coverUrl, item.track.title, Modifier.size(48.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(item.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (current) FnAccent else FnTextPrimary)
+                            Text(item.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                if (current) "正在播放" else item.track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
-                                color = FnTextSecondary,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
+                                item.track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
+                                color = FnTextSecondary, style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                        IconButton(onClick = { onRemove(index) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Rounded.RemoveCircleOutline, "从队列移除", tint = FnTextSecondary)
                         }
                     }
                 }
+                item(key = "history-current-gap") {
+                    Spacer(Modifier.height(20.dp))
+                }
+            }
+            item(key = "queue-current") {
+                Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) { currentHeader() }
+            }
+            stickyHeader(key = "queue-modes") {
+                Column(Modifier.fillMaxWidth().testTag("player-queue-sticky-header")) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(bottom = 18.dp)
+                            .testTag("player-queue-mode-controls"),
+                    ) {
+                        QueueModeControls(
+                            state,
+                            { revealedKey = null; onToggleShuffle() },
+                            { revealedKey = null; onCycleRepeatMode() },
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp)
+                            .testTag("player-queue-title"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("待播队列", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (state.shuffleEnabled) "${displayedQueue.size} 首 · 随机播放" else "${displayedQueue.size} 首",
+                            color = FnTextSecondary, style = tabularBodyStyle(),
+                        )
+                    }
+                }
+            }
+            itemsIndexed(displayedQueue, key = { _, item -> item.key }) { index, entry ->
+                val dragging = draggedKey == entry.key
+                val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
+                val translation = if (dragging && itemInfo != null) {
+                    draggedCenterY - itemInfo.offset - itemInfo.size / 2f
+                } else 0f
+                val dragState = rememberDraggableState { delta ->
+                    if (draggedKey == entry.key) {
+                        draggedCenterY += delta
+                        updateDrag()
+                    }
+                }
+                QueueTrackRow(
+                    item = entry.item,
+                    current = false,
+                    dragging = dragging,
+                    dragOffsetY = translation,
+                    modifier = (if (dragging) Modifier else Modifier.animateItem()).drawWithContent {
+                        val header = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "queue-modes" }
+                        val row = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
+                        val covered = if (header != null && row != null) {
+                            (header.offset + header.size - row.offset).toFloat()
+                        } else 0f
+                        // The lifted row can travel outside its own layout bounds, but
+                        // neither it nor regular rows may cover the pinned controls.
+                        if (dragging && row != null) {
+                            clipRect(
+                                left = -8.dp.toPx(), top = covered,
+                                right = size.width + 8.dp.toPx(),
+                                bottom = (listState.layoutInfo.viewportEndOffset - row.offset).toFloat(),
+                            ) { this@drawWithContent.drawContent() }
+                        } else {
+                            clipRect(top = covered.coerceIn(0f, size.height)) { this@drawWithContent.drawContent() }
+                        }
+                    },
+                    revealed = revealedKey == entry.key,
+                    onReveal = { open ->
+                        if (open) revealedKey = entry.key else if (revealedKey == entry.key) revealedKey = null
+                    },
+                    onClick = {
+                        if (revealedKey != null) revealedKey = null
+                        else queueIndex(entry).takeIf { it >= 0 }?.let(onSelect)
+                    },
+                    onRemove = {
+                        revealedKey = null
+                        queueIndex(entry).takeIf { it >= 0 }?.let(onRemove)
+                    },
+                    onMore = {
+                        revealedKey = null
+                        queueIndex(entry).takeIf { it >= 0 }?.let { onMore(it, entry.item.track) }
+                    },
+                    onMoveUp = if (index > 0) ({ latestMove(queueIndex(entry), queueIndex(displayedQueue[index - 1])) }) else null,
+                    onMoveDown = if (index < displayedQueue.lastIndex) ({ latestMove(queueIndex(entry), queueIndex(displayedQueue[index + 1])) }) else null,
+                    dragModifier = Modifier
+                        .semantics { contentDescription = "长按拖动排序：${entry.item.track.title}" }
+                        .draggable(
+                            state = dragState, orientation = Orientation.Vertical,
+                            enabled = displayedQueue.size > 1, startDragImmediately = true,
+                            onDragStarted = {
+                                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
+                                if (info != null) {
+                                    revealedKey = null
+                                    draggedCenterY = info.offset + info.size / 2f
+                                    draggedKey = entry.key
+                                    autoScrollPerFramePx = 0f
+                                }
+                            },
+                            onDragStopped = { finishDrag() },
+                        ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueModeControls(
+    state: PlayerState,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeatMode: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        QueueModePill(
+            icon = Icons.Rounded.Shuffle,
+            label = if (state.shuffleEnabled) "关闭随机播放" else "开启随机播放",
+            selected = state.shuffleEnabled,
+            modifier = Modifier.weight(1f),
+            onClick = onToggleShuffle,
+        )
+        QueueModePill(
+            icon = if (state.repeatMode == RepeatMode.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+            label = state.repeatMode.accessibilityLabel(),
+            selected = state.repeatMode != RepeatMode.Off,
+            modifier = Modifier.weight(1f),
+            onClick = onCycleRepeatMode,
+        )
+    }
+}
+
+
+@Composable
+private fun QueueModePill(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(
+                if (selected) FnTextPrimary.copy(alpha = .88f) else FnTextPrimary.copy(alpha = .12f),
+                shape,
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .height(48.dp)
+            .semantics {
+                contentDescription = label
+                this.selected = selected
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            null,
+            modifier = Modifier.size(22.dp),
+            tint = when {
+                !enabled -> FnTextSecondary.copy(alpha = .45f)
+                selected -> FnBackgroundTop
+                else -> FnTextPrimary
+            },
+        )
+    }
+}
+
+private enum class QueueSwipePosition { Closed, Open }
+
+@Composable
+private fun QueueTrackRow(
+    item: PlayableTrack,
+    current: Boolean,
+    dragging: Boolean,
+    dragOffsetY: Float,
+    modifier: Modifier = Modifier,
+    revealed: Boolean,
+    onReveal: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    onMore: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
+    dragModifier: Modifier,
+) {
+    val rowShape = RoundedCornerShape(16.dp)
+    val actionWidth = with(LocalDensity.current) { 72.dp.toPx() }
+    val swipe = remember(item.queueEntryId, actionWidth) {
+        AnchoredDraggableState(
+            QueueSwipePosition.Closed,
+            DraggableAnchors {
+                QueueSwipePosition.Closed at 0f
+                QueueSwipePosition.Open at -actionWidth
+            },
+        )
+    }
+    val latestReveal by rememberUpdatedState(onReveal)
+    LaunchedEffect(swipe) {
+        snapshotFlow { swipe.offset < -1f }.distinctUntilChanged().collect { latestReveal(it) }
+    }
+    LaunchedEffect(revealed, dragging) {
+        if (!revealed || dragging) swipe.animateTo(QueueSwipePosition.Closed)
+    }
+    val offset = swipe.offset.takeIf { it.isFinite() } ?: 0f
+    Box(
+        modifier
+            .fillMaxWidth()
+            .zIndex(if (dragging) 2f else 0f)
+            .graphicsLayer {
+                translationY = dragOffsetY
+                scaleX = if (dragging) 1.025f else 1f
+                scaleY = if (dragging) 1.025f else 1f
+                shape = rowShape
+                clip = false
+                shadowElevation = if (dragging) 20.dp.toPx() else 0f
+            }
+            .testTag("player-queue-row-${item.track.id.value}")
+            .semantics {
+                customActions = buildList {
+                    add(CustomAccessibilityAction("从待播队列移除") { onRemove(); true })
+                    add(CustomAccessibilityAction("更多操作") { onMore(); true })
+                    onMoveUp?.let { action -> add(CustomAccessibilityAction("上移") { action(); true }) }
+                    onMoveDown?.let { action -> add(CustomAccessibilityAction("下移") { action(); true }) }
+                }
+            },
+    ) {
+        if (offset < -0.5f) {
+            Box(
+                Modifier.align(Alignment.CenterEnd).width(72.dp).height(68.dp)
+                    .graphicsLayer { alpha = (-offset / actionWidth).coerceIn(0f, 1f) },
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.size(48.dp).background(Color(0xFFFF375F), CircleShape)
+                        .testTag("player-queue-remove-${item.queueEntryId}"),
+                ) {
+                    Icon(Icons.Rounded.RemoveCircleOutline, "从待播队列移除：${item.track.title}", tint = Color.White)
+                }
+            }
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationX = offset }
+                .background(
+                    when {
+                        dragging -> FnBackgroundTop.copy(alpha = .96f)
+                        current -> FnTextPrimary.copy(alpha = .14f)
+                        else -> Color.Transparent
+                    },
+                    rowShape,
+                )
+                .anchoredDraggable(swipe, Orientation.Horizontal, enabled = !dragging)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val trackInteraction = remember { MutableInteractionSource() }
+            Row(
+                Modifier.weight(1f).combinedClickable(
+                    interactionSource = trackInteraction,
+                    indication = null,
+                    onClick = onClick,
+                    onLongClick = onMore,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CoverImage(item.coverUrl, item.track.title, Modifier.size(52.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.track.title,
+                        color = if (current) FnAccent else FnTextPrimary,
+                        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        if (current) "正在播放" else item.track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
+                        color = FnTextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Box(dragModifier.size(40.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.DragHandle, "长按拖动排序", tint = FnTextSecondary)
             }
         }
     }
