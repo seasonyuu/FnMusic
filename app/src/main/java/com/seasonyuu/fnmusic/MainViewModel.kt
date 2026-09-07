@@ -18,6 +18,7 @@ import com.seasonyuu.fnmusic.core.model.ArtistId
 import com.seasonyuu.fnmusic.core.model.PlaylistId
 import com.seasonyuu.fnmusic.data.SearchItem
 import com.seasonyuu.fnmusic.feature.music.MusicUiState
+import com.seasonyuu.fnmusic.feature.music.DetailRequestKey
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -64,6 +65,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         .cachedIn(viewModelScope)
     private var searchJob: Job? = null
     private var detailJob: Job? = null
+    private var detailGeneration = 0L
     private val queueRecovery = PlaybackQueueRecovery(
         json = graph.network.json,
         read = { graph.database.playbackQueue().observe().first() },
@@ -247,35 +249,16 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         }
     }
 
-    fun loadAlbum(id: AlbumId) = loadDetail { graph.catalog.albumTracks(id) }
-    fun loadArtist(id: ArtistId) = loadDetail { graph.catalog.artistTracks(id) }
-    fun loadPlaylist(id: PlaylistId) {
-        detailJob?.cancel()
-        detailJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            mutableMusic.value = mutableMusic.value.copy(
-                detailLoading = true,
-                detailTracks = emptyList(),
-                detailPlaylist = null,
-                detailError = null,
-            )
-            try {
-                val metadata = graph.catalog.playlistDetail(id)
-                val tracks = graph.catalog.playlistTracks(id)
-                graph.favorites.seed(tracks)
-                mutableMusic.value = mutableMusic.value.copy(
-                    detailLoading = false,
-                    detailTracks = tracks,
-                    detailPlaylist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size),
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Throwable) {
-                mutableMusic.value = mutableMusic.value.copy(
-                    detailLoading = false,
-                    detailError = error.message ?: "加载详情失败",
-                )
-            }
-        }
+    fun loadAlbum(id: AlbumId) = loadDetail(DetailRequestKey("album", id.value)) {
+        copy(detailTracks = graph.catalog.albumTracks(id))
+    }
+    fun loadArtist(id: ArtistId) = loadDetail(DetailRequestKey("artist", id.value)) {
+        copy(detailTracks = graph.catalog.artistTracks(id))
+    }
+    fun loadPlaylist(id: PlaylistId) = loadDetail(DetailRequestKey("playlist", id.value)) {
+        val metadata = graph.catalog.playlistDetail(id)
+        val tracks = graph.catalog.playlistTracks(id)
+        copy(detailTracks = tracks, detailPlaylist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size))
     }
 
     fun createPlaylist(name: String, coverId: String?, initialTrackId: TrackId? = null) {
@@ -320,7 +303,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                     mutableMusic.value = mutableMusic.value.copy(
                         playlistBusy = false,
                         playlists = mutableMusic.value.playlists.map { if (it.id == id) updated else it },
-                        detailPlaylist = updated,
+                        detailPlaylist = updated.takeIf { mutableMusic.value.detailKey == DetailRequestKey("playlist", id.value) } ?: mutableMusic.value.detailPlaylist,
                         playlistMessage = "歌单已更新",
                     )
                 }
@@ -341,8 +324,8 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                     mutableMusic.value = mutableMusic.value.copy(
                         playlistBusy = false,
                         playlists = mutableMusic.value.playlists.filterNot { it.id == id },
-                        detailPlaylist = null,
-                        detailTracks = emptyList(),
+                        detailPlaylist = mutableMusic.value.detailPlaylist?.takeUnless { it.id == id },
+                        detailTracks = if (mutableMusic.value.detailKey == DetailRequestKey("playlist", id.value)) emptyList() else mutableMusic.value.detailTracks,
                         playlistMessage = "歌单已删除",
                     )
                 }
@@ -414,35 +397,45 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         val metadata = graph.catalog.playlistDetail(id)
         val tracks = graph.catalog.playlistTracks(id)
         graph.favorites.seed(tracks)
-        mutableMusic.value = mutableMusic.value.copy(
-            playlists = graph.catalog.playlists(),
-            detailPlaylist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size),
-            detailTracks = tracks,
+        val playlists = graph.catalog.playlists()
+        val current = mutableMusic.value
+        val active = current.detailKey == DetailRequestKey("playlist", id.value)
+        mutableMusic.value = current.copy(
+            playlists = playlists,
+            detailPlaylist = if (active) metadata.copy(trackCount = metadata.trackCount ?: tracks.size) else current.detailPlaylist,
+            detailTracks = if (active) tracks else current.detailTracks,
         )
     }
 
-    fun loadTrackMetadata(id: TrackId) {
-        detailJob?.cancel()
-        detailJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            mutableMusic.value = mutableMusic.value.copy(detailLoading = true, detailMetadata = null, detailError = null)
-            runCatching { graph.catalog.trackMetadata(id) }
-                .onSuccess { metadata -> mutableMusic.value = mutableMusic.value.copy(detailLoading = false, detailMetadata = metadata) }
-                .onFailure { error -> mutableMusic.value = mutableMusic.value.copy(detailLoading = false, detailError = error.message ?: "加载歌曲信息失败") }
-        }
+    fun loadTrackMetadata(id: TrackId) = loadDetail(DetailRequestKey("track", id.value)) {
+        copy(detailMetadata = graph.catalog.trackMetadata(id))
     }
 
-    private fun loadDetail(loader: suspend () -> List<Track>) {
+    private fun loadDetail(key: DetailRequestKey, loader: suspend MusicUiState.() -> MusicUiState) {
+        val generation = ++detailGeneration
         detailJob?.cancel()
         detailJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            mutableMusic.value = mutableMusic.value.copy(detailLoading = true, detailTracks = emptyList(), detailPlaylist = null, detailError = null)
-            runCatching { loader() }
-                .onSuccess { tracks ->
-                    graph.favorites.seed(tracks)
-                    mutableMusic.value = mutableMusic.value.copy(detailLoading = false, detailTracks = tracks)
-                }
-                .onFailure { error ->
+            val initial = mutableMusic.value.copy(
+                detailKey = key, detailLoading = true, detailTracks = emptyList(),
+                detailPlaylist = null, detailMetadata = null, detailError = null,
+            )
+            mutableMusic.value = initial
+            try {
+                val result = initial.loader()
+                if (generation != detailGeneration) return@launch
+                graph.favorites.seed(result.detailTracks)
+                if (generation != detailGeneration) return@launch
+                mutableMusic.value = mutableMusic.value.copy(
+                    detailKey = key, detailLoading = false, detailTracks = result.detailTracks,
+                    detailPlaylist = result.detailPlaylist, detailMetadata = result.detailMetadata, detailError = null,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                if (generation == detailGeneration) {
                     mutableMusic.value = mutableMusic.value.copy(detailLoading = false, detailError = error.message ?: "加载详情失败")
                 }
+            }
         }
     }
 

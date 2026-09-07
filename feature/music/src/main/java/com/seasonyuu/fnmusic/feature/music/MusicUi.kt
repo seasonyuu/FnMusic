@@ -12,7 +12,6 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -27,8 +26,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -85,9 +82,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
@@ -279,6 +276,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.layout.imePadding
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -313,6 +314,7 @@ data class MusicUiState(
     val serverName: String = "飞牛音乐",
     val lyrics: List<LyricLine> = emptyList(),
     val cacheBytes: Long = 512L * 1024L * 1024L,
+    val detailKey: DetailRequestKey? = null,
     val detailTracks: List<Track> = emptyList(),
     val detailPlaylist: Playlist? = null,
     val detailMetadata: TrackMetadata? = null,
@@ -406,9 +408,16 @@ fun MusicShell(
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf(MusicDestination.Home) }
-    var morePage by remember { mutableStateOf(MorePage.Menu) }
-    var detail by remember { mutableStateOf<LibraryDetail?>(null) }
+    val navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
+    val pageStateHolder = rememberSaveableStateHolder()
+    val destination = navigation.destination
+    val detail = navigation.current.detail
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun popPage() { navigation.pop()?.let { pageStateHolder.removeState(it.id) } }
+    fun pushDetail(page: LibraryDetail) { navigation.push(detail = page) }
+    fun openMore(page: MorePage) {
+        if (page == MorePage.Menu) popPage() else navigation.push(morePage = page)
+    }
     var playerOpen by remember { mutableStateOf(false) }
     var playerComposed by remember { mutableStateOf(false) }
     var playerPage by remember { mutableStateOf(PlayerPage.NowPlaying) }
@@ -430,9 +439,13 @@ fun MusicShell(
     LaunchedEffect(state.error) {
         state.error?.let { snackbarHostState.showSnackbar(it) }
     }
-    fun navigate(target: MusicDestination, page: MorePage = MorePage.Menu) {
-        destination = target
-        morePage = page
+    fun navigate(target: MusicDestination, page: MorePage? = null, resetToRoot: Boolean = false) {
+        keyboard?.hide()
+        navigation.select(target)
+        if (page != null || resetToRoot) {
+            navigation.resetCurrent().forEach { pageStateHolder.removeState(it.id) }
+            if (page != null && page != MorePage.Menu) navigation.push(morePage = page)
+        }
     }
     fun openPlayer() {
         if (playerState.current != null && miniPlayerBounds != null && miniCoverBounds != null) {
@@ -447,16 +460,21 @@ fun MusicShell(
     LaunchedEffect(playerComposed) {
         if (!playerComposed) lyricsMorphProgress.snapTo(0f)
     }
-    val layer = when {
-        detail != null -> ContentLayer.Detail
-        else -> ContentLayer.Browser
+    LaunchedEffect(navigation.current.id) {
+        when (val page = navigation.current.detail) {
+            is LibraryDetail.AlbumPage -> onLoadAlbum(page.album.id)
+            is LibraryDetail.ArtistPage -> onLoadArtist(page.artist.id)
+            is LibraryDetail.PlaylistPage -> onLoadPlaylist(page.playlist.id)
+            is LibraryDetail.TrackPage -> onLoadTrackMetadata(page.track.id)
+            else -> Unit
+        }
     }
-    BackHandler(enabled = playerComposed || layer != ContentLayer.Browser) {
+    BackHandler(enabled = playerComposed || navigation.canPop) {
         when {
             playerComposed && playerPage == PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
             playerComposed && playerPage == PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
             playerComposed -> closePlayer()
-            else -> detail = null
+            else -> popPage()
         }
     }
     CompositionLocalProvider(
@@ -467,104 +485,8 @@ fun MusicShell(
         },
     ) {
         FnProgressiveSystemBars(showTopBlur = !playerComposed) {
-            SharedTransitionLayout sharedTransition@ {
-            AnimatedContent(
-            targetState = layer,
-            modifier = Modifier.fillMaxSize(),
-            transitionSpec = {
-                if (targetState == ContentLayer.Player || initialState == ContentLayer.Player) {
-                    (fadeIn(tween(220)) + slideInVertically(tween(240)) { it / 5 }) togetherWith
-                        (fadeOut(tween(140)) + slideOutVertically(tween(150)) { it / 10 })
-                } else {
-                    (fadeIn(tween(220)) + slideInHorizontally(tween(240)) { it / 6 }) togetherWith
-                        (fadeOut(tween(140)) + slideOutHorizontally(tween(150)) { -it / 12 })
-                }
-            },
-            label = "music-content-layer",
-        ) playerLayer@ { currentLayer ->
-            when (currentLayer) {
-                ContentLayer.Player -> AnimatedContent(
-                    targetState = playerPage,
-                    modifier = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        (fadeIn(tween(180)) + scaleIn(tween(220), initialScale = .98f)) togetherWith
-                            (fadeOut(tween(120)) + scaleOut(tween(140), targetScale = .99f))
-                    },
-                    label = "player-page",
-                ) { page ->
-                    when (page) {
-                        PlayerPage.NowPlaying, PlayerPage.Queue -> NowPlayingScreen(
-                            state = playerState,
-                            musicState = state,
-                            coverModifier = with(this@sharedTransition) {
-                                Modifier.sharedElement(
-                                    sharedContentState = rememberSharedContentState(
-                                        key = "now-playing-cover-${playerState.current?.track?.id}",
-                                    ),
-                                    animatedVisibilityScope = this@playerLayer,
-                                )
-                            },
-                            onToggle = onTogglePlayback,
-                            onSeek = onSeek,
-                            onPrevious = onPrevious,
-                            onNext = onNext,
-                            onToggleShuffle = onToggleShuffle,
-                            onCycleRepeatMode = onCycleRepeatMode,
-                            onToggleFavorite = onToggleFavorite,
-                            onOpenLyrics = { playerPage = PlayerPage.Lyrics },
-                            onOpenQueue = { playerPage = PlayerPage.Queue },
-                            onDismiss = { playerOpen = false },
-                        )
-                        PlayerPage.Lyrics -> LyricsScreen(
-                            state = playerState,
-                            lyrics = state.lyrics,
-                            onBack = { playerPage = PlayerPage.NowPlaying },
-                            onToggle = onTogglePlayback,
-                            onSeek = onSeek,
-                            onPrevious = onPrevious,
-                            onNext = onNext,
-                        )
-                    }
-                }
-                ContentLayer.Detail -> detail?.let { selected ->
-                    when (selected) {
-                        is LibraryDetail.TrackPage -> TrackInfoScreen(
-                            fallback = selected.track,
-                            state = state,
-                            coverUrl = coverUrl,
-                            onBack = { detail = null },
-                            onAlbum = { album -> detail = LibraryDetail.AlbumPage(album); onLoadAlbum(album.id) },
-                            onArtist = { artist -> detail = LibraryDetail.ArtistPage(artist); onLoadArtist(artist.id) },
-                        )
-                        is LibraryDetail.PlaylistEditorPage -> PlaylistEditorScreen(
-                            playlist = selected.playlist,
-                            busy = state.playlistBusy,
-                            message = state.playlistMessage,
-                            coverUrl = coverUrl,
-                            onBack = {
-                                detail = selected.playlist?.let(LibraryDetail::PlaylistPage)
-                            },
-                            onSave = { name, coverId ->
-                                selected.playlist?.let { onUpdatePlaylist(it.id, name, coverId) }
-                                    ?: onCreatePlaylist(name, coverId, selected.initialTrackId)
-                                detail = selected.playlist?.copy(name = name, coverId = coverId)?.let(LibraryDetail::PlaylistPage)
-                            },
-                        )
-                        else -> LibraryDetailScreen(
-                            detail = selected,
-                            state = state,
-                            coverUrl = coverUrl,
-                            onPlay = onPlay,
-                            onToggleFavorite = onToggleFavorite,
-                            onEditPlaylist = { detail = LibraryDetail.PlaylistEditorPage(it) },
-                            onDeletePlaylist = { deletePlaylistCandidate = it },
-                            onPurgePlaylist = { purgePlaylistCandidate = it },
-                            onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
-                            onBack = { detail = null },
-                        )
-                    }
-                }
-                ContentLayer.Browser -> BoxWithConstraints(
+            Box(Modifier.fillMaxSize()) {
+                BoxWithConstraints(
                     Modifier
                         .fillMaxSize()
                         .then(
@@ -606,6 +528,7 @@ fun MusicShell(
                                         Column(
                                             Modifier
                                                 .navigationBarsPadding()
+                                                .imePadding()
                                                 .padding(bottom = 12.dp),
                                         ) {
                                             DynamicMusicBottomBar(
@@ -630,7 +553,7 @@ fun MusicShell(
                                         onToggle = onTogglePlayback,
                                         onNext = onNext,
                                         onOpen = ::openPlayer,
-                                        modifier = Modifier.navigationBarsPadding(),
+                                        modifier = Modifier.navigationBarsPadding().imePadding(),
                                         playerMorphProgress = playerMorphProgress.value,
                                         onPlayerBoundsChanged = { miniPlayerBounds = it },
                                         onCoverBoundsChanged = { miniCoverBounds = it },
@@ -651,147 +574,199 @@ fun MusicShell(
                                         )
                                         .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
                                 ) {
-                                when (destination) {
-                                    MusicDestination.Home -> HomeScreen(
-                                        state,
-                                        coverUrl,
-                                        onPlay,
-                                        onToggleFavorite,
-                                        onRoam,
-                                        { navigate(MusicDestination.Favorites) },
-                                        { navigate(MusicDestination.More, MorePage.Recent) },
-                                        {
-                                            onTrackSort(TrackSort.RecentlyAdded)
-                                            navigate(MusicDestination.Library)
+                                    AnimatedContent(
+                                        targetState = navigation.current,
+                                        contentKey = { it.id },
+                                        transitionSpec = {
+                                            (fadeIn(tween(220)) + slideInHorizontally(tween(240)) { it / 6 }) togetherWith
+                                                (fadeOut(tween(140)) + slideOutHorizontally(tween(150)) { -it / 12 })
                                         },
-                                        { navigate(MusicDestination.More, MorePage.Albums) },
-                                        { navigate(MusicDestination.More, MorePage.Playlists) },
-                                        { detail = LibraryDetail.AlbumPage(it); onLoadAlbum(it.id) },
-                                        { detail = LibraryDetail.PlaylistPage(it); onLoadPlaylist(it.id) },
-                                    )
-                                    MusicDestination.Library -> PagingTrackScreen(
-                                        "音乐库", trackItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                        sort = state.trackSort,
-                                        totalCount = state.trackTotal,
-                                        showServerTotal = true,
-                                        onSort = onTrackSort,
-                                        onPlayAll = onPlayAllTracks,
-                                    )
-                                    MusicDestination.Search -> SearchScreen(
-                                        state,
-                                        searchItems,
-                                        coverUrl,
-                                        onSearch,
-                                        onSearchType,
-                                        onPlay,
-                                        onToggleFavorite,
-                                        { detail = LibraryDetail.AlbumPage(it); onLoadAlbum(it.id) },
-                                        { detail = LibraryDetail.ArtistPage(it); onLoadArtist(it.id) },
-                                        { detail = LibraryDetail.PlaylistPage(it); onLoadPlaylist(it.id) },
-                                    )
-                                    MusicDestination.Favorites -> PagingTrackScreen(
-                                        "收藏", favoriteItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                        onPlayAll = onPlayAllFavorites,
-                                    )
-                                    MusicDestination.More -> when (morePage) {
-                                        MorePage.Menu -> MoreMenu(state) { morePage = it }
-                                        MorePage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, { morePage = MorePage.Menu })
-                                        MorePage.Albums -> AlbumGridScreen(
-                                            albumItems,
-                                            coverUrl,
-                                            state.albumSort,
-                                            onAlbumSort,
-                                            { morePage = MorePage.Menu },
-                                        ) { detail = LibraryDetail.AlbumPage(it); onLoadAlbum(it.id) }
-                                        MorePage.Artists -> ArtistGridScreen(artistItems, coverUrl, { morePage = MorePage.Menu }) { detail = LibraryDetail.ArtistPage(it); onLoadArtist(it.id) }
-                                        MorePage.Playlists -> PlaylistGridScreen(
-                                            state.playlists,
-                                            state.playlistMessage,
-                                            coverUrl,
-                                            { morePage = MorePage.Menu },
-                                            { detail = LibraryDetail.PlaylistEditorPage(null) },
-                                        ) { detail = LibraryDetail.PlaylistPage(it); onLoadPlaylist(it.id) }
-                                        MorePage.Settings -> SettingsScreen(state, onCacheSizeChange, onLogout) { morePage = MorePage.Menu }
+                                        label = "music-page",
+                                    ) { entry ->
+                                        pageStateHolder.SaveableStateProvider(entry.id) {
+                                            val selected = entry.detail
+                                            val detailState = state.forDetail(selected?.requestKey)
+                                            val morePage = entry.morePage
+                                            if (selected != null) {
+                                                when (selected) {
+                                                    is LibraryDetail.TrackPage -> TrackInfoScreen(
+                                                        fallback = selected.track,
+                                                        state = detailState,
+                                                        coverUrl = coverUrl,
+                                                        onBack = { popPage() },
+                                                        onAlbum = { album -> pushDetail(LibraryDetail.AlbumPage(album)) },
+                                                        onArtist = { artist -> pushDetail(LibraryDetail.ArtistPage(artist)) },
+                                                    )
+                                                    is LibraryDetail.PlaylistEditorPage -> PlaylistEditorScreen(
+                                                        playlist = selected.playlist,
+                                                        busy = state.playlistBusy,
+                                                        message = state.playlistMessage,
+                                                        coverUrl = coverUrl,
+                                                        onBack = {
+                                                            popPage()
+                                                        },
+                                                        onSave = { name, coverId ->
+                                                            selected.playlist?.let { onUpdatePlaylist(it.id, name, coverId) }
+                                                                ?: onCreatePlaylist(name, coverId, selected.initialTrackId)
+                                                            popPage()
+                                                        },
+                                                    )
+                                                    else -> LibraryDetailScreen(
+                                                        detail = selected,
+                                                        state = detailState,
+                                                        coverUrl = coverUrl,
+                                                        onPlay = onPlay,
+                                                        onToggleFavorite = onToggleFavorite,
+                                                        onEditPlaylist = { pushDetail(LibraryDetail.PlaylistEditorPage(it)) },
+                                                        onDeletePlaylist = { deletePlaylistCandidate = it },
+                                                        onPurgePlaylist = { purgePlaylistCandidate = it },
+                                                        onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
+                                                        onBack = { popPage() },
+                                                    )
+                                                }
+                                            } else {
+                                                when (entry.destination) {
+                                                    MusicDestination.Home -> HomeScreen(
+                                                        state,
+                                                        coverUrl,
+                                                        onPlay,
+                                                        onToggleFavorite,
+                                                        onRoam,
+                                                        { navigate(MusicDestination.Favorites, resetToRoot = true) },
+                                                        { navigate(MusicDestination.More, MorePage.Recent) },
+                                                        {
+                                                            onTrackSort(TrackSort.RecentlyAdded)
+                                                            navigate(MusicDestination.Library, resetToRoot = true)
+                                                        },
+                                                        { navigate(MusicDestination.More, MorePage.Albums) },
+                                                        { navigate(MusicDestination.More, MorePage.Playlists) },
+                                                        { pushDetail(LibraryDetail.AlbumPage(it)) },
+                                                        { pushDetail(LibraryDetail.PlaylistPage(it)) },
+                                                    )
+                                                    MusicDestination.Library -> PagingTrackScreen(
+                                                        "音乐库", trackItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
+                                                        sort = state.trackSort,
+                                                        totalCount = state.trackTotal,
+                                                        showServerTotal = true,
+                                                        onSort = onTrackSort,
+                                                        onPlayAll = onPlayAllTracks,
+                                                    )
+                                                    MusicDestination.Search -> SearchScreen(
+                                                        state,
+                                                        searchItems,
+                                                        coverUrl,
+                                                        onSearch,
+                                                        onSearchType,
+                                                        onPlay,
+                                                        onToggleFavorite,
+                                                        { pushDetail(LibraryDetail.AlbumPage(it)) },
+                                                        { pushDetail(LibraryDetail.ArtistPage(it)) },
+                                                        { pushDetail(LibraryDetail.PlaylistPage(it)) },
+                                                    )
+                                                    MusicDestination.Favorites -> PagingTrackScreen(
+                                                        "收藏", favoriteItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
+                                                        onPlayAll = onPlayAllFavorites,
+                                                    )
+                                                    MusicDestination.More -> when (morePage) {
+                                                        MorePage.Menu -> MoreMenu(state) { openMore(it) }
+                                                        MorePage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, { openMore(MorePage.Menu) })
+                                                        MorePage.Albums -> AlbumGridScreen(
+                                                            albumItems,
+                                                            coverUrl,
+                                                            state.albumSort,
+                                                            onAlbumSort,
+                                                            { openMore(MorePage.Menu) },
+                                                        ) { pushDetail(LibraryDetail.AlbumPage(it)) }
+                                                        MorePage.Artists -> ArtistGridScreen(artistItems, coverUrl, { openMore(MorePage.Menu) }) { pushDetail(LibraryDetail.ArtistPage(it)) }
+                                                        MorePage.Playlists -> PlaylistGridScreen(
+                                                            state.playlists,
+                                                            state.playlistMessage,
+                                                            coverUrl,
+                                                            { openMore(MorePage.Menu) },
+                                                            { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
+                                                        ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
+                                                        MorePage.Settings -> SettingsScreen(state, onCacheSizeChange, onLogout) { openMore(MorePage.Menu) }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-        if (playerComposed) {
-            val containerAnchor = miniPlayerBounds
-            val coverAnchor = miniCoverBounds
-            if (containerAnchor != null && coverAnchor != null) {
-                PlayerMorphOverlay(
-                    state = playerState,
-                    highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
-                        ?: playerState.current?.coverUrl,
-                    containerAnchor = containerAnchor,
-                    coverAnchor = coverAnchor,
-                    expandedTarget = playerOpen,
-                    progress = playerMorphProgress,
-                    contentCoverProgress = lyricsMorphProgress.value,
-                    // The stable queue paints its own scrolling artwork. The overlay
-                    // owns it only while morphing between player presentations.
-                    showCover = playerPage != PlayerPage.Queue || lyricsMorphProgress.value < 0.999f,
-                    followContentCover = playerPage != PlayerPage.NowPlaying,
-                    onRequestClose = ::closePlayer,
-                    onClosed = {
-                        playerComposed = false
-                        playerPage = PlayerPage.NowPlaying
-                    },
-                    onCoverClick = {
-                        when (playerPage) {
-                            PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
-                            PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
-                            PlayerPage.NowPlaying -> Unit
-                        }
-                    },
-                ) { targetCoverModifier, lyricsCoverModifier, dragModifier, contentModifier ->
-                    when (playerPage) {
-                        PlayerPage.NowPlaying, PlayerPage.Lyrics, PlayerPage.Queue -> NowPlayingLyricsScreen(
+                if (playerComposed) {
+                    val containerAnchor = miniPlayerBounds
+                    val coverAnchor = miniCoverBounds
+                    if (containerAnchor != null && coverAnchor != null) {
+                        PlayerMorphOverlay(
                             state = playerState,
-                            musicState = state,
                             highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
                                 ?: playerState.current?.coverUrl,
-                            lyricsMode = playerPage == PlayerPage.Lyrics,
-                            queueMode = playerPage == PlayerPage.Queue,
-                            lyricsProgress = lyricsMorphProgress,
-                            modifier = contentModifier,
-                            dragModifier = dragModifier,
-                            largeCoverModifier = targetCoverModifier,
-                            lyricsCoverModifier = lyricsCoverModifier,
-                            onToggle = onTogglePlayback,
-                            onSeek = onSeek,
-                            onPrevious = onPrevious,
-                            onNext = onNext,
-                            onToggleShuffle = onToggleShuffle,
-                            onCycleRepeatMode = onCycleRepeatMode,
-                            onToggleFavorite = onToggleFavorite,
-                            onOpenLyrics = { playerPage = PlayerPage.Lyrics },
-                            onCloseLyrics = { playerPage = PlayerPage.NowPlaying },
-                            onCloseQueue = { playerPage = PlayerPage.NowPlaying },
-                            onOpenQueue = {
-                                playerPage = PlayerPage.Queue
+                            containerAnchor = containerAnchor,
+                            coverAnchor = coverAnchor,
+                            expandedTarget = playerOpen,
+                            progress = playerMorphProgress,
+                            contentCoverProgress = lyricsMorphProgress.value,
+                            // The stable queue paints its own scrolling artwork. The overlay
+                            // owns it only while morphing between player presentations.
+                            showCover = playerPage != PlayerPage.Queue || lyricsMorphProgress.value < 0.999f,
+                            followContentCover = playerPage != PlayerPage.NowPlaying,
+                            onRequestClose = ::closePlayer,
+                            onClosed = {
+                                playerComposed = false
+                                playerPage = PlayerPage.NowPlaying
                             },
-                            onSelectQueueItem = onSkipToQueueItem,
-                            onSelectHistoryItem = onSkipToHistoryItem,
-                            onClearPlaybackHistory = onClearPlaybackHistory,
-                            onMoveQueueItem = onMoveQueueItem,
-                            onRemoveQueueItemDirect = onRemoveFromQueue,
-                            onRemoveQueueItem = { index, track ->
-                                queueActionEntryId = playerState.queue.getOrNull(index)?.queueEntryId
-                                actionTrack = track
+                            onCoverClick = {
+                                when (playerPage) {
+                                    PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
+                                    PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
+                                    PlayerPage.NowPlaying -> Unit
+                                }
                             },
-                        )
+                        ) { targetCoverModifier, lyricsCoverModifier, dragModifier, contentModifier ->
+                            when (playerPage) {
+                                PlayerPage.NowPlaying, PlayerPage.Lyrics, PlayerPage.Queue -> NowPlayingLyricsScreen(
+                                    state = playerState,
+                                    musicState = state,
+                                    highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
+                                        ?: playerState.current?.coverUrl,
+                                    lyricsMode = playerPage == PlayerPage.Lyrics,
+                                    queueMode = playerPage == PlayerPage.Queue,
+                                    lyricsProgress = lyricsMorphProgress,
+                                    modifier = contentModifier,
+                                    dragModifier = dragModifier,
+                                    largeCoverModifier = targetCoverModifier,
+                                    lyricsCoverModifier = lyricsCoverModifier,
+                                    onToggle = onTogglePlayback,
+                                    onSeek = onSeek,
+                                    onPrevious = onPrevious,
+                                    onNext = onNext,
+                                    onToggleShuffle = onToggleShuffle,
+                                    onCycleRepeatMode = onCycleRepeatMode,
+                                    onToggleFavorite = onToggleFavorite,
+                                    onOpenLyrics = { playerPage = PlayerPage.Lyrics },
+                                    onCloseLyrics = { playerPage = PlayerPage.NowPlaying },
+                                    onCloseQueue = { playerPage = PlayerPage.NowPlaying },
+                                    onOpenQueue = {
+                                        playerPage = PlayerPage.Queue
+                                    },
+                                    onSelectQueueItem = onSkipToQueueItem,
+                                    onSelectHistoryItem = onSkipToHistoryItem,
+                                    onClearPlaybackHistory = onClearPlaybackHistory,
+                                    onMoveQueueItem = onMoveQueueItem,
+                                    onRemoveQueueItemDirect = onRemoveFromQueue,
+                                    onRemoveQueueItem = { index, track ->
+                                        queueActionEntryId = playerState.queue.getOrNull(index)?.queueEntryId
+                                        actionTrack = track
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
-        }
-        }
-        }
         }
         actionTrack?.let { track ->
             TrackActionSheet(
@@ -808,14 +783,13 @@ fun MusicShell(
                     { onRemoveTracksFromPlaylist(playlist.id, listOf(track.id)); actionTrack = null }
                 },
                 onAlbum = track.album?.let { album ->
-                    { detail = LibraryDetail.AlbumPage(album); onLoadAlbum(album.id); actionTrack = null }
+                    { pushDetail(LibraryDetail.AlbumPage(album)); actionTrack = null }
                 },
                 onArtist = track.artists.firstOrNull()?.let { artist ->
-                    { detail = LibraryDetail.ArtistPage(artist); onLoadArtist(artist.id); actionTrack = null }
+                    { pushDetail(LibraryDetail.ArtistPage(artist)); actionTrack = null }
                 },
                 onInfo = {
-                    detail = LibraryDetail.TrackPage(track)
-                    onLoadTrackMetadata(track.id)
+                    pushDetail(LibraryDetail.TrackPage(track))
                     actionTrack = null
                 },
                 onRemoveFromQueue = queueActionEntryId?.let { entryId ->
@@ -841,7 +815,7 @@ fun MusicShell(
                 },
                 onCreate = {
                     playlistPickerTrack = null
-                    detail = LibraryDetail.PlaylistEditorPage(null, track.id)
+                    pushDetail(LibraryDetail.PlaylistEditorPage(null, track.id))
                 },
             )
         }
@@ -854,7 +828,7 @@ fun MusicShell(
                     TextButton(onClick = {
                         onDeletePlaylist(playlist.id)
                         deletePlaylistCandidate = null
-                        detail = null
+                        popPage()
                     }) { Text("删除", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = { TextButton(onClick = { deletePlaylistCandidate = null }) { Text("取消") } },
@@ -877,20 +851,7 @@ fun MusicShell(
     }
 }
 
-private enum class MorePage { Menu, Recent, Albums, Artists, Playlists, Settings }
-private enum class ContentLayer { Browser, Detail, Player }
 private enum class PlayerPage { NowPlaying, Lyrics, Queue }
-
-private sealed interface LibraryDetail {
-    data class AlbumPage(val album: Album) : LibraryDetail
-    data class ArtistPage(val artist: Artist) : LibraryDetail
-    data class PlaylistPage(val playlist: Playlist) : LibraryDetail
-    data class PlaylistEditorPage(
-        val playlist: Playlist?,
-        val initialTrackId: TrackId? = null,
-    ) : LibraryDetail
-    data class TrackPage(val track: Track) : LibraryDetail
-}
 
 @Composable
 private fun PermanentSidebar(selected: MusicDestination, onSelect: (MusicDestination) -> Unit, title: String) {
@@ -2011,8 +1972,8 @@ private fun PlaylistEditorScreen(
     onBack: () -> Unit,
     onSave: (String, String?) -> Unit,
 ) {
-    var name by remember(playlist?.id?.value) { mutableStateOf(playlist?.name.orEmpty()) }
-    var selectedCoverId by remember(playlist?.id?.value) {
+    var name by rememberSaveable(playlist?.id?.value) { mutableStateOf(playlist?.name.orEmpty()) }
+    var selectedCoverId by rememberSaveable(playlist?.id?.value) {
         mutableStateOf(playlist?.coverId ?: "playlist_default_1")
     }
     val normalized = name.trim()
@@ -2226,12 +2187,22 @@ private fun TrackInfoScreen(
     onBack: () -> Unit,
     onAlbum: (Album) -> Unit,
     onArtist: (Artist) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
+    if (state.detailLoading) {
+        Column(Modifier.fillMaxSize().padding(edgeToEdgeContentPadding())) {
+            PageTitle("详情", onBack)
+            EmptyPane("正在加载详情…")
+        }
+        return
+    }
+
     val metadata = state.detailMetadata?.takeIf { it.track.id == fallback.id }
     val track = metadata?.track ?: fallback
     val audio = metadata?.audioSpec ?: track.audioSpec
     LazyColumn(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
+        state = listState,
         contentPadding = edgeToEdgeContentPadding(bottom = 36.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
@@ -2337,7 +2308,16 @@ private fun LibraryDetailScreen(
     onPurgePlaylist: (Playlist) -> Unit,
     onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit,
     onBack: () -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
+    if (state.detailLoading) {
+        Column(Modifier.fillMaxSize().padding(edgeToEdgeContentPadding())) {
+            PageTitle("详情", onBack)
+            EmptyPane("正在加载详情…")
+        }
+        return
+    }
+
     val title: String
     val subtitle: String
     val metadata: String
@@ -2376,7 +2356,8 @@ private fun LibraryDetailScreen(
     ) {
         val compact = maxWidth < 600.dp
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().testTag("library-detail-list"),
+            state = listState,
             contentPadding = edgeToEdgeContentPadding(bottom = 36.dp),
         ) {
             item { Box(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) { PageTitle("详情", onBack) } }
