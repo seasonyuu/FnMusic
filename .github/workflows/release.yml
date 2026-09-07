@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      ORG_GRADLE_PROJECT_signingStoreFile: ${{ runner.temp }}/fn-music-release.keystore
+      ORG_GRADLE_PROJECT_signingStoreFile: ${{ github.workspace }}/fn-music-release.keystore
       ORG_GRADLE_PROJECT_signingStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ORG_GRADLE_PROJECT_signingKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
       ORG_GRADLE_PROJECT_signingKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -97,7 +97,7 @@ jobs:
     permissions:
       contents: write
     env:
-      ORG_GRADLE_PROJECT_signingStoreFile: ${{ runner.temp }}/fn-music-release.keystore
+      ORG_GRADLE_PROJECT_signingStoreFile: ${{ github.workspace }}/fn-music-release.keystore
       ORG_GRADLE_PROJECT_signingStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ORG_GRADLE_PROJECT_signingKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
       ORG_GRADLE_PROJECT_signingKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
