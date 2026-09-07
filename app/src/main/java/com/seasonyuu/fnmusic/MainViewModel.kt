@@ -111,8 +111,17 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         }
         viewModelScope.launch {
             player.map { it.current?.track?.id }.distinctUntilChanged().collectLatest { id ->
-                val lines = if (id == null) emptyList() else runCatching { graph.catalog.lyrics(id) }.getOrDefault(emptyList())
-                mutableMusic.value = mutableMusic.value.copy(lyrics = lines)
+                mutableMusic.value = mutableMusic.value.copy(lyrics = emptyList())
+                val lines = if (id == null) emptyList() else try {
+                    graph.catalog.lyrics(id)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (player.value.current?.track?.id == id) {
+                    mutableMusic.value = mutableMusic.value.copy(lyrics = lines)
+                }
             }
         }
         viewModelScope.launch {

@@ -253,6 +253,7 @@ import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.Artist
 import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.PlayableTrack
+import com.seasonyuu.fnmusic.core.model.resolveLyricTimeline
 import com.seasonyuu.fnmusic.core.model.LyricLine
 import com.seasonyuu.fnmusic.core.model.RepeatMode
 import com.seasonyuu.fnmusic.core.model.Playlist
@@ -2874,7 +2875,6 @@ private fun NowPlayingLyricsScreen(
         Animatable(if (immersiveMode) 1f else 0f)
     }
     var controlsActivity by remember(current.track.id) { mutableStateOf(0) }
-    val playbackActiveIndex = activeLyricIndex(musicState.lyrics, state.positionMs)
     val favorite = musicState.favoriteOverrides[current.track.id] ?: current.track.isFavorite
     val canGoPrevious = state.canSkipPrevious
     val canGoNext = state.canSkipNext
@@ -2898,10 +2898,19 @@ private fun NowPlayingLyricsScreen(
     var pendingSeekPositionMs by remember(current.track.id) { mutableStateOf<Long?>(null) }
     var lastImmersiveContentWasLyrics by remember { mutableStateOf(lyricsMode) }
     var playerRootTopPx by remember { mutableFloatStateOf(0f) }
-    val activeIndex = activeLyricIndex(
-        musicState.lyrics,
+    var measuredLyricsHeaderBottomPx by remember { mutableFloatStateOf(Float.NaN) }
+    val lyricPosition = rememberLyricPosition(
+        current.queueEntryId,
         pendingSeekPositionMs ?: state.positionMs,
+        state.durationMs,
+        state.isPlaying && pendingSeekPositionMs == null && lyricsMode,
     )
+    val activeIndex by remember(musicState.lyrics, lyricPosition) {
+        derivedStateOf { activeLyricIndex(musicState.lyrics, lyricPosition.value) }
+    }
+    val lyricTimelines = remember(musicState.lyrics, state.durationMs) {
+        musicState.lyrics.indices.map { resolveLyricTimeline(musicState.lyrics, it, state.durationMs) }
+    }
 
     fun revealControls() {
         controlsActivity += 1
@@ -2917,9 +2926,9 @@ private fun NowPlayingLyricsScreen(
     LaunchedEffect(immersiveMode, lyricsMode) {
         if (immersiveMode) lastImmersiveContentWasLyrics = lyricsMode
     }
-    LaunchedEffect(playbackActiveIndex, pendingSeekPositionMs) {
+    LaunchedEffect(state.positionMs, pendingSeekPositionMs) {
         val pendingPosition = pendingSeekPositionMs ?: return@LaunchedEffect
-        if (playbackActiveIndex == activeLyricIndex(musicState.lyrics, pendingPosition)) {
+        if (abs(state.positionMs - pendingPosition) <= 750L) {
             pendingSeekPositionMs = null
         }
     }
@@ -3050,79 +3059,6 @@ private fun NowPlayingLyricsScreen(
             controlsVisibility.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
         }
     }
-    LaunchedEffect(activeIndex, followCurrent, lyricsMode) {
-        if (!lyricsMode) {
-            return@LaunchedEffect
-        }
-        if (!followCurrent || activeIndex < 0 || musicState.lyrics.isEmpty()) {
-            lyricsPositionReady = true
-            return@LaunchedEffect
-        }
-
-        fun activeLineOffset(controlsProgress: Float): Float? {
-            val viewportStart = lyricsListState.layoutInfo.viewportStartOffset
-            val viewportEnd = lyricsListState.layoutInfo.viewportEndOffset
-            val item = lyricsListState.layoutInfo.visibleItemsInfo
-                .firstOrNull { it.index == activeIndex }
-                ?: return null
-            val viewportCenter = (viewportStart + viewportEnd) / 2f
-            val controlsOffset = with(density) { 124.dp.toPx() } * controlsProgress
-            val targetCenter = viewportCenter - controlsOffset
-            val itemCenter = item.offset + item.size / 2f
-            return itemCenter - targetCenter
-        }
-
-        suspend fun awaitActiveLineLayout() {
-            snapshotFlow {
-                lyricsListState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.index == activeIndex }
-                    ?.let { it.offset to it.size }
-            }.first { it != null }
-        }
-
-        if (!lyricsPositionReady) {
-            // Initial placement happens while the lyric layer is still hidden.
-            lyricsListState.scrollToItem(activeIndex)
-            awaitActiveLineLayout()
-            activeLineOffset(controlsVisibility.value)?.let { lyricsListState.scrollBy(it) }
-            lyricsPositionReady = true
-        } else {
-            // During playback the next line is normally already visible. Move it
-            // continuously into the focus position instead of staging two snaps.
-            if (activeLineOffset(controlsVisibility.value) == null) {
-                lyricsListState.animateScrollToItem(activeIndex)
-                awaitActiveLineLayout()
-            }
-            activeLineOffset(controlsVisibility.value)?.let { offset ->
-                lyricsListState.animateScrollBy(
-                    value = offset,
-                    animationSpec = tween(
-                        durationMillis = 420,
-                        easing = FastOutSlowInEasing,
-                    ),
-                )
-            }
-            activeLineOffset(controlsVisibility.value)
-                ?.takeIf { abs(it) > 0.5f }
-                ?.let { correction ->
-                    // The active text style changes during the move and can alter
-                    // its measured center by a few pixels. Settle that remainder
-                    // continuously instead of finishing with a tiny snap.
-                    lyricsListState.animateScrollBy(
-                        value = correction,
-                        animationSpec = tween(
-                            durationMillis = 90,
-                            easing = LinearOutSlowInEasing,
-                        ),
-                    )
-                }
-        }
-
-        snapshotFlow { controlsVisibility.value }
-            .collect { controlsProgress ->
-                activeLineOffset(controlsProgress)?.let { lyricsListState.scrollBy(it) }
-            }
-    }
 
         BoxWithConstraints(
             modifier
@@ -3146,7 +3082,23 @@ private fun NowPlayingLyricsScreen(
         val lyricsCoverSize = 56.dp
         val lyricsHeaderTop = safeTop + 34.dp
         val p = lyricsProgress.value.coerceIn(0f, 1f)
-        val lyricsTrailingSpaceHeight = maxHeight / 2
+        val headerBottomPx = measuredLyricsHeaderBottomPx.takeIf { it.isFinite() }
+            ?: with(density) { (lyricsHeaderTop + lyricsCoverSize).toPx() }
+        val focusTopPx = headerBottomPx +
+            (with(density) { (maxHeight - safeBottom).toPx() } - headerBottomPx) * 0.18f
+        val focusTop = with(density) { focusTopPx.toDp() }
+        val lyricsTrailingSpaceHeight = (maxHeight - focusTop).coerceAtLeast(0.dp)
+        FollowLyricPosition(
+            listState = lyricsListState,
+            contentKey = current.track.id to musicState.lyrics,
+            activeIndex = activeIndex,
+            enabled = lyricsMode,
+            following = followCurrent,
+            focusTopPx = focusTopPx,
+            textInsetPx = with(density) { 4.dp.toPx() },
+            ready = lyricsPositionReady,
+            onReady = { lyricsPositionReady = true },
+        )
         val defaultContentAlpha = defaultContentVisibility.value.coerceIn(0f, 1f)
         val lyricsHeaderAlpha = lyricsHeaderVisibility.value.coerceIn(0f, 1f)
         val lyricsListAlpha = lyricsListVisibility.value.coerceIn(0f, 1f)
@@ -3390,6 +3342,9 @@ private fun NowPlayingLyricsScreen(
                         revealControls()
                         if (inQueue) onCloseQueue() else onCloseLyrics()
                     }
+                    .onGloballyPositioned {
+                        if (!inQueue) measuredLyricsHeaderBottomPx = it.boundsInRoot().bottom - playerRootTopPx
+                    }
                     .testTag(if (inQueue) "player-queue-header" else "player-lyrics-header"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -3587,16 +3542,42 @@ private fun NowPlayingLyricsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(manualScrollConnection)
+                    .pointerInput(current.track.id, lyricsMode) {
+                        detectTapGestures { if (lyricsMode) revealControls() }
+                    }
                     .graphicsLayer {
                         alpha = lyricsListAlpha
                     }
                     .then(if (lyricsListAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier)
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val top = headerBottomPx.coerceIn(0f, size.height)
+                        val fullBottom = size.height - safeBottom.toPx()
+                        val controlsTop = bottomControlsTopPx.takeIf { it.isFinite() }
+                            ?.minus(playerRootTopPx) ?: (size.height - (safeBottom + 244.dp).toPx())
+                        val bottom = lerpFloat(fullBottom, controlsTop, controlsAlpha)
+                            .coerceIn((top + 1f).coerceAtMost(size.height), size.height)
+                        val fadeTopEnd = (top + 40.dp.toPx()).coerceAtMost(bottom)
+                        val fadeBottomStart = (bottom - 32.dp.toPx()).coerceAtLeast(fadeTopEnd)
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                (top / size.height) to Color.Transparent,
+                                (fadeTopEnd / size.height) to Color.Black,
+                                (fadeBottomStart / size.height) to Color.Black,
+                                (bottom / size.height).coerceAtMost(1f) to Color.Transparent,
+                                1f to Color.Transparent,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    }
                     .testTag("lyrics-list"),
                 contentPadding = PaddingValues(
                     start = lyricsPressSurfaceInset,
-                    top = lyricsHeaderTop + lyricsCoverSize + 38.dp,
+                    top = (focusTop - 4.dp).coerceAtLeast(0.dp),
                     end = lyricsPressSurfaceInset,
-                    bottom = controlsBottomPadding,
+                    bottom = safeBottom,
                 ),
                 verticalArrangement = Arrangement.spacedBy(22.dp),
             ) {
@@ -3663,12 +3644,14 @@ private fun NowPlayingLyricsScreen(
                                 },
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text(
-                                line.text.ifBlank { "♪" },
-                                color = lerp(FnTextSecondary, FnTextPrimary, activeProgress),
-                                fontSize = lerpFloat(19f, 23f, activeProgress).sp,
-                                lineHeight = lerpFloat(28f, 32f, activeProgress).sp,
-                                fontWeight = if (activeProgress >= 0.5f) FontWeight.SemiBold else FontWeight.Normal,
+                            ProgressiveLyricText(
+                                text = line.text.ifBlank { "♪" },
+                                timeline = lyricTimelines.getOrNull(index),
+                                position = { lyricPosition.value },
+                                activeProgress = activeProgress,
+                                baseColor = FnTextPrimary.copy(alpha = if (!followCurrent || activeIndex < 0) 0.58f else
+                                    lerpFloat(0.58f, 0.24f, (blurRadius.value / 4f).coerceIn(0f, 1f))),
+                                highlightColor = FnTextPrimary,
                             )
                             line.translation?.takeIf(String::isNotBlank)?.let { translation ->
                                 Text(
@@ -3764,7 +3747,9 @@ private fun NowPlayingLyricsScreen(
                     translationY = controlsTranslationPx
                 }
                 .onGloballyPositioned { coordinates ->
-                    bottomControlsTopPx = coordinates.boundsInRoot().top
+                    if (!lyricsMode || controlsAlpha >= 0.995f) {
+                        bottomControlsTopPx = coordinates.boundsInRoot().top
+                    }
                 }
                 .then(if (lyricsMode && controlsAlpha < 0.1f) Modifier.clearAndSetSemantics { } else Modifier)
                 .testTag("player-bottom-controls"),
