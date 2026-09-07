@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 /** Touch highlight and drag state used by the AndroidLiquidGlass catalog controls. */
 internal class InteractiveHighlight(
     private val animationScope: CoroutineScope,
+    private val consumeDrag: Boolean = false,
     private val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset },
 ) {
     private val pressProgressAnimationSpec = spring(0.5f, 300f, 0.001f)
@@ -77,10 +78,12 @@ internal class InteractiveHighlight(
         drawContent()
     }
 
-    val gestureModifier: Modifier = Modifier.pointerInput(animationScope) {
+    val gestureModifier: Modifier = Modifier.pointerInput(animationScope, consumeDrag) {
+        var dragged = false
         inspectDragGestures(
             onDragStart = { down ->
                 startPosition = down.position
+                dragged = false
                 animationScope.launch {
                     launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
                     launch { positionAnimation.snapTo(startPosition) }
@@ -89,6 +92,11 @@ internal class InteractiveHighlight(
             onDragEnd = { release() },
             onDragCancel = { release() },
         ) { change, _ ->
+            if (consumeDrag) {
+                dragged = dragged || (change.position - startPosition).getDistance() > viewConfiguration.touchSlop
+                // Cancel clickable after a drag, while leaving child button taps independent.
+                if (dragged) change.consume()
+            }
             animationScope.launch { positionAnimation.snapTo(change.position) }
         }
     }

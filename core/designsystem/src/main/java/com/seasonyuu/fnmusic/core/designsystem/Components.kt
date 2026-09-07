@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.core.designsystem
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +18,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +38,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.SkipNext
@@ -121,6 +126,7 @@ fun TrackRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MiniPlayer(
     state: PlayerState,
@@ -135,73 +141,87 @@ fun MiniPlayer(
 ) {
     val current = state.current ?: return
     val backdrop = LocalFnBackdrop.current
-    Column(
-        modifier
-            .fillMaxWidth()
-            .height(68.dp)
-            .onGloballyPositioned { onPlayerBoundsChanged(it.boundsInRoot()) }
-            .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
-            .then(
-                if (backdrop != null) {
-                    Modifier.drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { Capsule() },
-                        effects = {
-                            vibrancy()
-                            blur(10.dp.toPx())
-                            lens(20.dp.toPx(), 20.dp.toPx())
-                        },
-                        highlight = {
-                            Highlight.Default.copy(alpha = 0.32f)
-                        },
-                        shadow = {
-                            Shadow(alpha = 0.28f)
-                        },
-                        innerShadow = {
-                            InnerShadow(radius = 6.dp, alpha = 0.3f)
-                        },
-                        onDrawSurface = {
-                            drawRect(Color(0x8014121B))
-                        },
-                    )
-                } else {
-                    Modifier.background(Color(0xE624202E), Capsule())
-                },
-            )
-            .clip(Capsule())
-            .clickable(onClick = onOpen),
-    ) {
-        Row(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            CoverImage(
-                current.coverUrl,
-                current.track.title,
-                coverModifier
-                    .size(42.dp)
-                    .onGloballyPositioned { onCoverBoundsChanged(it.boundsInRoot()) },
-            )
-            Column(Modifier.weight(1f)) {
-                Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    current.track.artists.joinToString(" / ") { it.name },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = FnTextSecondary,
-                    maxLines = 1,
-                )
-            }
-            Row {
-                IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
-                    Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+    val interaction = rememberLiquidInteraction(consumeDrag = true)
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        Column(
+            modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .onGloballyPositioned {
+                    if (interaction.isIdle) onPlayerBoundsChanged(it.boundsInRoot())
                 }
-                IconButton(
-                    onClick = onNext,
-                    enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != com.seasonyuu.fnmusic.core.model.RepeatMode.Off,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(Icons.Rounded.SkipNext, "下一首")
+                .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
+                .then(
+                    if (backdrop != null) {
+                        Modifier.drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { Capsule() },
+                            layerBlock = interaction.layerBlock,
+                            effects = {
+                                vibrancy()
+                                blur(10.dp.toPx())
+                                lens(20.dp.toPx(), 20.dp.toPx())
+                            },
+                            highlight = {
+                                Highlight.Default.copy(alpha = 0.32f)
+                            },
+                            shadow = {
+                                Shadow(alpha = 0.28f)
+                            },
+                            innerShadow = {
+                                InnerShadow(radius = 6.dp, alpha = 0.3f)
+                            },
+                            onDrawSurface = {
+                                drawRect(Color(0x8014121B))
+                            },
+                        )
+                    } else {
+                        Modifier.graphicsLayer(interaction.layerBlock).background(Color(0xE624202E), Capsule())
+                    },
+                )
+                .clip(Capsule())
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onOpen,
+                )
+                .then(interaction.modifier),
+        ) {
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CoverImage(
+                    current.coverUrl,
+                    current.track.title,
+                    coverModifier
+                        .size(42.dp)
+                        .onGloballyPositioned {
+                            if (interaction.isIdle) onCoverBoundsChanged(it.boundsInRoot())
+                        },
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        current.track.artists.joinToString(" / ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FnTextSecondary,
+                        maxLines = 1,
+                    )
+                }
+                Row {
+                    IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
+                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+                    }
+                    IconButton(
+                        onClick = onNext,
+                        enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != com.seasonyuu.fnmusic.core.model.RepeatMode.Off,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(Icons.Rounded.SkipNext, "下一首")
+                    }
                 }
             }
         }

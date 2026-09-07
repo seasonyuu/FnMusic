@@ -1,6 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,11 +16,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,12 +33,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,10 +66,12 @@ import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
 import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
+import com.seasonyuu.fnmusic.core.designsystem.rememberLiquidInteraction
 import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.RepeatMode
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DynamicMusicBottomBar(
     state: PlayerState,
@@ -180,47 +188,60 @@ internal fun DynamicMusicBottomBar(
         }
 
         if (current != null) {
-            Row(
-                Modifier
-                    .place(geometry.player, density)
-                    .onGloballyPositioned { onPlayerBoundsChanged(it.boundsInRoot()) }
-                    .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
-                    .glassCapsule(backdrop)
-                    .clip(Capsule())
-                    .clickable(onClick = onOpenPlayer)
-                    .padding(horizontal = 16.dp, vertical = 5.dp)
-                    .testTag("dynamic-mini-player"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val coverSize = with(density) { geometry.cover.width.toDp() }
-                CoverImage(
-                    current.coverUrl,
-                    current.track.title,
-                    coverModifier
-                        .size(coverSize)
-                        .onGloballyPositioned { onCoverBoundsChanged(it.boundsInRoot()) }
-                        .testTag("dynamic-cover"),
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        current.track.artists.joinToString(" / ") { it.name },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = FnTextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
-                    Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
-                }
-                IconButton(
-                    onClick = onNext,
-                    enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != RepeatMode.Off,
-                    modifier = Modifier.size(40.dp),
+            val interaction = rememberLiquidInteraction(consumeDrag = true)
+            CompositionLocalProvider(LocalRippleConfiguration provides null) {
+                Row(
+                    Modifier
+                        .place(geometry.player, density)
+                        .onGloballyPositioned {
+                            if (interaction.isIdle) onPlayerBoundsChanged(it.boundsInRoot())
+                        }
+                        .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
+                        .glassCapsule(backdrop, interaction.layerBlock)
+                        .clip(Capsule())
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            role = Role.Button,
+                            onClick = onOpenPlayer,
+                        )
+                        .then(interaction.modifier)
+                        .padding(horizontal = 16.dp, vertical = 5.dp)
+                        .testTag("dynamic-mini-player"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(Icons.Rounded.SkipNext, "下一首")
+                    val coverSize = with(density) { geometry.cover.width.toDp() }
+                    CoverImage(
+                        current.coverUrl,
+                        current.track.title,
+                        coverModifier
+                            .size(coverSize)
+                            .onGloballyPositioned {
+                                if (interaction.isIdle) onCoverBoundsChanged(it.boundsInRoot())
+                            }
+                            .testTag("dynamic-cover"),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            current.track.artists.joinToString(" / ") { it.name },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = FnTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
+                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+                    }
+                    IconButton(
+                        onClick = onNext,
+                        enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != RepeatMode.Off,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(Icons.Rounded.SkipNext, "下一首")
+                    }
                 }
             }
         }
@@ -234,9 +255,13 @@ private fun Modifier.place(rect: FloatRect, density: Density): Modifier = this
         height = with(density) { rect.height.toDp() },
     )
 
-private fun Modifier.glassCapsule(backdrop: Backdrop): Modifier = drawBackdrop(
+private fun Modifier.glassCapsule(
+    backdrop: Backdrop,
+    layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
+): Modifier = drawBackdrop(
     backdrop = backdrop,
     shape = { Capsule() },
+    layerBlock = layerBlock,
     effects = {
         vibrancy()
         blur(9.dp.toPx())
