@@ -1399,10 +1399,10 @@ class MusicShellTest {
         compose.mainClock.autoAdvance = false
         try {
             compose.mainClock.advanceTimeBy(4_000)
-            compose.onNodeWithTag("lyrics-line-4", useUnmergedTree = true).performTouchInput {
+            compose.onNodeWithTag("lyrics-list", useUnmergedTree = true).performTouchInput {
                 swipe(
-                    start = center,
-                    end = center + Offset(0f, -120f),
+                    start = Offset(center.x, height * 0.45f),
+                    end = Offset(center.x, height * 0.45f - 120f),
                     durationMillis = 240,
                 )
             }
@@ -1522,6 +1522,60 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("漫游模式").assertIsDisplayed()
         compose.onNodeWithTag("player-queue-entry").assertDoesNotExist()
         compose.onNodeWithContentDescription("打开待播队列").assertDoesNotExist()
+    }
+
+    @Test
+    fun lyricFocusAndWrappingStayFixedWhenControlsHide() {
+        val track = Track(TrackId("lyric-focus"), "歌词视觉验证")
+        val player = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+            currentIndex = 0,
+            positionMs = 65_000,
+            durationMs = 200_000,
+        )
+        val state = MusicUiState(loading = false, lyrics = listOf(
+            LyricLine(0, "风从远处吹来"),
+            LyricLine(30_000, "留住每一个温柔的瞬间"),
+            LyricLine(60_000, "你所有难堪 我闭口不谈", translation = "All the words we leave unspoken"),
+            LyricLine(90_000, "让这段旋律一直陪伴你走过漫长的夜晚"),
+            LyricLine(120_000, "Hello，世界 👩🏽‍💻"),
+            LyricLine(150_000, "风停了 歌还在继续"),
+        ))
+        setContent(state = state, playerState = player)
+        compose.onNodeWithText("歌词视觉验证").performClick()
+        compose.onNodeWithContentDescription("展开完整歌词").performClick()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(1_200)
+        compose.waitForIdle()
+        val visible = compose.onNodeWithTag("lyrics-line-2", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val header = compose.onNodeWithTag("player-lyrics-header", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val root = compose.onNodeWithTag("now-playing-lyrics-container").fetchSemanticsNode().boundsInRoot
+        assertTrue("焦点应位于顶部信息下方的阅读区上部", visible.top > header.bottom && visible.top < header.bottom + (root.bottom - header.bottom) * 0.25f)
+        captureLyricsScreenshot("controls-visible")
+        compose.mainClock.advanceTimeBy(4_000)
+        compose.waitForIdle()
+        val hidden = compose.onNodeWithTag("lyrics-line-2", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(visible.top, hidden.top, 1f)
+        assertEquals(visible.height, hidden.height, 1f)
+        captureLyricsScreenshot("controls-hidden")
+        compose.onNodeWithTag("lyrics-line-3", useUnmergedTree = true).performTouchInput {
+            swipe(center, Offset(center.x, center.y - 100f), durationMillis = 500)
+        }
+        compose.mainClock.advanceTimeBy(400)
+        captureLyricsScreenshot("manual-browsing")
+        compose.mainClock.advanceTimeBy(4_000)
+        captureLyricsScreenshot("manual-controls-hidden")
+        assertTrue(compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(LyricBlurRadiusKey), useUnmergedTree = true,
+        ).fetchSemanticsNodes().all { it.config[LyricBlurRadiusKey] < 0.05f })
+        compose.mainClock.autoAdvance = true
+    }
+
+    private fun captureLyricsScreenshot(name: String) {
+        val directory = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("lyrics-screenshots")!!
+        java.io.File(directory, "$name.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
 
     @Test
