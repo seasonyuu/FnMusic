@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -8,6 +9,10 @@ plugins {
 kotlin {
     jvmToolchain(21)
     compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 dependencies {
