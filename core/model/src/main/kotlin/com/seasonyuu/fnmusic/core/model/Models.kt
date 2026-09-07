@@ -132,6 +132,20 @@ data class LyricLine(
     val timeMs: Long? = null,
     val text: String,
     val translation: String? = null,
+    val segments: List<LyricSegment> = emptyList(),
+    val timingSource: LyricTimingSource? = null,
+)
+
+@Serializable
+enum class LyricTimingSource { Accurate, Estimated }
+
+/** UTF-16 text range [startOffset, endOffset), with absolute media times in milliseconds. */
+@Serializable
+data class LyricSegment(
+    val startOffset: Int,
+    val endOffset: Int,
+    val startMs: Long,
+    val endMs: Long,
 )
 
 data class SearchSuggestions(
