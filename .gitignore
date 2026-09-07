@@ -2,6 +2,7 @@
 .gradle/
 .idea/
 local.properties
+keystore.properties
 build/
 **/build/
 .externalNativeBuild/

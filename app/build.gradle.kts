@@ -6,6 +6,42 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+import java.util.Properties
+
+val localSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun signingProperty(name: String): String? =
+    providers.gradleProperty(name).orNull ?: localSigningProperties.getProperty(name)
+
+val gitVersionProperties = providers.exec {
+    commandLine("bash", rootProject.file("scripts/git-version.sh"))
+}.standardOutput.asText.map { output ->
+    Properties().apply {
+        load(output.byteInputStream())
+    }
+}
+
+fun Provider<Properties>.requiredGitVersionProperty(name: String): String =
+    get().getProperty(name) ?: error("git-version.sh did not provide the required property: $name")
+
+val releaseVersionName = gitVersionProperties.requiredGitVersionProperty("versionName")
+val releaseVersionCode = gitVersionProperties.requiredGitVersionProperty("versionCode").toInt()
+val signingStoreFile = signingProperty("signingStoreFile")
+val signingStorePassword = signingProperty("signingStorePassword")
+val signingKeyAlias = signingProperty("signingKeyAlias")
+val signingKeyPassword = signingProperty("signingKeyPassword")
+val hasCiSigningConfig = listOf(
+    signingStoreFile,
+    signingStorePassword,
+    signingKeyAlias,
+    signingKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.seasonyuu.fnmusic"
     compileSdk = 37
@@ -14,8 +50,8 @@ android {
         applicationId = "com.seasonyuu.fnmusic"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -29,13 +65,33 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    if (hasCiSigningConfig) {
+        signingConfigs {
+            create("ciRelease") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            applicationIdSuffix = ".debug"
+            if (hasCiSigningConfig) {
+                signingConfig = signingConfigs.getByName("ciRelease")
+            }
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasCiSigningConfig) {
+                signingConfig = signingConfigs.getByName("ciRelease")
+            }
         }
     }
+
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
