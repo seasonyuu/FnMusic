@@ -51,10 +51,13 @@ No release channel yet — build from source:
 2. Clone and build the debug APK:
 
    ```bash
-   git clone <repository-url>
+   git clone --recurse-submodules <repository-url>
    cd fn-music
    ./gradlew :app:assembleDebug
    ```
+
+For an existing checkout, run `git submodule update --init --recursive` before building.
+Pinned lyrics dependencies and build adapters are documented in [third_party/README.md](third_party/README.md).
 
 3. Install the output at `app/build/outputs/apk/debug/app-debug.apk`.
 

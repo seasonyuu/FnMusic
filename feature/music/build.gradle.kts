@@ -18,6 +18,9 @@ android {
 }
 
 dependencies {
+    implementation(project(":accompanist-lyrics-core"))
+    implementation(project(":accompanist-lyrics-ui"))
+    testImplementation(libs.junit)
     implementation(project(":core:model"))
     implementation(libs.kotlinx.serialization.json)
     implementation(project(":core:designsystem"))

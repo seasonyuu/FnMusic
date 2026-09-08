@@ -1,0 +1,6 @@
+[submodule "third_party/accompanist-lyrics-core"]
+	path = third_party/accompanist-lyrics-core
+	url = https://github.com/cwuom/accompanist-lyrics-core
+[submodule "third_party/accompanist-lyrics-ui"]
+	path = third_party/accompanist-lyrics-ui
+	url = https://github.com/cwuom/accompanist-lyrics-ui
