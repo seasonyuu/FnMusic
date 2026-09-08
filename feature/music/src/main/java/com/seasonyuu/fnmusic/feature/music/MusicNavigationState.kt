@@ -14,7 +14,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-internal enum class MorePage { Menu, Recent, Albums, Artists, Playlists, Settings }
+internal enum class MorePage { Menu, Recent, Albums, Artists, Playlists, Settings, LiquidGlass }
 
 /** Resource identity travels with data so an outgoing page cannot render another page's response. */
 data class DetailRequestKey(val type: String, val id: String)

@@ -86,6 +86,8 @@ class MainActivity : ComponentActivity() {
                             onToggleShuffle = viewModel::toggleShuffle,
                             onCycleRepeatMode = viewModel::cycleRepeatMode,
                             onCacheSizeChange = viewModel::setCacheSize,
+                            onLiquidGlassBlurChange = viewModel::previewLiquidGlassBlur,
+                            onLiquidGlassBlurSave = viewModel::saveLiquidGlassBlur,
                             onLogout = viewModel::logout,
                             openPlayerRequested = openPlayerRequested,
                             onPlayerOpenRequestConsumed = { openPlayerRequested = false },

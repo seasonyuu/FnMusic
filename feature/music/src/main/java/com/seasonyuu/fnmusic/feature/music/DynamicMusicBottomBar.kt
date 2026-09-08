@@ -52,7 +52,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -174,7 +174,6 @@ internal fun DynamicMusicBottomBar(
         LiquidButton(
             onClick = { onDestinationSelected(MusicDestination.Search) },
             backdrop = backdrop,
-            surfaceColor = Color(0x3014121B),
             modifier = Modifier
                 .place(geometry.search, density)
                 .semantics { selected = selectedDestination == MusicDestination.Search }
@@ -188,61 +187,85 @@ internal fun DynamicMusicBottomBar(
         }
 
         if (current != null) {
-            val interaction = rememberLiquidInteraction(consumeDrag = true)
-            CompositionLocalProvider(LocalRippleConfiguration provides null) {
-                Row(
-                    Modifier
-                        .place(geometry.player, density)
-                        .onGloballyPositioned {
-                            if (interaction.isIdle) onPlayerBoundsChanged(it.boundsInRoot())
-                        }
-                        .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
-                        .glassCapsule(backdrop, interaction.layerBlock)
-                        .clip(Capsule())
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onOpenPlayer,
-                        )
-                        .then(interaction.modifier)
-                        .padding(horizontal = 16.dp, vertical = 5.dp)
-                        .testTag("dynamic-mini-player"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val coverSize = with(density) { geometry.cover.width.toDp() }
-                    CoverImage(
-                        current.coverUrl,
-                        current.track.title,
-                        coverModifier
-                            .size(coverSize)
-                            .onGloballyPositioned {
-                                if (interaction.isIdle) onCoverBoundsChanged(it.boundsInRoot())
-                            }
-                            .testTag("dynamic-cover"),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            current.track.artists.joinToString(" / ") { it.name },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = FnTextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
-                    }
-                    IconButton(
-                        onClick = onNext,
-                        enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != RepeatMode.Off,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(Icons.Rounded.SkipNext, "下一首")
-                    }
+            LiquidMiniPlayer(
+                state = state, backdrop = backdrop,
+                onToggle = onToggle, onNext = onNext, onOpenPlayer = onOpenPlayer,
+                modifier = Modifier.place(geometry.player, density),
+                coverSize = with(density) { geometry.cover.width.toDp() },
+                coverModifier = coverModifier, playerMorphProgress = playerMorphProgress,
+                onPlayerBoundsChanged = onPlayerBoundsChanged, onCoverBoundsChanged = onCoverBoundsChanged,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LiquidMiniPlayer(
+    state: PlayerState,
+    backdrop: Backdrop,
+    onToggle: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPlayer: () -> Unit,
+    modifier: Modifier = Modifier,
+    coverSize: androidx.compose.ui.unit.Dp = 32.dp,
+    coverModifier: Modifier = Modifier,
+    playerMorphProgress: Float = 0f,
+    onPlayerBoundsChanged: (Rect) -> Unit = {},
+    onCoverBoundsChanged: (Rect) -> Unit = {},
+    coverContent: (@Composable (Modifier) -> Unit)? = null,
+) {
+    val current = state.current ?: return
+    val interaction = rememberLiquidInteraction(consumeDrag = true)
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        Row(
+            modifier
+                .onGloballyPositioned {
+                    if (interaction.isIdle) onPlayerBoundsChanged(it.boundsInRoot())
                 }
+                .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
+                .glassCapsule(backdrop, interaction.layerBlock, refractionHeight = 24.dp, refractionAmount = 24.dp)
+                .clip(Capsule())
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onOpenPlayer,
+                )
+                .then(interaction.modifier)
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .testTag("dynamic-mini-player"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val artworkModifier = coverModifier.size(coverSize)
+                .onGloballyPositioned {
+                    if (interaction.isIdle) onCoverBoundsChanged(it.boundsInRoot())
+                }.testTag("dynamic-cover")
+            if (coverContent != null) {
+                coverContent(artworkModifier)
+            } else {
+                CoverImage(current.coverUrl, current.track.title, artworkModifier)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    current.track.artists.joinToString(" / ") { it.name },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = FnTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
+                Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+            }
+            IconButton(
+                onClick = onNext,
+                enabled = state.isRoaming || state.currentIndex in 0 until state.queue.lastIndex || state.repeatMode != RepeatMode.Off,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(Icons.Rounded.SkipNext, "下一首")
             }
         }
     }
@@ -255,23 +278,29 @@ private fun Modifier.place(rect: FloatRect, density: Density): Modifier = this
         height = with(density) { rect.height.toDp() },
     )
 
+@Composable
 private fun Modifier.glassCapsule(
     backdrop: Backdrop,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
-): Modifier = drawBackdrop(
-    backdrop = backdrop,
-    shape = { Capsule() },
-    layerBlock = layerBlock,
-    effects = {
-        vibrancy()
-        blur(9.dp.toPx())
-        lens(20.dp.toPx(), 20.dp.toPx())
-    },
-    highlight = { Highlight.Default.copy(alpha = 0.3f) },
-    shadow = { Shadow(alpha = 0.24f) },
-    innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.26f) },
-    onDrawSurface = { drawRect(Color(0x7414121B)) },
-)
+    refractionHeight: androidx.compose.ui.unit.Dp = 6.dp,
+    refractionAmount: androidx.compose.ui.unit.Dp = 8.dp,
+): Modifier {
+    val glass = com.seasonyuu.fnmusic.core.designsystem.currentLiquidGlassMaterial()
+    return drawBackdrop(
+        backdrop = backdrop,
+        shape = { Capsule() },
+        layerBlock = layerBlock,
+        effects = {
+            colorControls(brightness = glass.brightness, saturation = 1.5f)
+            blur(4.5.dp.toPx() * glass.blurScale)
+            lens(refractionHeight.toPx(), refractionAmount.toPx())
+        },
+        highlight = { Highlight.Default.copy(alpha = 0.3f) },
+        shadow = { Shadow(alpha = 0.24f) },
+        innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.26f) },
+        onDrawSurface = { drawRect(glass.surfaceColor) },
+    )
+}
 
 private fun interval(value: Float, start: Float, end: Float): Float =
     ((value - start) / (end - start)).coerceIn(0f, 1f)

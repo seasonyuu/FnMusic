@@ -332,6 +332,8 @@ data class MusicUiState(
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
     val lyrics: List<LyricLine> = emptyList(),
+    val liquidGlassBlur: Float = com.seasonyuu.fnmusic.core.model.LiquidGlassBlur.Default,
+    val liquidGlassSaveError: String? = null,
     val cacheBytes: Long = 512L * 1024L * 1024L,
     val detailKey: DetailRequestKey? = null,
     val detailTracks: List<Track> = emptyList(),
@@ -351,7 +353,7 @@ private val LocalTrackAction = compositionLocalOf<(Track) -> Unit> { {} }
 private val LocalBottomOverlayPadding = compositionLocalOf { 0.dp }
 
 @Composable
-private fun edgeToEdgeContentPadding(
+internal fun edgeToEdgeContentPadding(
     horizontal: Dp = 0.dp,
     top: Dp = 0.dp,
     bottom: Dp = 0.dp,
@@ -429,6 +431,8 @@ fun MusicShell(
     onCycleRepeatMode: () -> Unit,
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
+    onLiquidGlassBlurChange: (Float) -> Unit = {},
+    onLiquidGlassBlurSave: () -> Unit = {},
     onSaveTrackMetadata: (suspend (Track, TrackMetadataEdit) -> TrackMetadata)? = null,
     onLoadTrackTagOptions: suspend () -> TrackTagOptions = { TrackTagOptions(emptyList(), emptyList()) },
     openPlayerRequested: Boolean = false,
@@ -513,6 +517,7 @@ fun MusicShell(
         }
     }
     CompositionLocalProvider(
+        com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
         LocalContentColor provides FnTextPrimary,
         LocalTrackAction provides { track ->
             queueActionEntryId = null
@@ -732,7 +737,18 @@ fun MusicShell(
                                                             { openMore(MorePage.Menu) },
                                                             { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
                                                         ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
-                                                        MorePage.Settings -> SettingsScreen(state, onCacheSizeChange, onLogout) { openMore(MorePage.Menu) }
+                                                        MorePage.Settings -> SettingsScreen(
+                                                            state, onCacheSizeChange, onLogout,
+                                                            onLiquidGlass = { openMore(MorePage.LiquidGlass) },
+                                                            onBack = ::popPage,
+                                                        )
+                                                        MorePage.LiquidGlass -> LiquidGlassSettingsScreen(
+                                                            multiplier = state.liquidGlassBlur,
+                                                            saveError = state.liquidGlassSaveError,
+                                                            onValueChange = onLiquidGlassBlurChange,
+                                                            onSave = onLiquidGlassBlurSave,
+                                                            onBack = ::popPage,
+                                                        )
                                                     }
                                                 }
                                             }
@@ -1773,43 +1789,6 @@ private fun MoreMenu(state: MusicUiState, onNavigate: (MorePage) -> Unit) {
 }
 
 @Composable
-private fun SettingsScreen(
-    state: MusicUiState,
-    onCacheSizeChange: (Long) -> Unit,
-    onLogout: () -> Unit,
-    onBack: () -> Unit,
-) {
-    LazyColumn(contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        item { PageTitle("设置", onBack) }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = FnCard, contentColor = FnTextPrimary)) {
-                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("当前服务器", style = MaterialTheme.typography.titleMedium)
-                    Text(state.serverName, color = FnTextSecondary)
-                }
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("临时播放缓存", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(128L, 512L, 1_024L, 2_048L).forEach { mib ->
-                        val bytes = mib * 1024L * 1024L
-                        FilterChip(
-                            selected = state.cacheBytes == bytes,
-                            onClick = { onCacheSizeChange(bytes) },
-                            label = { Text(if (mib >= 1_024) "${mib / 1_024} GiB" else "$mib MiB") },
-                        )
-                    }
-                }
-                Text("缓存上限在下次启动时生效，不会创建永久下载。", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item { Button(onClick = onLogout) { Text("退出并清除凭据") } }
-    }
-}
-
-@Composable
 private fun MoreEntry(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
@@ -1855,7 +1834,7 @@ private fun DetailPageFrame(
 }
 
 @Composable
-private fun PageTitle(title: String, onBack: () -> Unit, subtitle: String? = null) {
+internal fun PageTitle(title: String, onBack: () -> Unit, subtitle: String? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
         Column {

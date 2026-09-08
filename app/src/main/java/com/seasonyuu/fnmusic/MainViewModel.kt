@@ -63,6 +63,15 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             else graph.search.results(query.trim(), type)
         }
         .cachedIn(viewModelScope)
+    private val liquidGlassSettings = com.seasonyuu.fnmusic.data.LiquidGlassSettings(
+        scope = viewModelScope,
+        read = { graph.settings.liquidGlassBlur.first() },
+        write = graph.settings::setLiquidGlassBlur,
+    )
+
+    fun previewLiquidGlassBlur(value: Float) = liquidGlassSettings.preview(value)
+    fun saveLiquidGlassBlur() = liquidGlassSettings.save()
+
     private var searchJob: Job? = null
     private var detailJob: Job? = null
     private var detailGeneration = 0L
@@ -85,6 +94,14 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     private val roamPrefetchMutex = Mutex()
 
     init {
+        viewModelScope.launch {
+            liquidGlassSettings.state.collect { setting ->
+                mutableMusic.value = mutableMusic.value.copy(
+                    liquidGlassBlur = setting.multiplier,
+                    liquidGlassSaveError = setting.error,
+                )
+            }
+        }
         viewModelScope.launch { graph.session.reconnect() }
         viewModelScope.launch {
             session.collectLatest { value ->
