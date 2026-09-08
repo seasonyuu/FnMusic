@@ -43,10 +43,14 @@ import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -198,6 +202,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -2862,6 +2867,7 @@ private fun NowPlayingLyricsScreen(
     val immersiveMode = lyricsMode || queueMode
     val expressiveMotion = remember { MotionScheme.expressive() }
     val controlsVisibility = remember(current.track.id) { Animatable(1f) }
+    var controlsShown by remember(current.track.id) { mutableStateOf(true) }
     val defaultContentVisibility = remember {
         Animatable(if (immersiveMode) 0f else 1f)
     }
@@ -2875,10 +2881,19 @@ private fun NowPlayingLyricsScreen(
         Animatable(if (immersiveMode) 1f else 0f)
     }
     var controlsActivity by remember(current.track.id) { mutableStateOf(0) }
+    val progressInteraction = remember { MutableInteractionSource() }
+    val volumeInteraction = remember { MutableInteractionSource() }
+    val progressPressed by progressInteraction.collectIsPressedAsState()
+    val progressDragged by progressInteraction.collectIsDraggedAsState()
+    val volumePressed by volumeInteraction.collectIsPressedAsState()
+    val volumeDragged by volumeInteraction.collectIsDraggedAsState()
+    val sliderInteracting = progressPressed || progressDragged || volumePressed || volumeDragged
+
     val favorite = musicState.favoriteOverrides[current.track.id] ?: current.track.isFavorite
     val canGoPrevious = state.canSkipPrevious
     val canGoNext = state.canSkipNext
     val lyricsListState = rememberLazyListState()
+    val lyricsDragging by lyricsListState.interactionSource.collectIsDraggedAsState()
     val density = LocalDensity.current
     val playerBackgroundBackdrop = rememberLayerBackdrop()
     val onMore = LocalTrackAction.current
@@ -3049,15 +3064,20 @@ private fun NowPlayingLyricsScreen(
             }
         }
     }
-    LaunchedEffect(lyricsMode, queueMode, controlsActivity, current.track.id) {
-        if (!lyricsMode || queueMode) {
-            controlsVisibility.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
-        } else {
-            controlsVisibility.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+    // Activity restarts the idle timer, never an in-flight visibility animation.
+    LaunchedEffect(lyricsMode, queueMode, controlsActivity, current.track.id, sliderInteracting, lyricsDragging) {
+        controlsShown = true
+        if (lyricsMode && !queueMode && !sliderInteracting && !lyricsDragging) {
             snapshotFlow { lyricsListVisibility.value }.first { it >= 0.995f }
             delay(3_000)
-            controlsVisibility.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            controlsShown = false
         }
+    }
+    LaunchedEffect(controlsShown, current.track.id) {
+        controlsVisibility.animateTo(
+            if (controlsShown) 1f else 0f,
+            tween(if (controlsShown) 180 else 700, easing = FastOutSlowInEasing),
+        )
     }
 
         BoxWithConstraints(
@@ -3579,14 +3599,15 @@ private fun NowPlayingLyricsScreen(
                     end = lyricsPressSurfaceInset,
                     bottom = safeBottom,
                 ),
-                verticalArrangement = Arrangement.spacedBy(22.dp),
+                // KaraokeLineText already adds 8 dp above and below each lyric.
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 itemsIndexed(musicState.lyrics, key = { index, line -> "${line.timeMs ?: -1}:$index" }) { index, line ->
                     val active = index == activeIndex
                     val activeProgress by animateFloatAsState(
                         targetValue = if (active) 1f else 0f,
                         animationSpec = tween(
-                            durationMillis = 260,
+                            durationMillis = if (active) 600 else 400,
                             easing = FastOutSlowInEasing,
                         ),
                         label = "lyrics-line-active",
@@ -3599,7 +3620,9 @@ private fun NowPlayingLyricsScreen(
                         activeProgress = activeProgress,
                     )
                     val interactionSource = remember { MutableInteractionSource() }
-                    val pressed by interactionSource.collectIsPressedAsState()
+                    val interactionPressed by interactionSource.collectIsPressedAsState()
+                    var touchPressed by remember { mutableStateOf(false) }
+                    val pressed = touchPressed || interactionPressed
                     val pressProgress by animateFloatAsState(
                         targetValue = if (pressed) 1f else 0f,
                         animationSpec = tween(
@@ -3615,6 +3638,21 @@ private fun NowPlayingLyricsScreen(
                                 FnTextPrimary.copy(alpha = 0.12f * pressProgress),
                                 RoundedCornerShape(16.dp),
                             )
+                            // Observe the down immediately; clickable delays presses inside a LazyColumn.
+                            // Do not consume events: scrolling and click/keyboard semantics stay with their owners.
+                            .pointerInput(line.timeMs, lyricsMode) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                    touchPressed = line.timeMs != null || lyricsMode
+                                    try {
+                                        // Finish dispatching this down before checking later events for scroll cancellation.
+                                        awaitPointerEvent(PointerEventPass.Final)
+                                        waitForUpOrCancellation()
+                                    } finally {
+                                        touchPressed = false
+                                    }
+                                }
+                            }
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null,
@@ -3637,14 +3675,15 @@ private fun NowPlayingLyricsScreen(
                                     edgeTreatment = BlurredEdgeTreatment.Unbounded,
                                 )
                                 .graphicsLayer {
-                                    val textScale = lerpFloat(1f, 0.96f, pressProgress)
+                                    val focusScale = lerpFloat(0.96f, 1f, activeProgress)
+                                    val textScale = focusScale * lerpFloat(1f, 0.96f, pressProgress)
                                     scaleX = textScale
                                     scaleY = textScale
                                     transformOrigin = TransformOrigin(0f, 0.5f)
                                 },
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            ProgressiveLyricText(
+                            AccompanistLyricText(
                                 text = line.text.ifBlank { "♪" },
                                 timeline = lyricTimelines.getOrNull(index),
                                 position = { lyricPosition.value },
@@ -3758,6 +3797,7 @@ private fun NowPlayingLyricsScreen(
                 PlaybackProgress(
                     state,
                     modifier = Modifier.testTag("player-playback-progress"),
+                    interactionSource = progressInteraction,
                 ) { position -> seekAndFollow(position) }
                 Row(
                     Modifier.fillMaxWidth().testTag("player-transport-controls"),
@@ -3808,6 +3848,7 @@ private fun NowPlayingLyricsScreen(
                         },
                         valueRange = 0f..maximumVolume.toFloat(),
                         modifier = Modifier.weight(1f).testTag("player-volume-slider"),
+                        interactionSource = volumeInteraction,
                     )
                     Icon(
                         Icons.AutoMirrored.Rounded.VolumeUp,
@@ -4741,6 +4782,7 @@ private fun QueueTrackRow(
 private fun PlaybackProgress(
     state: PlayerState,
     modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     onSeek: (Long) -> Unit,
 ) {
     val duration = state.durationMs.coerceAtLeast(1)
@@ -4755,6 +4797,7 @@ private fun PlaybackProgress(
         },
         valueRange = 0f..duration.toFloat(),
         modifier = modifier.fillMaxWidth(),
+        interactionSource = interactionSource,
     )
     Row(Modifier.fillMaxWidth()) {
         Text(formatDuration(displayed.toLong()), color = FnTextSecondary, style = tabularBodyStyle())
@@ -4774,11 +4817,13 @@ private fun ThinPlayerSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     Slider(
         value = value,
         onValueChange = onValueChange,
         onValueChangeFinished = onValueChangeFinished,
+        interactionSource = interactionSource,
         valueRange = valueRange,
         modifier = modifier,
         thumb = {
