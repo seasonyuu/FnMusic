@@ -1,3 +1,5 @@
+<img src="docs/assets/fnmusic-icon.svg" alt="FnMusic app icon" width="96" height="96">
+
 # FnMusic
 
 An unofficial third-party Android client for the music service of [fnOS](https://www.fnos.net/) (飞牛OS), built against the observed behavior of the current fnOS Music web client. It does not use or declare any official fnOS public API.
@@ -114,6 +116,8 @@ python3 scripts/test_verify_fn_connect.py -v
 - Playlist write request bodies were verified through a full temporary-playlist lifecycle; the verifier cleans up in `finally`.
 
 ## Assets & Trademarks
+
+The [README app icon](docs/assets/fnmusic-icon.svg) is a vector adaptation of the original logo, matching the Android adaptive icon with a fixed rounded-square mask for documentation.
 
 The logo, Montserrat font, home decoration images, and some navigation SVGs come from the user's current fnOS Music web build and are used for personal sideloading only. Sources, build hashes, and file digests are listed in [`docs/web-assets/manifest.json`](docs/web-assets/manifest.json). Library covers are always loaded through the NAS API and never enter the repository.
 

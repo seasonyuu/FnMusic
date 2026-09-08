@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"
+    viewBox="18 18 72 72" role="img" aria-labelledby="title">
+  <title id="title">FnMusic app icon</title>
+  <!-- Static README rendering of the Android adaptive icon with a rounded-square mask.
+       Keep colors and paths in sync with app/src/main/res/drawable/ic_launcher_*.xml. -->
+  <defs>
+    <clipPath id="icon-mask">
+      <rect x="18" y="18" width="72" height="72" rx="17" />
+    </clipPath>
+    <linearGradient id="background" gradientUnits="userSpaceOnUse"
+        x1="15" y1="0" x2="90" y2="108">
+      <stop stop-color="#292A30" />
+      <stop offset="1" stop-color="#111216" />
+    </linearGradient>
+    <linearGradient id="circle" gradientUnits="userSpaceOnUse"
+        x1="30" y1="42" x2="92" y2="108">
+      <stop stop-color="#FF365A" />
+      <stop offset="1" stop-color="#E71945" />
+    </linearGradient>
+    <linearGradient id="note" gradientUnits="userSpaceOnUse"
+        x1="65" y1="18" x2="65" y2="107">
+      <stop stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#FFE1E7" />
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#icon-mask)">
+    <path fill="url(#background)" d="M0,0 H108 V108 H0 Z" />
+    <path fill="url(#circle)"
+        d="M15,89 A49,49 0,1 1,113,89 A49,49 0,1 1,15,89 Z" />
+    <g transform="translate(17 18) scale(0.58)">
+      <path fill="url(#note)" fill-rule="evenodd"
+          d="M71,18 L85,18 C96,18 96,32 84,33 L79,33 L89,71 C95,93 78,108 62,107 C45,108 33,95 36,77 C39,60 52,50 68,53 L62,32 C59,23 63,18 71,18 Z M74,80 A11,11 0,1 1,52,80 A11,11 0,1 1,74,80 Z" />
+    </g>
+  </g>
+</svg>
