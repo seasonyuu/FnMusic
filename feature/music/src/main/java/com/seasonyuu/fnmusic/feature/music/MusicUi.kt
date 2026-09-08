@@ -189,6 +189,10 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -204,6 +208,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -2576,6 +2581,20 @@ private fun PlayerMorphOverlay(
     val expressiveMotion = remember { MotionScheme.expressive() }
     var targetCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
     var lyricsCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
+    var contentCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
+    var largeCoverCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
+    var lyricsCoverCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
+    fun updateCoverBounds() {
+        val root = contentCoordinates?.takeIf { it.isAttached } ?: return
+        largeCoverCoordinates?.takeIf { it.isAttached }?.let {
+            targetCoverBounds = root.localBoundingBoxOf(it, clipBounds = false)
+        }
+        lyricsCoverCoordinates?.takeIf { it.isAttached }?.let {
+            if (followContentCover || lyricsCoverBounds == null) {
+                lyricsCoverBounds = root.localBoundingBoxOf(it, clipBounds = false)
+            }
+        }
+    }
     var dragOffsetPx by remember(current.track.id) { mutableFloatStateOf(0f) }
     var dismissVelocityPxPerSecond by remember(current.track.id) { mutableFloatStateOf(0f) }
 
@@ -2681,29 +2700,42 @@ private fun PlayerMorphOverlay(
         )
 
         val contentAlpha = morphInterval(p, 0.48f, 0.82f)
-        val draggedContentScale = 1f - 0.04f * dragFraction
-        val contentScale = lerpFloat(1f, draggedContentScale, p)
+        // Content and its surface share one origin throughout dismissal. Cover anchors stay
+        // in this untransformed coordinate space, including while the lyrics header moves.
+        val contentScale = (surfaceBounds.width / widthPx).coerceAtLeast(0.001f)
         content(
             Modifier
                 .onGloballyPositioned {
-                    if (targetCoverBounds == null) targetCoverBounds = it.boundsInRoot()
+                    largeCoverCoordinates = it
+                    updateCoverBounds()
                 }
                 .graphicsLayer { alpha = 0f },
             Modifier
                 .onGloballyPositioned {
-                    if (followContentCover || lyricsCoverBounds == null) lyricsCoverBounds = it.boundsInRoot()
+                    lyricsCoverCoordinates = it
+                    updateCoverBounds()
                 }
                 .graphicsLayer { alpha = 0f },
             dragModifier,
             Modifier.graphicsLayer {
                 alpha = contentAlpha
-                translationY = dragOffsetPx * p
+                translationX = surfaceBounds.left
+                translationY = surfaceBounds.top
                 scaleX = contentScale
                 scaleY = contentScale
-                transformOrigin = TransformOrigin(0.5f, 0f)
-                shape = RoundedCornerShape(28.dp)
-                clip = dragOffsetPx > 0f
-            },
+                transformOrigin = TransformOrigin(0f, 0f)
+            }.onGloballyPositioned {
+                contentCoordinates = it
+                updateCoverBounds()
+            }.drawWithContent {
+                val outline = Path().apply {
+                    addRoundRect(RoundRect(
+                        Rect(0f, 0f, size.width, surfaceBounds.height / contentScale),
+                        CornerRadius(radius.toPx() / contentScale),
+                    ))
+                }
+                clipPath(outline) { this@drawWithContent.drawContent() }
+            }.testTag("player-morph-content"),
         )
 
         val largeCoverTarget = targetCoverBounds ?: coverAnchor
@@ -2715,9 +2747,13 @@ private fun PlayerMorphOverlay(
             )
         } ?: largeCoverTarget
         val coverProgress = morphInterval(p, 0.04f, 1f)
-        val baseCover = lerpRect(coverAnchor, targetCover, coverProgress)
-        val scaledCover = scaleRectFromTopCenter(baseCover, widthPx / 2f, contentScale)
-        val coverBounds = scaledCover.translate(0f, dragOffsetPx * p)
+        val transformedTarget = Rect(
+            surfaceBounds.left + targetCover.left * contentScale,
+            surfaceBounds.top + targetCover.top * contentScale,
+            surfaceBounds.left + targetCover.right * contentScale,
+            surfaceBounds.top + targetCover.bottom * contentScale,
+        )
+        val coverBounds = lerpRect(coverAnchor, transformedTarget, coverProgress)
         CoverImage(
             highResolutionCoverUrl,
             current.track.title,
@@ -2825,13 +2861,6 @@ private fun progressiveChromeShader(top: Boolean): String =
 
 private fun morphInterval(value: Float, start: Float, end: Float): Float =
     ((value - start) / (end - start)).coerceIn(0f, 1f)
-
-private fun scaleRectFromTopCenter(rect: Rect, centerX: Float, scale: Float): Rect = Rect(
-    left = centerX + (rect.left - centerX) * scale,
-    top = rect.top * scale,
-    right = centerX + (rect.right - centerX) * scale,
-    bottom = rect.bottom * scale,
-)
 
 @Composable
 private fun NowPlayingLyricsScreen(
