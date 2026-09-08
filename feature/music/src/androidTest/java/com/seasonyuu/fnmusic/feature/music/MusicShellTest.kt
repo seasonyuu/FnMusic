@@ -526,6 +526,71 @@ class MusicShellTest {
     }
 
     @Test
+    fun bottomBarTriggersOnlyOnceUntilAllPointersAreReleased() {
+        val track = Track(TrackId("direction-test"), "方向手势测试")
+        setContent(
+            state = MusicUiState(
+                loading = false,
+                tracks = (1..24).map { Track(TrackId("direction-$it"), "曲目 $it") },
+            ),
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+                durationMs = 180_000,
+            ),
+        )
+        val expandedPlayer = compose.onNodeWithTag("dynamic-mini-player").fetchSemanticsNode().boundsInRoot
+        // Exceed touch slop, but stay well below the former 96dp collapse distance.
+        val dragDistance = with(compose.density) { 24.dp.toPx() }
+        compose.onRoot().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -dragDistance), delayMillis = 300)
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithTag("dynamic-primary-tabs").assertDoesNotExist()
+        compose.onNodeWithTag("dynamic-primary-tab").assertIsDisplayed()
+        val collapsedPlayer = compose.onNodeWithTag("dynamic-mini-player").fetchSemanticsNode().boundsInRoot
+        val collapsedTab = compose.onNodeWithTag("dynamic-primary-tab").fetchSemanticsNode().boundsInRoot
+        assertEquals(collapsedTab.center.y, collapsedPlayer.center.y, 2f)
+        assertTrue(collapsedPlayer.width < expandedPlayer.width)
+
+        // Reversing repeatedly in the same gesture must not expand the bar.
+        repeat(3) {
+            compose.onRoot().performTouchInput {
+                moveBy(Offset(0f, dragDistance), delayMillis = 300)
+                moveBy(Offset(0f, -dragDistance), delayMillis = 300)
+            }
+            compose.mainClock.advanceTimeBy(1_000)
+            compose.onNodeWithTag("dynamic-primary-tabs").assertDoesNotExist()
+            compose.onNodeWithTag("dynamic-primary-tab").assertIsDisplayed()
+        }
+        compose.onRoot().performTouchInput { up() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("dynamic-primary-tab").assertIsDisplayed()
+
+        // A new downward gesture can expand, even before the finger is released.
+        compose.onRoot().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, dragDistance), delayMillis = 300)
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithTag("dynamic-primary-tab").assertDoesNotExist()
+        compose.onNodeWithTag("dynamic-primary-tabs").assertIsDisplayed()
+        val restoredPlayer = compose.onNodeWithTag("dynamic-mini-player").fetchSemanticsNode().boundsInRoot
+        assertEquals(expandedPlayer.width, restoredPlayer.width, 2f)
+        assertEquals(expandedPlayer.center.y, restoredPlayer.center.y, 2f)
+        compose.onRoot().performTouchInput {
+            moveBy(Offset(0f, -dragDistance), delayMillis = 300)
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onNodeWithTag("dynamic-primary-tab").assertDoesNotExist()
+
+        compose.onRoot().performTouchInput { up() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("dynamic-primary-tabs").assertIsDisplayed()
+    }
+
+    @Test
     fun expandedMiniPlayerUsesReferenceInternalSpacing() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         val player = PlayerState(
