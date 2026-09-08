@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
                             onRemoveTracksFromPlaylist = viewModel::removeTracksFromPlaylist,
                             onPurgeInvalidPlaylistTracks = viewModel::purgeInvalidPlaylistTracks,
                             onLoadTrackMetadata = viewModel::loadTrackMetadata,
+                            onSaveTrackMetadata = viewModel::saveTrackMetadata,
+                            onLoadTrackTagOptions = viewModel::loadTrackTagOptions,
                             onPlay = viewModel::play,
                             onPlayNext = viewModel::playNext,
                             onAddToQueue = viewModel::addToQueue,

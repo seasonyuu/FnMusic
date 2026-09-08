@@ -39,7 +39,7 @@ internal val LibraryDetail.requestKey: DetailRequestKey?
 internal fun MusicUiState.forDetail(key: DetailRequestKey?): MusicUiState =
     if (detailKey == key) this else copy(
         detailKey = key, detailTracks = emptyList(), detailPlaylist = null,
-        detailMetadata = null, detailLoading = key != null, detailError = null,
+        detailAlbum = null, detailArtist = null, detailMetadata = null, detailLoading = key != null, detailError = null,
     )
 
 internal data class MusicPageEntry(

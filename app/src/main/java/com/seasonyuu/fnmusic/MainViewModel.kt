@@ -259,10 +259,12 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     }
 
     fun loadAlbum(id: AlbumId) = loadDetail(DetailRequestKey("album", id.value)) {
-        copy(detailTracks = graph.catalog.albumTracks(id))
+        val album = graph.catalog.albumDetail(id)
+        copy(detailAlbum = album, detailTracks = graph.catalog.albumTracks(id))
     }
     fun loadArtist(id: ArtistId) = loadDetail(DetailRequestKey("artist", id.value)) {
-        copy(detailTracks = graph.catalog.artistTracks(id))
+        val artist = graph.catalog.artistDetail(id)
+        copy(detailArtist = artist, detailTracks = graph.catalog.artistTracks(id))
     }
     fun loadPlaylist(id: PlaylistId) = loadDetail(DetailRequestKey("playlist", id.value)) {
         val metadata = graph.catalog.playlistDetail(id)
@@ -416,6 +418,23 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         )
     }
 
+    suspend fun loadTrackTagOptions() = graph.catalog.trackTagOptions()
+
+    suspend fun saveTrackMetadata(track: Track, edit: com.seasonyuu.fnmusic.core.model.TrackMetadataEdit): com.seasonyuu.fnmusic.core.model.TrackMetadata {
+        val metadata = graph.catalog.updateTrackMetadata(track, edit)
+        val updated = metadata.track.copy(audioSpec = metadata.audioSpec ?: metadata.track.audioSpec)
+        graph.player.updateTracks(listOf(graph.playable(updated)))
+        val current = mutableMusic.value
+        fun List<Track>.updated() = map { if (it.id == updated.id) updated else it }
+        mutableMusic.value = current.copy(
+            tracks = current.tracks.updated(), favorites = current.favorites.updated(),
+            recent = current.recent.updated(), detailTracks = current.detailTracks.updated(),
+            detailMetadata = if (current.detailKey == DetailRequestKey("track", track.id.value)) metadata else current.detailMetadata,
+        )
+        refresh()
+        return metadata
+    }
+
     fun loadTrackMetadata(id: TrackId) = loadDetail(DetailRequestKey("track", id.value)) {
         copy(detailMetadata = graph.catalog.trackMetadata(id))
     }
@@ -426,7 +445,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         detailJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             val initial = mutableMusic.value.copy(
                 detailKey = key, detailLoading = true, detailTracks = emptyList(),
-                detailPlaylist = null, detailMetadata = null, detailError = null,
+                detailPlaylist = null, detailAlbum = null, detailArtist = null, detailMetadata = null, detailError = null,
             )
             mutableMusic.value = initial
             try {
@@ -436,7 +455,8 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                 if (generation != detailGeneration) return@launch
                 mutableMusic.value = mutableMusic.value.copy(
                     detailKey = key, detailLoading = false, detailTracks = result.detailTracks,
-                    detailPlaylist = result.detailPlaylist, detailMetadata = result.detailMetadata, detailError = null,
+                    detailPlaylist = result.detailPlaylist, detailAlbum = result.detailAlbum, detailArtist = result.detailArtist,
+                    detailMetadata = result.detailMetadata, detailError = null,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
