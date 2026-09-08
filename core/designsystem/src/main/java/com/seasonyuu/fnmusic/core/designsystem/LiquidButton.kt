@@ -42,7 +42,7 @@ fun LiquidButton(
                 shape = { Capsule() },
                 effects = {
                     colorControls(brightness = glass.brightness, saturation = 1.5f)
-                    blur(1.dp.toPx() * glass.blurScale)
+                    blur(1f.dp.toPx() * glass.blurScale)
                     lens(4.dp.toPx(), 6.dp.toPx())
                 },
                 layerBlock = if (isInteractive) interaction.layerBlock else null,

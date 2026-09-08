@@ -99,7 +99,7 @@ fun LiquidSlider(
                     shape = { Capsule() },
                     effects = {
                         val progress = motion.pressProgress
-                        blur(4.dp.toPx() * (1f - progress) * glass.blurScale)
+                        blur(1f.dp.toPx() * (1f - progress) * glass.blurScale)
                         lens(10.dp.toPx() * progress, 14.dp.toPx() * progress, chromaticAberration = true)
                     },
                     highlight = {

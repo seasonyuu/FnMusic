@@ -292,7 +292,7 @@ private fun Modifier.glassCapsule(
         layerBlock = layerBlock,
         effects = {
             colorControls(brightness = glass.brightness, saturation = 1.5f)
-            blur(4.5.dp.toPx() * glass.blurScale)
+            blur(1f.dp.toPx() * glass.blurScale)
             lens(refractionHeight.toPx(), refractionAmount.toPx())
         },
         highlight = { Highlight.Default.copy(alpha = 0.3f) },

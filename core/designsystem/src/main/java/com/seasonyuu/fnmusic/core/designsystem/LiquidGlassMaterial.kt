@@ -19,8 +19,8 @@ fun resolveLiquidGlassMaterial(setting: Float): LiquidGlassMaterial {
         0.55f + (0.60f - 0.55f) * ((position - 0.5f) * 2f)
     }
     return LiquidGlassMaterial(
-        // Clear -> default stays unblurred; default -> tinted ramps from zero to 2x blur.
-        blurScale = (position - 0.5f).coerceAtLeast(0f) * 4f,
+        // With a 1dp base, blur ramps from 0dp through 1dp at default to 6dp at tinted.
+        blurScale = if (position <= 0.5f) position * 2f else 1f + (position - 0.5f) * 10f,
         surfaceAlpha = alpha,
         brightness = 0f,
     )

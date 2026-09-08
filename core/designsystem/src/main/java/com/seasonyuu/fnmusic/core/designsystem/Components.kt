@@ -160,7 +160,7 @@ fun MiniPlayer(
                             layerBlock = interaction.layerBlock,
                             effects = {
                                 colorControls(brightness = glass.brightness, saturation = 1.5f)
-                                blur(5.dp.toPx() * glass.blurScale)
+                                blur(1f.dp.toPx() * glass.blurScale)
                                 lens(24.dp.toPx(), 24.dp.toPx())
                             },
                             highlight = {

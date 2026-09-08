@@ -105,7 +105,7 @@ fun LiquidBottomTabs(
                                 shape = { Capsule() },
                                 effects = {
                                     colorControls(brightness = glass.brightness, saturation = 1.5f)
-                                    blur(4.dp.toPx() * glass.blurScale)
+                                    blur(1f.dp.toPx() * glass.blurScale)
                                     lens(24.dp.toPx(), 24.dp.toPx())
                                 },
                                 layerBlock = {
@@ -137,7 +137,7 @@ fun LiquidBottomTabs(
                             shape = { Capsule() },
                             effects = {
                                 colorControls(brightness = glass.brightness, saturation = 1.5f)
-                                blur(4.dp.toPx() * glass.blurScale)
+                                blur(1f.dp.toPx() * glass.blurScale)
                                 lens(
                                     24.dp.toPx() * dragAnimation.pressProgress,
                                     24.dp.toPx() * dragAnimation.pressProgress,

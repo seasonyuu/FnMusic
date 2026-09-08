@@ -6,11 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiquidGlassMaterialTest {
-    @Test fun clearThroughDefaultKeepsBlurZeroWhileTintIncreases() {
+    @Test fun clearThroughDefaultIncreasesBlurAndTint() {
         var previousAlpha = 0f
         for (step in 0..50) {
             val material = resolveLiquidGlassMaterial(LiquidGlassBlur.fromSlider(step / 100f))
-            assertEquals(0f, material.blurScale, 0f)
+            assertEquals(step / 50f, material.blurScale, 0.00001f)
             assertTrue(material.surfaceAlpha >= previousAlpha)
             previousAlpha = material.surfaceAlpha
         }
@@ -20,15 +20,15 @@ class LiquidGlassMaterialTest {
 
     @Test fun tintedHalfIncreasesBothBlurAndOpacityContinuously() {
         val middle = resolveLiquidGlassMaterial(LiquidGlassBlur.fromSlider(0.75f))
-        assertEquals(1f, middle.blurScale, 0f)
+        assertEquals(3.5f, middle.blurScale, 0f)
         assertEquals(0.575f, middle.surfaceAlpha, 0.00001f)
         val end = resolveLiquidGlassMaterial(2f)
-        assertEquals(2f, end.blurScale, 0f)
+        assertEquals(6f, end.blurScale, 0f)
         assertEquals(0.6f, end.surfaceAlpha, 0.00001f)
         val below = resolveLiquidGlassMaterial(LiquidGlassBlur.fromSlider(0.49999f))
         val above = resolveLiquidGlassMaterial(LiquidGlassBlur.fromSlider(0.50001f))
         assertEquals(below.surfaceAlpha, above.surfaceAlpha, 0.0001f)
-        assertEquals(below.blurScale, above.blurScale, 0.0001f)
+        assertEquals(below.blurScale, above.blurScale, 0.0002f)
     }
 
     @Test fun brightnessStaysZeroAcrossSlider() {
@@ -39,7 +39,7 @@ class LiquidGlassMaterialTest {
     }
 
     @Test fun existingPreferencesAndInvalidValuesResolveSafely() {
-        assertEquals(0f, resolveLiquidGlassMaterial(0.25f).blurScale, 0f)
+        assertEquals(0f, resolveLiquidGlassMaterial(LiquidGlassBlur.Minimum).blurScale, 0f)
         assertEquals(resolveLiquidGlassMaterial(1f), resolveLiquidGlassMaterial(Float.NaN))
         assertEquals(resolveLiquidGlassMaterial(0.1f), resolveLiquidGlassMaterial(-1f))
         assertEquals(resolveLiquidGlassMaterial(2f), resolveLiquidGlassMaterial(100f))
