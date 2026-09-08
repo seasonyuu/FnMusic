@@ -5,30 +5,31 @@ import org.junit.Test
 
 class DynamicBottomBarScrollBehaviorTest {
     @Test
-    fun upwardContentScrollCollapsesAndReverseScrollExpands() {
-        val distance = 100f
-        val collapsedHalfway = DynamicBottomBarScrollBehavior.updateProgress(1f, -50f, distance)
-        val expandedAgain = DynamicBottomBarScrollBehavior.updateProgress(collapsedHalfway, 25f, distance)
-
-        assertEquals(0.5f, collapsedHalfway, 0.001f)
-        assertEquals(0.75f, expandedAgain, 0.001f)
+    fun upwardScrollTargetsFullyCollapsedRegardlessOfDistance() {
+        listOf(-0.1f, -50f, -1_000f).forEach { delta ->
+            assertEquals(0f, DynamicBottomBarScrollBehavior.targetForScroll(1f, delta), 0f)
+        }
     }
 
     @Test
-    fun progressNeverLeavesUnitRange() {
-        assertEquals(0f, DynamicBottomBarScrollBehavior.updateProgress(0.2f, -1_000f, 100f), 0.001f)
-        assertEquals(1f, DynamicBottomBarScrollBehavior.updateProgress(0.8f, 1_000f, 100f), 0.001f)
+    fun downwardScrollTargetsFullyExpandedRegardlessOfDistance() {
+        listOf(0.1f, 50f, 1_000f).forEach { delta ->
+            assertEquals(1f, DynamicBottomBarScrollBehavior.targetForScroll(0f, delta), 0f)
+        }
     }
 
     @Test
-    fun lowVelocitySettlesToNearestEndpoint() {
-        assertEquals(0f, DynamicBottomBarScrollBehavior.settleTarget(0.49f, 0f), 0.001f)
-        assertEquals(1f, DynamicBottomBarScrollBehavior.settleTarget(0.5f, 0f), 0.001f)
+    fun repeatedDirectionPreservesTargetAndReversalChangesIt() {
+        val collapsed = DynamicBottomBarScrollBehavior.targetForScroll(1f, -10f)
+        assertEquals(collapsed, DynamicBottomBarScrollBehavior.targetForScroll(collapsed, -5f), 0f)
+        val expanded = DynamicBottomBarScrollBehavior.targetForScroll(collapsed, 5f)
+        assertEquals(1f, expanded, 0f)
+        assertEquals(expanded, DynamicBottomBarScrollBehavior.targetForScroll(expanded, 10f), 0f)
     }
 
     @Test
-    fun flingDirectionOverridesProgress() {
-        assertEquals(0f, DynamicBottomBarScrollBehavior.settleTarget(0.9f, -1_500f), 0.001f)
-        assertEquals(1f, DynamicBottomBarScrollBehavior.settleTarget(0.1f, 1_500f), 0.001f)
+    fun zeroScrollKeepsCurrentTarget() {
+        assertEquals(0f, DynamicBottomBarScrollBehavior.targetForScroll(0f, 0f), 0f)
+        assertEquals(1f, DynamicBottomBarScrollBehavior.targetForScroll(1f, 0f), 0f)
     }
 }

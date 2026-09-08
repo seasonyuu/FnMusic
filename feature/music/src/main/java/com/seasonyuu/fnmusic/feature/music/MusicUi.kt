@@ -246,6 +246,7 @@ import com.kyant.backdrop.drawPlainBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.runtimeShaderEffect
 import com.seasonyuu.fnmusic.core.designsystem.CoverImage
+import com.seasonyuu.fnmusic.core.designsystem.dynamicBottomBarGesture
 import com.seasonyuu.fnmusic.core.designsystem.dynamicBottomBarNestedScrollConnection
 import com.seasonyuu.fnmusic.core.designsystem.FnAccent
 import com.seasonyuu.fnmusic.core.designsystem.FnBackgroundBottom
@@ -545,15 +546,16 @@ fun MusicShell(
                     val compact = maxWidth < 600.dp
                     val expanded = maxWidth >= 840.dp
                     val dynamicBottomBarState = rememberDynamicBottomBarState()
-                    val collapseDistancePx = with(LocalDensity.current) { 96.dp.toPx() }
-                    val dynamicBottomBarConnection = remember(dynamicBottomBarState, collapseDistancePx) {
-                        dynamicBottomBarNestedScrollConnection(dynamicBottomBarState, collapseDistancePx)
+                    val dynamicBottomBarConnection = remember(dynamicBottomBarState) {
+                        dynamicBottomBarNestedScrollConnection(dynamicBottomBarState)
                     }
                     Row(
                         Modifier
                             .fillMaxSize()
                             .then(
-                                if (compact) Modifier.nestedScroll(dynamicBottomBarConnection)
+                                if (compact) Modifier
+                                    .dynamicBottomBarGesture(dynamicBottomBarState)
+                                    .nestedScroll(dynamicBottomBarConnection)
                                 else Modifier,
                             ),
                     ) {
@@ -579,7 +581,8 @@ fun MusicShell(
                                             DynamicMusicBottomBar(
                                                 state = playerState,
                                                 selectedDestination = destination,
-                                                expansionProgress = dynamicBottomBarState.expansionProgress,
+                                                expansionProgress = dynamicBottomBarState.navigationExpansionProgress,
+                                                playerExpansionProgress = dynamicBottomBarState.playerExpansionProgress,
                                                 backdrop = backdrop,
                                                 onDestinationSelected = { navigate(it) },
                                                 onToggle = onTogglePlayback,

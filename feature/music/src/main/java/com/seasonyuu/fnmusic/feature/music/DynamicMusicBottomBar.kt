@@ -77,6 +77,7 @@ internal fun DynamicMusicBottomBar(
     state: PlayerState,
     selectedDestination: MusicDestination,
     expansionProgress: Float,
+    playerExpansionProgress: Float,
     backdrop: Backdrop,
     onDestinationSelected: (MusicDestination) -> Unit,
     onToggle: () -> Unit,
@@ -109,6 +110,7 @@ internal fun DynamicMusicBottomBar(
             widthPx = widthPx,
             density = density.density,
             expansionProgress = expansionProgress,
+            playerExpansionProgress = playerExpansionProgress,
         )
 
         val expandedTabsAlpha = interval(expansionProgress, 0.18f, 0.62f)

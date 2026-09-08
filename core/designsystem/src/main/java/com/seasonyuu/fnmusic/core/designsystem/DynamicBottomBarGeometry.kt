@@ -32,11 +32,13 @@ object DynamicBottomBarGeometryCalculator {
         widthPx: Float,
         density: Float,
         expansionProgress: Float,
+        playerExpansionProgress: Float = expansionProgress,
     ): DynamicBottomBarGeometry {
         require(widthPx > 0f) { "widthPx must be positive" }
         require(density > 0f) { "density must be positive" }
 
         val progress = expansionProgress.coerceIn(0f, 1f)
+        val playerProgress = playerExpansionProgress.coerceIn(0f, 1f)
         fun dp(value: Float) = value * density
 
         val horizontalPadding = dp(16f)
@@ -87,7 +89,7 @@ object DynamicBottomBarGeometryCalculator {
             height = compactHeight,
         )
 
-        val player = lerp(compactPlayer, expandedPlayer, progress)
+        val player = lerp(compactPlayer, expandedPlayer, playerProgress)
         val primaryTabs = lerp(compactPrimaryTabs, expandedPrimaryTabs, progress)
         val search = lerp(compactSearch, expandedSearch, progress)
         val coverSize = dp(32f)
@@ -106,7 +108,7 @@ object DynamicBottomBarGeometryCalculator {
             cover = cover,
             primaryItemsAlpha = interval(progress, 0.18f, 0.62f),
             primaryLabelsAlpha = interval(progress, 0.38f, 0.82f),
-            playerSecondaryAlpha = interval(progress, 0.28f, 0.72f),
+            playerSecondaryAlpha = interval(playerProgress, 0.28f, 0.72f),
         )
     }
 
