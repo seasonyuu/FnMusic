@@ -18,7 +18,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.shapes.Capsule
 
 /** A compact Backdrop button matching the catalog LiquidButton material recipe. */
@@ -29,10 +29,11 @@ fun LiquidButton(
     modifier: Modifier = Modifier,
     isInteractive: Boolean = true,
     tint: Color = Color.Unspecified,
-    surfaceColor: Color = Color.Unspecified,
+    surfaceColor: Color = Color(0xFF14121B),
     content: @Composable RowScope.() -> Unit,
 ) {
     val interaction = rememberLiquidInteraction()
+    val glass = currentLiquidGlassMaterial()
 
     Row(
         modifier
@@ -40,17 +41,17 @@ fun LiquidButton(
                 backdrop = backdrop,
                 shape = { Capsule() },
                 effects = {
-                    vibrancy()
-                    blur(2.dp.toPx())
-                    lens(12.dp.toPx(), 24.dp.toPx())
+                    colorControls(brightness = glass.brightness, saturation = 1.5f)
+                    blur(1.dp.toPx() * glass.blurScale)
+                    lens(4.dp.toPx(), 6.dp.toPx())
                 },
                 layerBlock = if (isInteractive) interaction.layerBlock else null,
                 onDrawSurface = {
                     if (tint.isSpecified) {
                         drawRect(tint, blendMode = BlendMode.Hue)
-                        drawRect(tint.copy(alpha = 0.75f))
+                        drawRect(tint.copy(alpha = glass.surfaceAlpha))
                     }
-                    if (surfaceColor.isSpecified) drawRect(surfaceColor)
+                    if (surfaceColor.isSpecified) drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                 },
             )
             .clickable(

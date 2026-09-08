@@ -47,7 +47,7 @@ import coil3.request.ImageRequest
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -141,6 +141,7 @@ fun MiniPlayer(
 ) {
     val current = state.current ?: return
     val backdrop = LocalFnBackdrop.current
+    val glass = currentLiquidGlassMaterial()
     val interaction = rememberLiquidInteraction(consumeDrag = true)
     CompositionLocalProvider(LocalRippleConfiguration provides null) {
         Column(
@@ -158,9 +159,9 @@ fun MiniPlayer(
                             shape = { Capsule() },
                             layerBlock = interaction.layerBlock,
                             effects = {
-                                vibrancy()
-                                blur(10.dp.toPx())
-                                lens(20.dp.toPx(), 20.dp.toPx())
+                                colorControls(brightness = glass.brightness, saturation = 1.5f)
+                                blur(5.dp.toPx() * glass.blurScale)
+                                lens(24.dp.toPx(), 24.dp.toPx())
                             },
                             highlight = {
                                 Highlight.Default.copy(alpha = 0.32f)
@@ -172,7 +173,7 @@ fun MiniPlayer(
                                 InnerShadow(radius = 6.dp, alpha = 0.3f)
                             },
                             onDrawSurface = {
-                                drawRect(Color(0x8014121B))
+                                drawRect(glass.surfaceColor)
                             },
                         )
                     } else {

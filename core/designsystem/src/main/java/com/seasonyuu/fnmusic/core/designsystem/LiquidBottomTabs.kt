@@ -25,7 +25,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -50,6 +50,7 @@ fun LiquidBottomTabs(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (tabsCount == 0) return
+    val glass = currentLiquidGlassMaterial()
     val scope = rememberCoroutineScope()
     val tabsBackdrop = rememberLayerBackdrop()
     val panelOffset = remember { Animatable(0f) }
@@ -103,8 +104,8 @@ fun LiquidBottomTabs(
                                 backdrop = backdrop,
                                 shape = { Capsule() },
                                 effects = {
-                                    vibrancy()
-                                    blur(8.dp.toPx())
+                                    colorControls(brightness = glass.brightness, saturation = 1.5f)
+                                    blur(4.dp.toPx() * glass.blurScale)
                                     lens(24.dp.toPx(), 24.dp.toPx())
                                 },
                                 layerBlock = {
@@ -112,10 +113,10 @@ fun LiquidBottomTabs(
                                     scaleX = scale
                                     scaleY = scale
                                 },
-                                onDrawSurface = { drawRect(Color(0x6614121B)) },
+                                onDrawSurface = { drawRect(glass.surfaceColor) },
                             )
                         } else {
-                            Modifier.background(Color(0x6614121B), Capsule())
+                            Modifier.background(glass.surfaceColor, Capsule())
                         },
                     )
                     .height(64.dp)
@@ -135,8 +136,8 @@ fun LiquidBottomTabs(
                             backdrop = backdrop,
                             shape = { Capsule() },
                             effects = {
-                                vibrancy()
-                                blur(8.dp.toPx())
+                                colorControls(brightness = glass.brightness, saturation = 1.5f)
+                                blur(4.dp.toPx() * glass.blurScale)
                                 lens(
                                     24.dp.toPx() * dragAnimation.pressProgress,
                                     24.dp.toPx() * dragAnimation.pressProgress,
@@ -146,7 +147,7 @@ fun LiquidBottomTabs(
                                 Highlight.Default.copy(alpha = dragAnimation.pressProgress)
                             },
                             onDrawSurface = {
-                                drawRect(Color(0x6614121B))
+                                drawRect(glass.surfaceColor)
                             },
                         )
                         .height(56.dp)
