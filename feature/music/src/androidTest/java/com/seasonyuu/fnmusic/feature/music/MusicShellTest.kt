@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.geometry.Offset
@@ -136,7 +137,7 @@ class MusicShellTest {
         compose.onNodeWithText("专辑").performClick()
         compose.onNodeWithText("测试专辑").performClick()
 
-        compose.onNodeWithText("详情").assertIsDisplayed()
+        compose.onNodeWithText("专辑").assertIsDisplayed()
         compose.onNodeWithText("曲目").assertIsDisplayed()
         compose.onNodeWithText("首页").assertIsDisplayed()
     }
@@ -264,9 +265,9 @@ class MusicShellTest {
         )
         setContent(playerState = player)
         compose.onNodeWithText("测试曲目").performClick()
-        compose.onNodeWithTag("now-playing-lyrics-container").assertIsDisplayed()
+        compose.onNodeWithTag("player-morph-overlay").assertIsDisplayed()
 
-        compose.onNodeWithTag("now-playing-lyrics-container").performTouchInput {
+        compose.onNodeWithTag("player-morph-overlay").performTouchInput {
             swipe(
                 start = center,
                 end = center + Offset(0f, 700f),
@@ -1783,7 +1784,7 @@ class MusicShellTest {
         compose.waitForIdle()
         val visible = compose.onNodeWithTag("lyrics-line-2", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val header = compose.onNodeWithTag("player-lyrics-header", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val root = compose.onNodeWithTag("now-playing-lyrics-container").fetchSemanticsNode().boundsInRoot
+        val root = compose.onNodeWithTag("player-morph-overlay").fetchSemanticsNode().boundsInRoot
         assertTrue("焦点应位于顶部信息下方的阅读区上部", visible.top > header.bottom && visible.top < header.bottom + (root.bottom - header.bottom) * 0.25f)
         captureLyricsScreenshot("controls-visible")
         compose.mainClock.advanceTimeBy(4_000)
@@ -2203,13 +2204,19 @@ class MusicShellTest {
         setContent(state = MusicUiState(loading = false, tracks = listOf(track)))
         compose.onNodeWithContentDescription("更多操作").performClick()
         compose.onNodeWithText("歌曲信息").performClick()
-        compose.onNodeWithText("导航测试专辑").performScrollTo().performClick()
+        compose.onNode(hasText("导航测试专辑") and androidx.compose.ui.test.hasClickAction())
+            .performScrollTo()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("曲目"))
         compose.onNodeWithText("曲目").assertIsDisplayed()
+        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag("dynamic-primary-tab").performClick()
+        }
         compose.onNodeWithText("收藏").performClick()
         compose.onNodeWithText("首页").performClick()
         compose.onNodeWithText("曲目").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("音频").assertIsDisplayed()
+        compose.onNodeWithText("歌曲信息").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("更多操作").assertIsDisplayed()
     }
@@ -2384,9 +2391,116 @@ class MusicShellTest {
         }
     }
 
+    @Test
+    fun playlistSelectionSurvivesTabSwitchAndConfigurationRestore() {
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        val playlist = Playlist(PlaylistId("retained-selection"), "保留选择歌单", trackCount = 1)
+        val track = Track(TrackId("selected-track"), "保留选中歌曲")
+        setContent(
+            state = MusicUiState(loading = false, playlists = listOf(playlist), detailTracks = listOf(track)),
+            restoration = restoration,
+        )
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        compose.onNodeWithText("保留选择歌单").performClick()
+        compose.onNodeWithText("多选").performScrollTo().performClick()
+        compose.onNodeWithText("保留选中歌曲").performScrollTo().performClick()
+        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag("dynamic-primary-tab").performClick()
+        }
+        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun albumGridScrollSurvivesSwitchingTabs() {
+        val albums = (1..60).map { Album(AlbumId("grid-$it"), "专辑编号 $it") }
+        setContent(albums = PagingData.from(albums))
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("专辑").performClick()
+        assertGridScrollSurvivesTabs("album-grid", "专辑编号 40")
+    }
+
+    @Test
+    fun playlistGridScrollSurvivesSwitchingTabs() {
+        val playlists = (1..60).map { Playlist(PlaylistId("grid-$it"), "歌单编号 $it") }
+        setContent(state = MusicUiState(loading = false, playlists = playlists))
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        assertGridScrollSurvivesTabs("playlist-grid", "歌单编号 40")
+    }
+
+    private fun assertGridScrollSurvivesTabs(grid: String, item: String) {
+        compose.onNodeWithTag(grid).performScrollToNode(hasText(item))
+        val before = compose.onNodeWithText(item).fetchSemanticsNode().boundsInRoot.top
+        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag("dynamic-primary-tab").performClick()
+        }
+        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithText("更多").performClick()
+        val after = compose.onNodeWithText(item).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals(before, after, 3f)
+    }
+
+    @Test
+    fun cachedAlbumRetainsItsScrollWhileAnotherDetailIsLoading() {
+        val album = Album(AlbumId("cached-scroll"), "缓存专辑", trackCount = 40)
+        val tracks = (1..40).map { Track(TrackId("cached-$it"), "缓存曲目 $it") }
+        val ready = MusicUiState(
+            loading = false, detailKey = DetailRequestKey("album", album.id.value), detailTracks = tracks,
+        ).cacheCurrentDetail()
+        val model = mutableStateOf(ready)
+        setContent(stateProvider = { model.value }, albums = PagingData.from(listOf(album)))
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("专辑").performClick()
+        compose.onNodeWithText("缓存专辑").performClick()
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("缓存曲目 30"))
+        val before = compose.onNodeWithText("缓存曲目 30").fetchSemanticsNode().boundsInRoot.top
+        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag("dynamic-primary-tab").performClick()
+        }
+        compose.onNodeWithText("首页").performClick()
+        compose.runOnIdle { model.value = ready.forDetail(DetailRequestKey("playlist", "other")) }
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("正在加载详情…").assertDoesNotExist()
+        val after = compose.onNodeWithText("缓存曲目 30").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals(before, after, 3f)
+    }
+
+    @Test
+    fun playerPredictiveBackCancelsThenReturnsToTheUnderlyingPage() {
+        val input = androidx.navigationevent.DirectNavigationEventInput()
+        val track = Track(TrackId("predictive-player"), "可预测返回歌曲")
+        setContent(
+            playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0),
+            backInput = input,
+        )
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        val cover = compose.onNodeWithTag("player-morph-cover")
+        val expanded = cover.fetchSemanticsNode().boundsInRoot.width
+        fun event(progress: Float) = androidx.navigationevent.NavigationEvent(progress = progress, swipeEdge = androidx.navigationevent.NavigationEvent.EDGE_LEFT)
+        compose.runOnIdle { input.backStarted(event(0f)) }
+        compose.runOnIdle { input.backProgressed(event(.5f)) }
+        compose.waitForIdle()
+        assertTrue(cover.fetchSemanticsNode().boundsInRoot.width < expanded)
+        compose.runOnIdle { input.backCancelled() }
+        compose.waitForIdle()
+        assertEquals(expanded, cover.fetchSemanticsNode().boundsInRoot.width, 2f)
+        compose.runOnIdle { input.backStarted(event(0f)) }
+        compose.runOnIdle { input.backProgressed(event(.7f)) }
+        compose.runOnIdle { input.backCompleted() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("dynamic-mini-player").assertIsDisplayed()
+    }
+
     private fun setContent(
         state: MusicUiState = MusicUiState(loading = false),
         restoration: androidx.compose.ui.test.junit4.StateRestorationTester? = null,
+        backInput: androidx.navigationevent.DirectNavigationEventInput? = null,
         stateProvider: (() -> MusicUiState)? = null,
         playerState: PlayerState = PlayerState(),
         playerStateProvider: (() -> PlayerState)? = null,
@@ -2466,6 +2580,20 @@ class MusicShellTest {
                 )
             }
         }
-        if (restoration != null) restoration.setContent(content) else compose.setContent(content)
+        val hostedContent: @androidx.compose.runtime.Composable () -> Unit = {
+            if (backInput != null) {
+                val owner = androidx.compose.runtime.remember {
+                    object : androidx.navigationevent.NavigationEventDispatcherOwner {
+                        override val navigationEventDispatcher = androidx.navigationevent.NavigationEventDispatcher().apply {
+                            addInput(backInput)
+                        }
+                    }
+                }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner provides owner,
+                ) { content() }
+            } else content()
+        }
+        if (restoration != null) restoration.setContent(hostedContent) else compose.setContent(hostedContent)
     }
 }
