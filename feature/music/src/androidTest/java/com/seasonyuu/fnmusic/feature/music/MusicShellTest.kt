@@ -2285,6 +2285,23 @@ class MusicShellTest {
     }
 
     @Test
+    fun liquidGlassSettingsReturnToSettingsWithToolbarAndSystemBack() {
+        setContent()
+        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithText("Liquid Glass").performClick()
+        compose.onNodeWithTag("liquid-glass-page").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithTag("settings-page").assertIsDisplayed()
+        compose.onNodeWithText("Liquid Glass").performClick()
+        compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithTag("settings-page").assertIsDisplayed()
+        compose.onNodeWithText("临时播放缓存").assertIsDisplayed()
+        compose.onNodeWithTag("dynamic-bottom-bar").assertIsDisplayed()
+    }
+
+    @Test
     fun systemBackPopsMoreSubpageBeforeLeavingTheApp() {
         setContent()
         compose.onNodeWithText("更多").performClick()

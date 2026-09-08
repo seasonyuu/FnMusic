@@ -11,6 +11,25 @@ import org.junit.Test
 class MusicNavigationStateTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun liquidGlassRestoresAndReturnsToSettings() {
+        lateinit var navigation: MusicNavigationState
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
+        }
+        compose.runOnIdle {
+            navigation.select(MusicDestination.More)
+            navigation.push(morePage = MorePage.Settings)
+            navigation.push(morePage = MorePage.LiquidGlass)
+        }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.runOnIdle {
+            assertEquals(MorePage.LiquidGlass, navigation.current.morePage)
+            navigation.pop()
+            assertEquals(MorePage.Settings, navigation.current.morePage)
+        }
+    }
+
     @Test fun configurationRestorePreservesAllStacksAndEntryIdentities() {
         val restoration = StateRestorationTester(compose)
         lateinit var navigation: MusicNavigationState
