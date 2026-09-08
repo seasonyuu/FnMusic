@@ -16,8 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -34,11 +33,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
@@ -336,6 +332,7 @@ data class MusicUiState(
     val liquidGlassSaveError: String? = null,
     val cacheBytes: Long = 512L * 1024L * 1024L,
     val detailKey: DetailRequestKey? = null,
+    val detailCache: Map<DetailRequestKey, MusicDetailSnapshot> = emptyMap(),
     val detailTracks: List<Track> = emptyList(),
     val detailPlaylist: Playlist? = null,
     val detailAlbum: Album? = null,
@@ -508,12 +505,20 @@ fun MusicShell(
             else -> Unit
         }
     }
-    BackHandler(enabled = playerComposed || navigation.canPop) {
-        when {
-            playerComposed && playerPage == PlayerPage.Queue -> playerPage = PlayerPage.NowPlaying
-            playerComposed && playerPage == PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
-            playerComposed -> closePlayer()
-            else -> popPage()
+    val backAnimationScope = rememberCoroutineScope()
+    PredictiveBackHandler(enabled = playerComposed) { events ->
+        val page = playerPage
+        val motion = if (page == PlayerPage.NowPlaying) playerMorphProgress else lyricsMorphProgress
+        val start = motion.value
+        try {
+            events.collect { event -> motion.snapTo(start * (1f - event.progress)) }
+            when (page) {
+                PlayerPage.Queue, PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
+                PlayerPage.NowPlaying -> closePlayer()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            backAnimationScope.launch { motion.animateTo(start, spring(dampingRatio = .85f, stiffness = 450f)) }
+            throw cancelled
         }
     }
     CompositionLocalProvider(
@@ -614,14 +619,10 @@ fun MusicShell(
                                         )
                                         .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
                                 ) {
-                                    AnimatedContent(
-                                        targetState = navigation.current,
-                                        contentKey = { it.id },
-                                        transitionSpec = {
-                                            (fadeIn(tween(220)) + slideInHorizontally(tween(240)) { it / 6 }) togetherWith
-                                                (fadeOut(tween(140)) + slideOutHorizontally(tween(150)) { -it / 12 })
-                                        },
-                                        label = "music-page",
+                                    MusicPageHost(
+                                        navigation = navigation,
+                                        backEnabled = !playerComposed,
+                                        onPop = { popPage() },
                                     ) { entry ->
                                         pageStateHolder.SaveableStateProvider(entry.id) {
                                             val selected = entry.detail
@@ -1864,6 +1865,7 @@ private fun AlbumGridScreen(
             AlbumSortMenu(sort, onSort)
         }
         LazyVerticalGrid(
+            modifier = Modifier.testTag("album-grid"),
             columns = GridCells.Adaptive(142.dp),
             contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -1960,6 +1962,7 @@ private fun PlaylistGridScreen(
             Text(it, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
         }
         LazyVerticalGrid(
+            modifier = Modifier.testTag("playlist-grid"),
             columns = GridCells.Adaptive(142.dp),
             contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -2418,8 +2421,14 @@ private fun LibraryDetailScreen(
         is LibraryDetail.TrackPage -> return
         is LibraryDetail.PlaylistEditorPage -> return
     }
-    var selectingTracks by remember(managedPlaylist?.id?.value) { mutableStateOf(false) }
-    var selectedTrackIds by remember(managedPlaylist?.id?.value) { mutableStateOf(emptySet<TrackId>()) }
+    var selectingTracks by rememberSaveable(managedPlaylist?.id?.value) { mutableStateOf(false) }
+    var selectedTrackIds by rememberSaveable(
+        managedPlaylist?.id?.value,
+        stateSaver = androidx.compose.runtime.saveable.listSaver<Set<TrackId>, String>(
+            save = { ids -> ids.map { it.value } },
+            restore = { ids -> ids.map(::TrackId).toSet() },
+        ),
+    ) { mutableStateOf(emptySet<TrackId>()) }
     val pageTitle = when (detail) {
         is LibraryDetail.AlbumPage -> "专辑"
         is LibraryDetail.ArtistPage -> "歌手"

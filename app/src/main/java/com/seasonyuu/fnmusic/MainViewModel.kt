@@ -19,6 +19,9 @@ import com.seasonyuu.fnmusic.core.model.PlaylistId
 import com.seasonyuu.fnmusic.data.SearchItem
 import com.seasonyuu.fnmusic.feature.music.MusicUiState
 import com.seasonyuu.fnmusic.feature.music.DetailRequestKey
+import com.seasonyuu.fnmusic.feature.music.cacheCurrentDetail
+import com.seasonyuu.fnmusic.feature.music.forDetail
+import com.seasonyuu.fnmusic.feature.music.MusicDetailSnapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -163,6 +166,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     }
 
     fun connect(profile: ConnectionProfile, password: CharArray) {
+        clearDetailCache()
         viewModelScope.launch { graph.session.connect(profile, password) }
     }
 
@@ -332,8 +336,11 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                         playlistBusy = false,
                         playlists = mutableMusic.value.playlists.map { if (it.id == id) updated else it },
                         detailPlaylist = updated.takeIf { mutableMusic.value.detailKey == DetailRequestKey("playlist", id.value) } ?: mutableMusic.value.detailPlaylist,
+                        detailCache = mutableMusic.value.detailCache.mapValues { (key, cached) ->
+                            if (key == DetailRequestKey("playlist", id.value)) cached.copy(playlist = updated) else cached
+                        },
                         playlistMessage = "歌单已更新",
-                    )
+                    ).cacheCurrentDetail()
                 }
                 .onFailure { error ->
                     mutableMusic.value = mutableMusic.value.copy(
@@ -354,6 +361,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                         playlists = mutableMusic.value.playlists.filterNot { it.id == id },
                         detailPlaylist = mutableMusic.value.detailPlaylist?.takeUnless { it.id == id },
                         detailTracks = if (mutableMusic.value.detailKey == DetailRequestKey("playlist", id.value)) emptyList() else mutableMusic.value.detailTracks,
+                        detailCache = mutableMusic.value.detailCache - DetailRequestKey("playlist", id.value),
                         playlistMessage = "歌单已删除",
                     )
                 }
@@ -432,6 +440,9 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             playlists = playlists,
             detailPlaylist = if (active) metadata.copy(trackCount = metadata.trackCount ?: tracks.size) else current.detailPlaylist,
             detailTracks = if (active) tracks else current.detailTracks,
+            detailCache = current.detailCache + (DetailRequestKey("playlist", id.value) to MusicDetailSnapshot(
+                tracks = tracks, playlist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size),
+            )),
         )
     }
 
@@ -447,6 +458,12 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             tracks = current.tracks.updated(), favorites = current.favorites.updated(),
             recent = current.recent.updated(), detailTracks = current.detailTracks.updated(),
             detailMetadata = if (current.detailKey == DetailRequestKey("track", track.id.value)) metadata else current.detailMetadata,
+            detailCache = current.detailCache.mapValues { (key, cached) ->
+                cached.copy(
+                    tracks = cached.tracks.updated(),
+                    metadata = if (key == DetailRequestKey("track", track.id.value)) metadata else cached.metadata,
+                )
+            },
         )
         refresh()
         return metadata
@@ -460,9 +477,10 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         val generation = ++detailGeneration
         detailJob?.cancel()
         detailJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            val initial = mutableMusic.value.copy(
-                detailKey = key, detailLoading = true, detailTracks = emptyList(),
-                detailPlaylist = null, detailAlbum = null, detailArtist = null, detailMetadata = null, detailError = null,
+            val retained = mutableMusic.value.cacheCurrentDetail()
+            val initial = retained.forDetail(key).copy(
+                detailLoading = key !in retained.detailCache,
+                detailError = null,
             )
             mutableMusic.value = initial
             try {
@@ -474,7 +492,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                     detailKey = key, detailLoading = false, detailTracks = result.detailTracks,
                     detailPlaylist = result.detailPlaylist, detailAlbum = result.detailAlbum, detailArtist = result.detailArtist,
                     detailMetadata = result.detailMetadata, detailError = null,
-                )
+                ).cacheCurrentDetail()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -562,6 +580,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     fun coverUrl(coverId: String?, size: Int): String? = graph.coverUrl(coverId, size)
 
     fun logout() {
+        clearDetailCache()
         viewModelScope.launch {
             exitRoamMode()
             graph.player.clear()
@@ -569,6 +588,16 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             graph.catalogCache.clear()
             queueRecovery.clear()
         }
+    }
+
+    private fun clearDetailCache() {
+        ++detailGeneration
+        detailJob?.cancel()
+        mutableMusic.value = mutableMusic.value.copy(
+            detailKey = null, detailCache = emptyMap(), detailTracks = emptyList(),
+            detailPlaylist = null, detailAlbum = null, detailArtist = null,
+            detailMetadata = null, detailLoading = false, detailError = null,
+        )
     }
 
     private suspend fun persistQueueSafely() {

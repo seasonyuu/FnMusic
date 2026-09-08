@@ -36,17 +36,12 @@ internal val LibraryDetail.requestKey: DetailRequestKey?
         is LibraryDetail.PlaylistEditorPage -> null
     }
 
-internal fun MusicUiState.forDetail(key: DetailRequestKey?): MusicUiState =
-    if (detailKey == key) this else copy(
-        detailKey = key, detailTracks = emptyList(), detailPlaylist = null,
-        detailAlbum = null, detailArtist = null, detailMetadata = null, detailLoading = key != null, detailError = null,
-    )
-
 internal data class MusicPageEntry(
     val destination: MusicDestination,
     val morePage: MorePage = MorePage.Menu,
     val detail: LibraryDetail? = null,
     val id: String = UUID.randomUUID().toString(),
+    val depth: Int = 0,
 )
 
 internal class MusicNavigationState {
@@ -55,10 +50,11 @@ internal class MusicNavigationState {
     private var stacks by mutableStateOf(MusicDestination.entries.associateWith { listOf(MusicPageEntry(it)) })
     val current: MusicPageEntry get() = stacks.getValue(destination).last()
     val canPop: Boolean get() = stacks.getValue(destination).size > 1
+    val previous: MusicPageEntry? get() = stacks.getValue(destination).dropLast(1).lastOrNull()
 
     fun select(target: MusicDestination) { destination = target }
     fun push(detail: LibraryDetail? = null, morePage: MorePage = MorePage.Menu) {
-        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, morePage, detail)))
+        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, morePage, detail, depth = stacks.getValue(destination).size)))
     }
     fun pop(): MusicPageEntry? {
         if (!canPop) return null
@@ -84,7 +80,7 @@ internal class MusicNavigationState {
                 destination = MusicDestination.valueOf(requireNotNull(bundle.getString("destination")))
                 stacks = MusicDestination.entries.associateWith { tab ->
                     @Suppress("DEPRECATION")
-                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).map { it.toEntry(tab) }
+                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).mapIndexed { depth, saved -> saved.toEntry(tab).copy(depth = depth) }
                 }
             } },
         )
