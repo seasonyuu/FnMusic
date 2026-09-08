@@ -372,6 +372,86 @@ class MusicShellTest {
     }
 
     @Test
+    fun lyricsHandleDragKeepsCoverAttachedUntilReleaseAndClosesTogether() {
+        verifyLyricsHandleDrag(closes = true)
+    }
+
+    @Test
+    fun shortLyricsHandleDragReboundsWithCoverAttached() {
+        verifyLyricsHandleDrag(closes = false)
+    }
+
+    private fun verifyLyricsHandleDrag(closes: Boolean) {
+        val track = Track(TrackId("lyrics-dismiss"), "歌词收回验证")
+        setContent(
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "第一句"))),
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, durationMs = 180_000,
+            ),
+        )
+        compose.onNodeWithText("歌词收回验证").performClick()
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(1_500)
+        val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode()
+        val header = compose.onNodeWithTag("player-lyrics-header").fetchSemanticsNode()
+        val surface = compose.onNodeWithTag("player-morph-surface").fetchSemanticsNode()
+        val content = compose.onNodeWithTag("player-morph-content").fetchSemanticsNode()
+        val start = compose.onNodeWithTag("player-drag-handle").fetchSemanticsNode().boundsInWindow.center
+        val originalCover = cover.boundsInRoot
+        val originalHeader = header.boundsInRoot
+        var decor: android.view.View? = null
+        compose.runOnUiThread {
+            decor = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single().window.decorView
+        }
+        val downTime = android.os.SystemClock.uptimeMillis()
+        var eventTime = downTime
+        var position = start
+        fun dispatch(action: Int) {
+            compose.runOnUiThread {
+                val event = android.view.MotionEvent.obtain(downTime, eventTime, action, position.x, position.y, 0)
+                event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                decor!!.dispatchTouchEvent(event)
+                event.recycle()
+            }
+        }
+        dispatch(android.view.MotionEvent.ACTION_DOWN)
+        repeat(if (closes) 30 else 6) { index ->
+            eventTime += 16
+            position = start + Offset(0f, (index + 1) * 20f)
+            dispatch(android.view.MotionEvent.ACTION_MOVE)
+            compose.mainClock.advanceTimeBy(16)
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnUiThread {
+            val scale = header.boundsInRoot.width / originalHeader.width
+            assertEquals("拖住时封面保持页头的相对位置",
+                (originalCover.top - originalHeader.top) * scale,
+                cover.boundsInRoot.top - header.boundsInRoot.top, 3f)
+            assertEquals("松手前不向迷你封面缩小", originalCover.width * scale, cover.boundsInRoot.width, 3f)
+        }
+        eventTime += 500
+        dispatch(android.view.MotionEvent.ACTION_UP)
+        repeat(8) {
+            compose.mainClock.advanceTimeBy(16)
+            compose.runOnUiThread {
+                assertEquals("收回时内容与背景共享同一顶部", surface.boundsInRoot.top, content.boundsInRoot.top, 2f)
+            }
+        }
+        compose.mainClock.advanceTimeBy(2_000)
+        if (closes) {
+            compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
+        } else {
+            compose.onNodeWithTag("player-morph-overlay").assertIsDisplayed()
+            assertEquals(originalCover.top, cover.boundsInRoot.top, 2f)
+            assertEquals(originalCover.width, cover.boundsInRoot.width, 2f)
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
     fun bottomBarCollapsesIntoAlignedCapsulesAndExpandsAgain() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         val player = PlayerState(
@@ -1525,6 +1605,47 @@ class MusicShellTest {
     }
 
     @Test
+    fun lyricsPressFeedbackAppearsDuringShortTapAndClearsOnRelease() {
+        val track = Track(TrackId("lyric-press"), "按压反馈验证")
+        setContent(
+            state = MusicUiState(loading = false, lyrics = listOf(
+                LyricLine(0, "歌词按下效果"), LyricLine(10_000, "下一句歌词"),
+            )),
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, positionMs = 2_000, durationMs = 30_000,
+            ),
+        )
+        compose.onNodeWithText("按压反馈验证").performClick()
+        compose.onNodeWithContentDescription("展开完整歌词").performClick()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(1_200)
+        val line = compose.onNodeWithTag("lyrics-line-0", useUnmergedTree = true)
+        fun backgroundRed(): Int {
+            val bitmap = line.captureToImage().asAndroidBitmap()
+            return android.graphics.Color.red(bitmap.getPixel(10, bitmap.height / 2))
+        }
+        val resting = backgroundRed()
+        line.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(80)
+        val shortPress = backgroundRed()
+        captureLyricsScreenshot("press-short")
+        compose.mainClock.advanceTimeBy(300)
+        captureLyricsScreenshot("press-held")
+        line.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(300)
+        val released = backgroundRed()
+        assertTrue("短按 80ms 内应出现背景", shortPress > resting + 8)
+        assertTrue("松手后按压背景应消失", kotlin.math.abs(released - resting) < 4)
+        line.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(80)
+        line.performTouchInput { cancel() }
+        compose.mainClock.advanceTimeBy(300)
+        assertTrue("手势取消后按压背景应消失", kotlin.math.abs(backgroundRed() - resting) < 4)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
     fun lyricFocusAndWrappingStayFixedWhenControlsHide() {
         val track = Track(TrackId("lyric-focus"), "歌词视觉验证")
         val player = PlayerState(
@@ -1576,6 +1697,112 @@ class MusicShellTest {
         java.io.File(directory, "$name.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
+    }
+
+    @Test
+    fun lyricsDragDoesNotRestartControlsEntranceAnimation() {
+        val track = Track(TrackId("lyrics-continuous-drag"), "持续拖动验证")
+        setContent(
+            state = MusicUiState(loading = false, lyrics = (0..30).map { LyricLine(text = "歌词第 $it 行") }),
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, durationMs = 180_000,
+            ),
+        )
+        compose.onNodeWithText("持续拖动验证").performClick()
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(1_200)
+        val controls = compose.onNodeWithTag("player-bottom-controls").fetchSemanticsNode()
+        val restingTop = controls.boundsInRoot.top
+        val listBounds = compose.onNodeWithTag("lyrics-list").fetchSemanticsNode().boundsInWindow
+        var decor: android.view.View? = null
+        compose.runOnUiThread {
+            decor = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single().window.decorView
+        }
+        compose.mainClock.advanceTimeBy(4_000)
+        compose.onNodeWithContentDescription("播放或暂停").assertDoesNotExist()
+        val start = Offset(listBounds.center.x, listBounds.top + listBounds.height * 0.4f)
+        val downTime = android.os.SystemClock.uptimeMillis()
+        var eventTime = downTime
+        var position = start
+        fun dispatch(action: Int) {
+            compose.runOnUiThread {
+                val event = android.view.MotionEvent.obtain(downTime, eventTime, action, position.x, position.y, 0)
+                event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                decor!!.dispatchTouchEvent(event)
+                event.recycle()
+            }
+        }
+        // Espresso waits for list scrolling to be idle. Dispatch and inspect existing coordinates
+        // directly on the UI thread so the assertions can run while the finger is still down.
+        dispatch(android.view.MotionEvent.ACTION_DOWN)
+        repeat(24) { index ->
+            eventTime += 16
+            val step = (index % 12).let { if (it < 6) it + 1 else 11 - it }
+            position = start + Offset(0f, -step * 12f)
+            dispatch(android.view.MotionEvent.ACTION_MOVE)
+            compose.mainClock.advanceTimeBy(16)
+        }
+        compose.runOnUiThread {
+            assertEquals("持续滑动时入场动画仍应完成", restingTop, controls.boundsInRoot.top, 2f)
+        }
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.runOnUiThread {
+            assertEquals("手指停住时仍应保持显示", restingTop, controls.boundsInRoot.top, 2f)
+        }
+        eventTime += 5_000
+        dispatch(android.view.MotionEvent.ACTION_UP)
+        compose.mainClock.advanceTimeBy(4_000)
+        compose.onNodeWithContentDescription("播放或暂停").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun lyricsControlsStayVisibleWhileSeeking() {
+        verifyLyricsSliderKeepsControlsVisible("player-playback-progress")
+    }
+
+    @Test
+    fun lyricsControlsStayVisibleWhileChangingVolume() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val originalVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        try {
+            verifyLyricsSliderKeepsControlsVisible("player-volume-slider")
+        } finally {
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalVolume, 0)
+        }
+    }
+
+    private fun verifyLyricsSliderKeepsControlsVisible(tag: String) {
+        val track = Track(TrackId("slider-hold"), "拖拽控制验证")
+        setContent(
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "第一句"))),
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, durationMs = 180_000,
+            ),
+        )
+        compose.onNodeWithText("拖拽控制验证").performClick()
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(1_200)
+        val slider = compose.onNodeWithTag(tag)
+        slider.performTouchInput {
+            down(center)
+            moveTo(Offset(width * 0.7f, center.y))
+        }
+        // A stationary finger after dragging must also keep the controls alive.
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        slider.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(2_800)
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(1_200)
+        compose.onNodeWithContentDescription("播放或暂停").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
     }
 
     @Test

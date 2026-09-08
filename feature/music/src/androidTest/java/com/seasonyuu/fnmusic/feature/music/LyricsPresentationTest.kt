@@ -25,7 +25,7 @@ class LyricsPresentationTest {
         val text = "你好，世界 👩🏽‍💻 Hello music\n让每一个音符留下来"
         val timeline = resolveLyricTimeline(listOf(LyricLine(0, text)), 0, 10_000)
         compose.setContent {
-            ProgressiveLyricText(text, timeline, { 5_000L }, active.floatValue,
+            AccompanistLyricText(text, timeline, { 5_000L }, active.floatValue,
                 Color.Gray, Color.White, Modifier.width(220.dp).testTag("line"))
         }
         val before = compose.onNodeWithTag("line").fetchSemanticsNode().boundsInRoot
@@ -42,7 +42,7 @@ class LyricsPresentationTest {
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
-                ProgressiveLyricText(text, timeline, { position.longValue }, 1f,
+                AccompanistLyricText(text, timeline, { position.longValue }, 1f,
                     Color.Gray, Color.White, Modifier.width(220.dp).background(Color.Black).testTag("line"))
             }
         }
@@ -62,6 +62,31 @@ class LyricsPresentationTest {
         val complete = brightPixels()
         assertTrue("前半句应出现高亮", partial > initial + 50)
         assertTrue("换行后的文字应继续高亮", complete > partial + 50)
+    }
+
+    @Test fun completedLineFadesContinuouslyInsteadOfResettingItsHighlight() {
+        val active = mutableFloatStateOf(1f)
+        val text = "唱完这一句"
+        val timeline = resolveLyricTimeline(listOf(LyricLine(0, text)), 0, 10_000)
+        compose.setContent {
+            AccompanistLyricText(text, timeline, { 10_000L }, active.floatValue,
+                Color.White.copy(alpha = 0.3f), Color.White,
+                Modifier.width(240.dp).background(Color.Black).testTag("fading-line"))
+        }
+        fun luminance(): Double {
+            val pixels = compose.onNodeWithTag("fading-line").captureToImage().toPixelMap()
+            var total = 0.0
+            for (y in 0 until pixels.height) for (x in 0 until pixels.width) total += pixels[x, y].red
+            return total
+        }
+        val focused = luminance()
+        compose.runOnIdle { active.floatValue = 0.5f }
+        val halfway = luminance()
+        compose.runOnIdle { active.floatValue = 0f }
+        val resting = luminance()
+        assertTrue("退出过程中应逐渐变暗", halfway < focused * 0.85)
+        assertTrue("退出动画结束前不应提前清空高亮", halfway > resting * 1.25)
+        assertTrue("退出后仍应保留可读的歌词", resting > focused * 0.2)
     }
 
     @Test fun interpolatedClockFreezesAndResetsOnPauseSeekAndTrackChange() {
