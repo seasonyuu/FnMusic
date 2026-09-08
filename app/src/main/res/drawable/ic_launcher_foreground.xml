@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The oversized circle and note move together as a single foreground layer.
+         The launcher mask crops the decorative circle; only the note must stay
+         inside the central 66dp safe circle. -->
+    <path android:pathData="M15,89 A49,49 0,1 1,113,89 A49,49 0,1 1,15,89 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:startX="30" android:startY="42"
+                android:endX="92" android:endY="108" android:type="linear"
+                android:startColor="#FF365A" android:endColor="#E71945" />
+        </aapt:attr>
+    </path>
+    <group android:scaleX="0.58" android:scaleY="0.58"
+        android:translateX="17" android:translateY="18">
+        <path android:fillType="evenOdd"
+            android:pathData="M71,18 L85,18 C96,18 96,32 84,33 L79,33 L89,71 C95,93 78,108 62,107 C45,108 33,95 36,77 C39,60 52,50 68,53 L62,32 C59,23 63,18 71,18 Z M74,80 A11,11 0,1 1,52,80 A11,11 0,1 1,74,80 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:startX="65" android:startY="18"
+                    android:endX="65" android:endY="107" android:type="linear"
+                    android:startColor="#FFFFFF" android:endColor="#FFE1E7" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>
