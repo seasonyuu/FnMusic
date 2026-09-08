@@ -20,6 +20,9 @@ import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.Track
 import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackMetadata
+import com.seasonyuu.fnmusic.core.model.TrackMetadataEdit
+import com.seasonyuu.fnmusic.core.model.TrackTagOptions
+import com.seasonyuu.fnmusic.core.network.TrackMetadataUpdateRequest
 import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.network.AlbumDto
 import com.seasonyuu.fnmusic.core.network.EventReportRequest
@@ -70,9 +73,13 @@ interface CatalogRepository {
     suspend fun addPlaylistTracks(id: PlaylistId, tracks: List<TrackId>)
     suspend fun removePlaylistTracks(id: PlaylistId, tracks: List<TrackId>)
     suspend fun purgeInvalidPlaylistTracks(id: PlaylistId): Int
+    suspend fun albumDetail(id: AlbumId): Album
+    suspend fun artistDetail(id: ArtistId): Artist
     suspend fun albumTracks(id: AlbumId, size: Int = 200): List<Track>
     suspend fun artistTracks(id: ArtistId, size: Int = 200): List<Track>
     suspend fun playlistTracks(id: PlaylistId, size: Int = 200): List<Track>
+    suspend fun updateTrackMetadata(track: Track, edit: TrackMetadataEdit): TrackMetadata
+    suspend fun trackTagOptions(): TrackTagOptions
     suspend fun trackMetadata(id: TrackId): TrackMetadata
     suspend fun lyrics(id: TrackId): List<LyricLine>
     suspend fun startRoam(deviceId: String): RoamWindow
@@ -177,6 +184,8 @@ class MusicCatalogRepository(private val api: MusicApi) : CatalogRepository {
         if (count > 0) api.purgePlaylistTracks(PlaylistGuidRequest(id.value)).requireSuccess()
         return count
     }
+    override suspend fun albumDetail(id: AlbumId) = api.albumDetail(id.value).requireData().toDomain()
+    override suspend fun artistDetail(id: ArtistId) = api.artistDetail(id.value).requireData().toDomain()
     override suspend fun albumTracks(id: AlbumId, size: Int) = api.albumTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
     override suspend fun artistTracks(id: ArtistId, size: Int) = api.artistTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
     override suspend fun playlistTracks(id: PlaylistId, size: Int) = api.playlistTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
@@ -185,6 +194,20 @@ class MusicCatalogRepository(private val api: MusicApi) : CatalogRepository {
         val value = api.trackMetadata(id.value).requireData()
         return TrackMetadata(value.track.toDomain(), value.audioSpec?.toDomain())
     }
+
+    override suspend fun updateTrackMetadata(track: Track, edit: TrackMetadataEdit): TrackMetadata {
+        api.updateTrackMetadata(TrackMetadataUpdateRequest(
+            guid = track.id.value, title = edit.title, album = edit.album,
+            artistGUIDs = edit.artistGUIDs, genreGUIDs = edit.genreGUIDs,
+            year = edit.year, trackNo = edit.trackNo, discNo = edit.discNo, coverId = track.coverId,
+        ).toJson()).requireSuccess()
+        return trackMetadata(track.id)
+    }
+
+    override suspend fun trackTagOptions() = TrackTagOptions(
+        artists = loadAll { page, size -> api.artists(page, size).requireData() }.map { it.toDomain() },
+        genres = loadAll { page, size -> api.genres(page, size).requireData() },
+    )
 
     override suspend fun startRoam(deviceId: String) = api.roamStart(deviceId).requireData().toDomain()
 

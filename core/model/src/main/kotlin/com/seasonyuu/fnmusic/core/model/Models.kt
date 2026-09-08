@@ -86,6 +86,8 @@ data class AudioSpec(
     val bitDepth: Int? = null,
     val channel: Int? = null,
     val duration: Double? = null,
+    val bitrate: Long? = null,
+    val path: String? = null,
 )
 
 @Serializable
@@ -100,6 +102,9 @@ data class Track(
     val audioSpec: AudioSpec? = null,
     val year: Int? = null,
     val trackNo: Int? = null,
+    val discNo: Int? = null,
+    val createdAt: Long? = null,
+    val genres: List<Genre> = emptyList(),
 )
 
 @Serializable
@@ -108,6 +113,21 @@ data class Playlist(
     val name: String,
     val coverId: String? = null,
     val trackCount: Int? = null,
+)
+
+@Serializable
+data class Genre(val guid: String, val name: String)
+
+data class TrackTagOptions(val artists: List<Artist>, val genres: List<Genre>)
+
+data class TrackMetadataEdit(
+    val title: String,
+    val album: String?,
+    val artistGUIDs: List<String>,
+    val genreGUIDs: List<String>,
+    val year: Int?,
+    val trackNo: Int?,
+    val discNo: Int?,
 )
 
 @Serializable

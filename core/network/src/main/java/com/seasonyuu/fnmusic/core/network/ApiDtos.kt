@@ -1,6 +1,7 @@
 package com.seasonyuu.fnmusic.core.network
 
 import com.seasonyuu.fnmusic.core.model.Album
+import com.seasonyuu.fnmusic.core.model.Genre
 import com.seasonyuu.fnmusic.core.model.AlbumId
 import com.seasonyuu.fnmusic.core.model.Artist
 import com.seasonyuu.fnmusic.core.model.ArtistId
@@ -72,8 +73,10 @@ data class AudioSpecDto(
     val bitDepth: Int? = null,
     val channel: Int? = null,
     val duration: Double? = null,
+    val bitrate: Long? = null,
+    val path: String? = null,
 ) {
-    fun toDomain() = AudioSpec(format, codec, size, sampleRate, bitDepth, channel, duration?.div(1_000.0))
+    fun toDomain() = AudioSpec(format, codec, size, sampleRate, bitDepth, channel, duration?.div(1_000.0), bitrate, path)
 }
 
 @Serializable
@@ -88,6 +91,9 @@ data class TrackDto(
     val isFavorite: Boolean = false,
     val year: Int? = null,
     val trackNo: Int? = null,
+    val discNo: Int? = null,
+    val createdAt: Long? = null,
+    val genres: List<Genre> = emptyList(),
 ) {
     fun toDomain(favoriteOverride: Boolean? = null) = Track(
         id = TrackId(guid),
@@ -100,6 +106,9 @@ data class TrackDto(
         audioSpec = audioSpec?.toDomain(),
         year = year,
         trackNo = trackNo,
+        discNo = discNo,
+        createdAt = createdAt,
+        genres = genres,
     )
 }
 
@@ -167,6 +176,23 @@ data class SystemConfigDto(
     val serverName: String? = null,
     val serverVersion: String? = null,
 )
+
+@Serializable
+data class TrackMetadataUpdateRequest(
+    val guid: String,
+    val title: String,
+    val album: String?,
+    val artistGUIDs: List<String>,
+    val genreGUIDs: List<String>,
+    val year: Int?,
+    val trackNo: Int?,
+    val discNo: Int?,
+    val coverId: String?,
+) {
+    // Explicit nulls clear optional tags, even though normal API requests omit nulls.
+    fun toJson(): JsonObject = kotlinx.serialization.json.Json { encodeDefaults = true }
+        .encodeToJsonElement(serializer(), this) as JsonObject
+}
 
 @Serializable
 data class TrackMetadataDto(val track: TrackDto, val audioSpec: AudioSpecDto? = null)
@@ -245,6 +271,12 @@ interface MusicApi {
         @Query("sort") sort: String? = null,
     ): ApiEnvelope<PageDto<AlbumDto>>
 
+    @GET("api/v1/album/detail")
+    suspend fun albumDetail(@Query("guid") guid: String): ApiEnvelope<AlbumDto>
+
+    @GET("api/v1/artist/detail")
+    suspend fun artistDetail(@Query("guid") guid: String): ApiEnvelope<ArtistDto>
+
     @GET("api/v1/artist/list")
     suspend fun artists(@Query("page") page: Int, @Query("size") size: Int): ApiEnvelope<PageDto<ArtistDto>>
 
@@ -304,6 +336,12 @@ interface MusicApi {
 
     @GET("api/v1/track/metadata")
     suspend fun trackMetadata(@Query("guid") guid: String): ApiEnvelope<TrackMetadataDto>
+
+    @POST("api/v1/track/metadata")
+    suspend fun updateTrackMetadata(@Body body: JsonObject): ApiEnvelope<JsonObject>
+
+    @GET("api/v1/genre/list")
+    suspend fun genres(@Query("page") page: Int, @Query("size") size: Int): ApiEnvelope<PageDto<Genre>>
 
     @GET("api/v1/track/roam-start")
     suspend fun roamStart(@Query("deviceId") deviceId: String): ApiEnvelope<RoamDto>
