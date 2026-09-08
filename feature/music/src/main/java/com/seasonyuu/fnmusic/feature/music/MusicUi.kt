@@ -431,6 +431,8 @@ fun MusicShell(
     onLogout: () -> Unit,
     onSaveTrackMetadata: (suspend (Track, TrackMetadataEdit) -> TrackMetadata)? = null,
     onLoadTrackTagOptions: suspend () -> TrackTagOptions = { TrackTagOptions(emptyList(), emptyList()) },
+    openPlayerRequested: Boolean = false,
+    onPlayerOpenRequestConsumed: () -> Unit = {},
 ) {
     val navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
     val pageStateHolder = rememberSaveableStateHolder()
@@ -483,6 +485,12 @@ fun MusicShell(
     }
     fun closePlayer() {
         playerOpen = false
+    }
+    LaunchedEffect(openPlayerRequested, playerState.current?.queueEntryId, miniPlayerBounds, miniCoverBounds) {
+        if (openPlayerRequested && playerState.current != null && miniPlayerBounds != null && miniCoverBounds != null) {
+            openPlayer()
+            onPlayerOpenRequestConsumed()
+        }
     }
     LaunchedEffect(playerComposed) {
         if (!playerComposed) lyricsMorphProgress.snapTo(0f)

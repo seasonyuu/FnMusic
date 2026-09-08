@@ -1,5 +1,6 @@
 package com.seasonyuu.fnmusic
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -7,9 +8,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
 import com.seasonyuu.fnmusic.core.model.SessionState
+import com.seasonyuu.fnmusic.core.player.PlaybackService
 import com.seasonyuu.fnmusic.feature.music.MusicShell
 import com.seasonyuu.fnmusic.feature.music.MusicLoadingScreen
 import com.seasonyuu.fnmusic.feature.session.ConnectionScreen
@@ -17,8 +21,12 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private var openPlayerRequested by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openPlayerRequested = savedInstanceState?.getBoolean("openPlayerRequested")
+            ?: (intent.action == PlaybackService.ACTION_OPEN_PLAYER)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -79,6 +87,8 @@ class MainActivity : ComponentActivity() {
                             onCycleRepeatMode = viewModel::cycleRepeatMode,
                             onCacheSizeChange = viewModel::setCacheSize,
                             onLogout = viewModel::logout,
+                            openPlayerRequested = openPlayerRequested,
+                            onPlayerOpenRequestConsumed = { openPlayerRequested = false },
                         )
                     }
                 } else {
@@ -86,5 +96,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == PlaybackService.ACTION_OPEN_PLAYER) openPlayerRequested = true
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("openPlayerRequested", openPlayerRequested)
+        super.onSaveInstanceState(outState)
     }
 }
