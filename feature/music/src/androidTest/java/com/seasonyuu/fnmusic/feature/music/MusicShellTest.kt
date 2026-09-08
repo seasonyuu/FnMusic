@@ -1020,12 +1020,125 @@ class MusicShellTest {
     }
 
     @Test
+    fun switchingTracksKeepsExpandedCoverBoundsOnEveryFrame() {
+        val tracks = listOf("第一首", "第二首", "第三首").mapIndexed { index, title ->
+            PlayableTrack(Track(TrackId("switch-$index"), title), "https://music.invalid/$index")
+        }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 0, durationMs = 180_000))
+        setContent(playerStateProvider = { player.value },
+            onNext = { player.value = player.value.copy(currentIndex = player.value.currentIndex + 1, positionMs = 0) },
+            onPrevious = { player.value = player.value.copy(currentIndex = player.value.currentIndex - 1, positionMs = 0) })
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        val original = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        listOf("下一首", "下一首", "上一首").forEach { action ->
+            compose.onNodeWithContentDescription(action).performClick()
+            repeat(12) { frame ->
+                compose.mainClock.advanceTimeByFrame()
+                val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+                assertEquals("$action 第 $frame 帧不应退回迷你封面", original.width, cover.width, 2f)
+                assertEquals("$action 第 $frame 帧应保持大封面位置", original.top, cover.top, 2f)
+            }
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun notificationOpenWaitsForRestoredTrackAndConsumesTheRequestOnce() {
+        val player = mutableStateOf(PlayerState())
+        val request = mutableStateOf(true)
+        var consumed = 0
+        setContent(playerStateProvider = { player.value }, openPlayerRequested = { request.value },
+            onPlayerOpenRequestConsumed = { consumed++; request.value = false })
+        compose.runOnIdle { assertEquals(0, consumed) }
+        compose.runOnIdle {
+            player.value = PlayerState(queue = listOf(
+                PlayableTrack(Track(TrackId("notification"), "通知恢复"), "https://music.invalid/notification"),
+            ), currentIndex = 0)
+        }
+        compose.onNodeWithTag("player-morph-cover").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, consumed) }
+        compose.runOnIdle { player.value = player.value.copy(positionMs = 1_000) }
+        compose.runOnIdle { assertEquals(1, consumed) }
+    }
+
+    @Test
+    fun playbackCoverActuallyOvershootsBeforeSettling() {
+        val track = PlayableTrack(Track(TrackId("bounce"), "回弹测试"), "https://music.invalid/bounce")
+        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, isPlaying = true))
+        setContent(playerStateProvider = { player.value })
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        fun width() = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot.width
+        val expanded = width()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        val shrinking = List(60) { compose.mainClock.advanceTimeByFrame(); width() }
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        val growing = List(60) { compose.mainClock.advanceTimeByFrame(); width() }
+        compose.mainClock.autoAdvance = true
+        org.junit.Assert.assertTrue(
+            "缩小时应越过目标后回弹: minimum=${shrinking.min()}, target=${expanded * 0.73f}",
+            shrinking.min() < expanded * 0.73f - expanded * 0.01f,
+        )
+        org.junit.Assert.assertTrue(
+            "放大时应越过目标后回弹: maximum=${growing.max()}, target=$expanded",
+            growing.max() > expanded * 1.01f,
+        )
+        assertEquals(expanded * 0.73f, shrinking.last(), 1f)
+        assertEquals(expanded, growing.last(), 1f)
+    }
+
+    @Test
+    fun playbackCoverScalesSmoothlyWithoutMovingControlsAndCanReverse() {
+        val track = PlayableTrack(Track(TrackId("scale"), "缩放测试"), "https://music.invalid/scale")
+        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, isPlaying = true))
+        setContent(playerStateProvider = { player.value })
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        fun cover() = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        val expanded = cover()
+        val controls = compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.mainClock.advanceTimeBy(128)
+        val shrinking = cover()
+        org.junit.Assert.assertTrue(shrinking.width < expanded.width - 2f)
+        org.junit.Assert.assertTrue(shrinking.width > expanded.width * 0.73f + 2f)
+        assertEquals(expanded.center.x, shrinking.center.x, 2f)
+        assertEquals(expanded.center.y, shrinking.center.y, 2f)
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.mainClock.advanceTimeByFrame()
+        org.junit.Assert.assertTrue("反转时不能直接跳到终点", cover().width < expanded.width - 2f)
+        compose.mainClock.advanceTimeBy(1_000)
+        assertEquals(expanded.width, cover().width, 2f)
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.mainClock.advanceTimeBy(1_000)
+        val paused = cover()
+        assertEquals(expanded.width * 0.73f, paused.width, 2f)
+        assertEquals(expanded.center.x, paused.center.x, 2f)
+        assertEquals(expanded.center.y, paused.center.y, 2f)
+        assertEquals(controls, compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        val compact = cover()
+        // Playing lyrics intentionally keep a frame clock running.
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.mainClock.advanceTimeBy(1_000)
+        assertEquals(compact, cover())
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.mainClock.autoAdvance = true
+        assertEquals(expanded.width, cover().width, 2f)
+    }
+
+    @Test
     fun nowPlayingUsesArtworkLedVerticalControlHierarchy() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         val player = PlayerState(
             queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
             currentIndex = 0,
             durationMs = 180_000,
+            isPlaying = true,
         )
         setContent(playerState = player)
 
@@ -1854,6 +1967,99 @@ class MusicShellTest {
     }
 
     @Test
+    fun playerAlbumNavigationCollapsesAndQualityIsCentered() {
+        val album = Album(AlbumId("album"), "测试专辑")
+        val track = Track(TrackId("track"), "测试曲目", album = album,
+            audioSpec = AudioSpec(format = "flac", codec = "flac", sampleRate = 96000, bitDepth = 24))
+        setContent(playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0))
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        val quality = compose.onNodeWithTag("player-quality").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val progress = compose.onNodeWithTag("player-playback-progress").fetchSemanticsNode().boundsInRoot
+        assertTrue(kotlin.math.abs(quality.center.x - progress.center.x) < 2f)
+        assertTrue(quality.top >= progress.bottom)
+        captureQueueScreenshot("now-playing-quality")
+        compose.onNodeWithTag("player-more-action").performClick()
+        compose.onNodeWithText("查看专辑").performClick()
+        compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("dynamic-mini-player").assertIsDisplayed()
+        compose.onNodeWithText("测试专辑").assertIsDisplayed()
+    }
+
+    @Test
+    fun songInformationShowsLongPathAndOpensEditor() {
+        val path = "/vol2/music/一个很长的专辑文件夹/原始音乐文件/测试曲目 - 测试歌手.flac"
+        val track = Track(TrackId("track"), "测试曲目", discNo = 1, createdAt = 1788520908)
+        val metadata = TrackMetadata(track, AudioSpec(format = "flac", path = path, bitrate = 847806))
+        setContent(state = MusicUiState(loading = false, tracks = listOf(track), detailMetadata = metadata),
+            onSaveTrackMetadata = { _, _ -> metadata })
+        compose.onNodeWithContentDescription("更多操作").performClick()
+        compose.onNodeWithText("歌曲信息").performClick()
+        compose.onNodeWithText(path).performScrollTo().assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.hasScrollAction()).performTouchInput {
+            swipe(center, center - Offset(0f, 400f), 500)
+        }
+        compose.onNodeWithText("文件位置").assertIsDisplayed()
+        captureQueueScreenshot("track-file-information")
+        compose.onNodeWithText("编辑").assertIsDisplayed().performClick()
+        compose.onNodeWithText("编辑歌曲信息").assertIsDisplayed()
+        // Dialog window entrance is driven by Android rather than the Compose test clock.
+        android.os.SystemClock.sleep(500)
+        captureQueueScreenshot("track-metadata-editor")
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithText("编辑歌曲信息").assertDoesNotExist()
+    }
+
+    @Test
+    fun songInformationAppBarRemainsVisibleWhenScrolling() {
+        val track = Track(TrackId("track"), "固定标题测试", audioSpec = AudioSpec(path = "/music/song.flac"))
+        setContent(state = MusicUiState(loading = false, tracks = listOf(track), detailMetadata = TrackMetadata(track)),
+            onSaveTrackMetadata = { _, _ -> TrackMetadata(track) })
+        compose.onNodeWithContentDescription("更多操作").performClick()
+        compose.onNodeWithText("歌曲信息").performClick()
+        val before = compose.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot
+        compose.onNode(androidx.compose.ui.test.hasScrollAction()).performTouchInput {
+            swipe(center, center - Offset(0f, 700f), 500)
+        }
+        val after = compose.onNodeWithContentDescription("返回").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertEquals(before, after)
+        compose.onNodeWithText("歌曲信息").assertIsDisplayed()
+        compose.onNodeWithText("编辑").assertIsDisplayed()
+    }
+
+    @Test
+    fun albumDetailUsesFullMetadataAndKeepsItsAppBarFixed() {
+        val partial = Album(AlbumId("album"), "详情接口专辑")
+        val artist = Artist(ArtistId("artist"), "详情接口歌手")
+        val complete = partial.copy(artists = listOf(artist), trackCount = 6, releaseDate = "2022-09-20")
+        val tracks = (1..6).map { Track(TrackId("t$it"), "曲目 $it", album = partial) }
+        setContent(state = MusicUiState(loading = false, tracks = listOf(tracks.first()),
+            detailTracks = tracks, detailAlbum = complete))
+        compose.onNodeWithContentDescription("更多操作").performClick()
+        compose.onNodeWithText("查看专辑").performClick()
+        compose.onNodeWithText("6 首歌曲 · 2022-09-20").assertIsDisplayed()
+        compose.onNodeWithText("详情接口歌手").assertIsDisplayed()
+        val before = compose.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("曲目 6"))
+        val after = compose.onNodeWithContentDescription("返回").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertEquals(before, after)
+        captureQueueScreenshot("album-fixed-app-bar")
+    }
+
+    @Test
+    fun playerInformationNavigationCollapsesToMiniPlayer() {
+        val track = Track(TrackId("track-placeholder"), "测试曲目")
+        setContent(playerState = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0,
+        ))
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        compose.onNodeWithTag("player-more-action").performClick()
+        compose.onNodeWithText("歌曲信息").performClick()
+        compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("dynamic-mini-player").assertIsDisplayed()
+        compose.onNodeWithText("音频").assertIsDisplayed()
+    }
+
+    @Test
     fun songInformationOpensAsAFullPageWithAudioMetadata() {
         val artist = Artist(ArtistId("artist-placeholder"), "测试歌手")
         val track = Track(TrackId("track-placeholder"), "测试曲目", artists = listOf(artist))
@@ -1870,6 +2076,7 @@ class MusicShellTest {
         compose.onNodeWithText("48.0 kHz").assertIsDisplayed()
         compose.onNodeWithText("24 bit").assertIsDisplayed()
         compose.onNodeWithText("首页").assertIsDisplayed()
+        captureQueueScreenshot("track-audio-information")
     }
 
     @Test
@@ -2154,7 +2361,9 @@ class MusicShellTest {
     private fun captureQueueScreenshot(name: String) {
         val directory = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("queue-screenshots")!!
         java.io.File(directory, "$name.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            val bitmap = if (name == "track-metadata-editor") InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                else compose.onRoot().captureToImage().asAndroidBitmap()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
     }
 
@@ -2168,6 +2377,8 @@ class MusicShellTest {
         onToggleShuffle: () -> Unit = {},
         onCycleRepeatMode: () -> Unit = {},
         onTogglePlayback: () -> Unit = {},
+        onNext: () -> Unit = {},
+        onPrevious: () -> Unit = {},
         onSeek: (Long) -> Unit = {},
         onToggleFavorite: (Track) -> Unit = {},
         onPlayNext: (Track) -> Unit = {},
@@ -2181,6 +2392,9 @@ class MusicShellTest {
         onCreatePlaylist: (String, String?, TrackId?) -> Unit = { _, _, _ -> },
         onAddTrackToPlaylist: (PlaylistId, TrackId) -> Unit = { _, _ -> },
         onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit = { _, _ -> },
+        onSaveTrackMetadata: (suspend (Track, com.seasonyuu.fnmusic.core.model.TrackMetadataEdit) -> TrackMetadata)? = null,
+        openPlayerRequested: () -> Boolean = { false },
+        onPlayerOpenRequestConsumed: () -> Unit = {},
     ) {
         val content: @androidx.compose.runtime.Composable () -> Unit = {
             val detailKey = androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
@@ -2212,14 +2426,15 @@ class MusicShellTest {
                     onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
                     onPurgeInvalidPlaylistTracks = {},
                     onLoadTrackMetadata = { detailKey.value = DetailRequestKey("track", it.value) },
+                    onSaveTrackMetadata = onSaveTrackMetadata,
                     onPlay = { _, _ -> },
                     onPlayNext = onPlayNext,
                     onAddToQueue = {},
                     onToggleFavorite = onToggleFavorite,
                     onTogglePlayback = onTogglePlayback,
                     onSeek = onSeek,
-                    onPrevious = {},
-                    onNext = {},
+                    onPrevious = onPrevious,
+                    onNext = onNext,
                     onSkipToQueueItem = onSkipToQueueItem,
                     onSkipToHistoryItem = onSkipToHistoryItem,
                     onClearPlaybackHistory = onClearPlaybackHistory,
@@ -2229,6 +2444,8 @@ class MusicShellTest {
                     onCycleRepeatMode = onCycleRepeatMode,
                     onCacheSizeChange = {},
                     onLogout = {},
+                    openPlayerRequested = openPlayerRequested(),
+                    onPlayerOpenRequestConsumed = onPlayerOpenRequestConsumed,
                 )
             }
         }

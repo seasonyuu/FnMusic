@@ -27,6 +27,25 @@ class NetworkRuntimeIntegrationTest {
     }
 
     @Test
+    fun `metadata updates preserve identifiers and send explicit tag clears`() = runBlocking {
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/json")
+            .setBody("""{"code":0,"data":{}}"""))
+        val runtime = NetworkRuntime()
+        runtime.activateBaseUrl(server.url("/music/"), allowPrivateLanHttp = true)
+        runtime.api.updateTrackMetadata(TrackMetadataUpdateRequest(
+            "track", "Updated", null, listOf("artist"), emptyList(), null, 8, 1, "cover",
+        ).toJson()).requireSuccess()
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/music/api/v1/track/metadata", request.path)
+        val body = runtime.json.parseToJsonElement(request.body.readUtf8()) as kotlinx.serialization.json.JsonObject
+        assertEquals(kotlinx.serialization.json.JsonNull, body["year"])
+        assertEquals(kotlinx.serialization.json.JsonNull, body["album"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("cover"), body["coverId"])
+        assertEquals(kotlinx.serialization.json.JsonArray(emptyList()), body["genreGUIDs"])
+    }
+
+    @Test
     fun `Retrofit request is moved to active music base and signed`() = runBlocking {
         server.enqueue(
             MockResponse()

@@ -51,10 +51,14 @@ class MusicNavigationStateTest {
             detailKey = oldKey,
             detailTracks = listOf(Track(TrackId("stale"), "Wrong song")),
             detailError = "Old failure",
+            detailAlbum = Album(AlbumId("old"), "Old album", trackCount = 6),
+            detailArtist = Artist(ArtistId("old"), "Old artist", trackCount = 65),
         )
         val visible = stale.forDetail(target)
         assertTrue(visible.detailTracks.isEmpty())
         assertNull(visible.detailError)
+        assertNull(visible.detailAlbum)
+        assertNull(visible.detailArtist)
         assertTrue(visible.detailLoading)
         val matching = stale.copy(detailKey = target, detailError = null)
         assertSame(matching, matching.forDetail(target))
