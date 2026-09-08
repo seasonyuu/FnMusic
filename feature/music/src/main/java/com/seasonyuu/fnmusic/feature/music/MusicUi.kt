@@ -3,6 +3,7 @@ package com.seasonyuu.fnmusic.feature.music
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.text.style.TextAlign
 import android.graphics.RuntimeShader
 import android.graphics.Paint as FrameworkPaint
 import com.seasonyuu.fnmusic.core.model.TrackMetadataEdit
@@ -27,6 +28,7 @@ import androidx.compose.animation.core.RepeatMode as AnimationRepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.infiniteRepeatable
@@ -2660,11 +2662,31 @@ private fun PlayerMorphOverlay(
     val density = LocalDensity.current
     val animationScope = rememberCoroutineScope()
     val expressiveMotion = remember { MotionScheme.expressive() }
-    var targetCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
-    var lyricsCoverBounds by remember(current.track.id) { mutableStateOf<Rect?>(null) }
-    var contentCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
-    var largeCoverCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
-    var lyricsCoverCoordinates by remember(current.track.id) { mutableStateOf<LayoutCoordinates?>(null) }
+    val playbackCoverMotion = remember(expressiveMotion) {
+        val materialSpec = expressiveMotion.defaultSpatialSpec<Float>()
+        // The stock 0.8 damping produces only ~3px of overshoot on this cover.
+        // Keep Material's stiffness, with a little more bounce for this hero motion.
+        if (materialSpec is SpringSpec<Float>) {
+            spring<Float>(dampingRatio = 0.7f, stiffness = materialSpec.stiffness)
+        } else {
+            materialSpec
+        }
+    }
+    // Retarget from the current scale/velocity on rapid toggles; keep this state
+    // across track changes. Only the large-cover endpoint uses the playback scale.
+    val playbackCoverScale by animateFloatAsState(
+        targetValue = if (state.isPlaying) 1f else 0.73f,
+        animationSpec = playbackCoverMotion,
+        visibilityThreshold = 0.0001f,
+        label = "player-playback-cover-scale",
+    )
+    // Geometry belongs to the player presentation, not the track. Keep the measured
+    // anchors during a track change so the next frame cannot fall back to the mini cover.
+    var targetCoverBounds by remember { mutableStateOf<Rect?>(null) }
+    var lyricsCoverBounds by remember { mutableStateOf<Rect?>(null) }
+    var contentCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var largeCoverCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var lyricsCoverCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     fun updateCoverBounds() {
         val root = contentCoordinates?.takeIf { it.isAttached } ?: return
         largeCoverCoordinates?.takeIf { it.isAttached }?.let {
@@ -2819,7 +2841,11 @@ private fun PlayerMorphOverlay(
             }.testTag("player-morph-content"),
         )
 
-        val largeCoverTarget = targetCoverBounds ?: coverAnchor
+        val largeCoverSlot = targetCoverBounds ?: coverAnchor
+        val largeCoverTarget = Rect(
+            center = largeCoverSlot.center,
+            radius = largeCoverSlot.width * playbackCoverScale / 2f,
+        )
         val targetCover = lyricsCoverBounds?.let { lyricsTarget ->
             lerpRect(
                 largeCoverTarget,
@@ -2913,17 +2939,6 @@ private fun animatedLyricBlurRadius(
         label = "lyrics-distance-blur",
     ).value
 }
-
-private val playerChromeTintShader =
-    """
-        uniform shader content;
-        layout(color) uniform half4 tint;
-        uniform float tintIntensity;
-
-        half4 main(float2 coord) {
-            return mix(content.eval(coord), tint, half(tintIntensity));
-        }
-    """.trimIndent()
 
 private fun progressiveChromeShader(top: Boolean): String =
     """
@@ -3392,25 +3407,6 @@ private fun NowPlayingLyricsScreen(
                         .testTag("player-favorite-action"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .drawPlainBackdrop(
-                                backdrop = playerBackgroundBackdrop,
-                                shape = { CircleShape },
-                                effects = {
-                                    blur(18.dp.toPx())
-                                    runtimeShaderEffect(
-                                        "FnPlayerFavoriteTint",
-                                        playerChromeTintShader,
-                                        "content",
-                                    ) {
-                                        setColorUniform("tint", Color(0xFF211A22))
-                                        setFloatUniform("tintIntensity", 0.58f)
-                                    }
-                                },
-                            ),
-                    )
                     Icon(
                         if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         null,
@@ -3434,25 +3430,6 @@ private fun NowPlayingLyricsScreen(
                         .testTag("player-more-action"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .drawPlainBackdrop(
-                                backdrop = playerBackgroundBackdrop,
-                                shape = { CircleShape },
-                                effects = {
-                                    blur(18.dp.toPx())
-                                    runtimeShaderEffect(
-                                        "FnPlayerMoreTint",
-                                        playerChromeTintShader,
-                                        "content",
-                                    ) {
-                                        setColorUniform("tint", Color(0xFF211A22))
-                                        setFloatUniform("tintIntensity", 0.58f)
-                                    }
-                                },
-                            ),
-                    )
                     Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = 0.82f))
                 }
             }
@@ -3523,25 +3500,6 @@ private fun NowPlayingLyricsScreen(
                         .testTag("player-lyrics-favorite-action"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .drawPlainBackdrop(
-                                backdrop = playerBackgroundBackdrop,
-                                shape = { CircleShape },
-                                effects = {
-                                    blur(18.dp.toPx())
-                                    runtimeShaderEffect(
-                                        "FnPlayerLyricsFavoriteTint",
-                                        playerChromeTintShader,
-                                        "content",
-                                    ) {
-                                        setColorUniform("tint", Color(0xFF211A22))
-                                        setFloatUniform("tintIntensity", 0.58f)
-                                    }
-                                },
-                            ),
-                    )
                     Icon(
                         if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         "收藏",
@@ -3570,25 +3528,6 @@ private fun NowPlayingLyricsScreen(
                         .testTag("player-lyrics-more-action"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .drawPlainBackdrop(
-                                backdrop = playerBackgroundBackdrop,
-                                shape = { CircleShape },
-                                effects = {
-                                    blur(18.dp.toPx())
-                                    runtimeShaderEffect(
-                                        "FnPlayerLyricsMoreTint",
-                                        playerChromeTintShader,
-                                        "content",
-                                    ) {
-                                        setColorUniform("tint", Color(0xFF211A22))
-                                        setFloatUniform("tintIntensity", 0.58f)
-                                    }
-                                },
-                            ),
-                    )
                     Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = 0.82f))
                 }
             }
@@ -4909,7 +4848,13 @@ private fun PlaybackProgress(
         modifier = modifier.fillMaxWidth(),
         interactionSource = interactionSource,
     )
-    Row(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth()) {
+        Text(
+            playbackQualityLabel(state.current?.track?.audioSpec),
+            modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 52.dp).testTag("player-quality"),
+            color = FnTextSecondary, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center,
+        )
+        Row(Modifier.fillMaxWidth()) {
         Text(formatDuration(displayed.toLong()), color = FnTextSecondary, style = tabularBodyStyle())
         Spacer(Modifier.weight(1f))
         Text(
@@ -4917,6 +4862,7 @@ private fun PlaybackProgress(
             color = FnTextSecondary,
             style = tabularBodyStyle(),
         )
+        }
     }
 }
 
