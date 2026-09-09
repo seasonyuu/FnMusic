@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -57,6 +59,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.waterfall
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.asPaddingValues
@@ -299,6 +306,8 @@ enum class MusicDestination(val label: String, val icon: ImageVector) {
     More("更多", FnIcons.More),
 }
 
+internal val PlayerPageAlphaKey = SemanticsPropertyKey<Float>("PlayerPageAlpha")
+internal var SemanticsPropertyReceiver.playerPageAlpha by PlayerPageAlphaKey
 internal val LyricBlurRadiusKey = SemanticsPropertyKey<Float>("LyricBlurRadius")
 internal var SemanticsPropertyReceiver.lyricBlurRadius by LyricBlurRadiusKey
 private const val LyricsFollowResumeDelayMillis = 8_000L
@@ -368,6 +377,7 @@ internal fun edgeToEdgeContentPadding(
     )
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MusicShell(
     state: MusicUiState,
@@ -419,12 +429,20 @@ fun MusicShell(
     onLoadTrackTagOptions: suspend () -> TrackTagOptions = { TrackTagOptions(emptyList(), emptyList()) },
     openPlayerRequested: Boolean = false,
     onPlayerOpenRequestConsumed: () -> Unit = {},
+    playerWindowInsets: WindowInsets = WindowInsets.systemBarsIgnoringVisibility
+        .union(WindowInsets.displayCutout).union(WindowInsets.waterfall).union(WindowInsets.ime),
+    immersivePlayerInsets: WindowInsets = WindowInsets.displayCutout.union(WindowInsets.waterfall),
+    managePlayerSystemBars: Boolean = true,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val playerInsets = WindowInsets.safeDrawing.asPaddingValues()
+        val playerInsets = playerWindowInsets.asPaddingValues()
         val playerDirection = LocalLayoutDirection.current
-        val widePlayer = maxWidth - playerInsets.calculateLeftPadding(playerDirection) -
-            playerInsets.calculateRightPadding(playerDirection) >= 840.dp
+        val availablePlayerWidth = maxWidth - playerInsets.calculateLeftPadding(playerDirection) -
+            playerInsets.calculateRightPadding(playerDirection)
+        val availablePlayerHeight = maxHeight - playerInsets.calculateTopPadding() - playerInsets.calculateBottomPadding()
+        val landscapePlayer = isShortLandscapePlayer(availablePlayerWidth, availablePlayerHeight)
+        val widePlayer = availablePlayerWidth >= 840.dp && !landscapePlayer
+        val splitPlayer = widePlayer || landscapePlayer
         val navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
         val pageStateHolder = rememberSaveableStateHolder()
         val destination = navigation.destination
@@ -435,6 +453,8 @@ fun MusicShell(
             if (page == MorePage.Menu) popPage() else navigation.push(morePage = page)
         }
         var playerOpen by rememberSaveable { mutableStateOf(false) }
+        val immersivePlayer = landscapePlayer && playerOpen && playerState.current != null
+        PlayerImmersiveMode(enabled = managePlayerSystemBars && immersivePlayer)
         fun pushDetail(page: LibraryDetail) {
             playerOpen = false
             navigation.push(detail = page)
@@ -777,16 +797,17 @@ fun MusicShell(
                                 coverAnchor = coverAnchor,
                                 expandedTarget = playerOpen,
                                 progress = playerMorphProgress,
-                                contentCoverProgress = if (widePlayer) 0f else lyricsMorphProgress.value,
+                                contentCoverProgress = if (splitPlayer) 0f else lyricsMorphProgress.value,
                                 // The stable queue paints its own scrolling artwork. The overlay
                                 // owns it only while morphing between player presentations.
-                                showCover = widePlayer || playerPage != PlayerPage.Queue || lyricsMorphProgress.value < 0.999f,
-                                followContentCover = !widePlayer && playerPage != PlayerPage.NowPlaying,
+                                showCover = splitPlayer || playerPage != PlayerPage.Queue || lyricsMorphProgress.value < 0.999f,
+                                followContentCover = !splitPlayer && playerPage != PlayerPage.NowPlaying,
                                 onRequestClose = ::closePlayer,
                                 onClosed = {
                                     playerComposed = false
                                     playerPage = PlayerPage.NowPlaying
                                 },
+                                onLargeCoverClick = onTogglePlayback,
                                 onCoverClick = {
                                     when (playerPage) {
                                         PlayerPage.Lyrics -> playerPage = PlayerPage.NowPlaying
@@ -802,6 +823,8 @@ fun MusicShell(
                                         highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
                                             ?: playerState.current?.coverUrl,
                                         wideLayout = widePlayer,
+                                        landscapeLayout = landscapePlayer,
+                                        windowInsets = if (immersivePlayer) immersivePlayerInsets else playerWindowInsets,
                                         lyricsMode = playerPage == PlayerPage.Lyrics || (widePlayer && playerPage == PlayerPage.NowPlaying),
                                         queueMode = playerPage == PlayerPage.Queue,
                                         lyricsProgress = lyricsMorphProgress,
@@ -2420,6 +2443,7 @@ private fun PlayerMorphOverlay(
     onRequestClose: () -> Unit,
     onClosed: () -> Unit,
     onCoverClick: () -> Unit,
+    onLargeCoverClick: () -> Unit,
     content: @Composable (
         targetCoverModifier: Modifier,
         lyricsCoverModifier: Modifier,
@@ -2662,6 +2686,14 @@ private fun PlayerMorphOverlay(
                 .then(
                     if (contentCoverProgress >= 0.5f && showCover) {
                         Modifier.clickable(onClick = onCoverClick)
+                    } else if (showCover && expandedTarget && p >= 0.999f &&
+                        contentCoverProgress <= 0.001f && !followContentCover) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClickLabel = if (state.isPlaying) "暂停" else "播放",
+                            onClick = onLargeCoverClick,
+                        )
                     } else {
                         Modifier
                     },
@@ -2751,6 +2783,8 @@ private fun NowPlayingLyricsScreen(
     musicState: MusicUiState,
     highResolutionCoverUrl: String?,
     wideLayout: Boolean,
+    landscapeLayout: Boolean,
+    windowInsets: WindowInsets,
     lyricsMode: Boolean,
     queueMode: Boolean,
     lyricsProgress: Animatable<Float, *>,
@@ -2778,17 +2812,41 @@ private fun NowPlayingLyricsScreen(
     onRemoveQueueItemDirect: (Int) -> Unit,
 ) {
     val current = state.current ?: return
-    val immersiveMode = !wideLayout && (lyricsMode || queueMode)
+    val requestedPage = when {
+        queueMode -> PlayerPage.Queue
+        lyricsMode -> PlayerPage.Lyrics
+        else -> PlayerPage.NowPlaying
+    }
+    var displayedPage by remember { mutableStateOf(requestedPage) }
+    val pageVisibility = remember { Animatable(1f) }
+    LaunchedEffect(landscapeLayout, requestedPage) {
+        if (!landscapeLayout) {
+            displayedPage = requestedPage
+            pageVisibility.snapTo(1f)
+        } else {
+            if (displayedPage != requestedPage) {
+                // Keep the outgoing page's header and viewport intact until it is invisible.
+                pageVisibility.animateTo(0f, tween(150, easing = FastOutLinearInEasing))
+                displayedPage = requestedPage
+            }
+            // A new request cancels this sequence and continues from the current opacity.
+            pageVisibility.animateTo(1f, tween(180, easing = LinearOutSlowInEasing))
+        }
+    }
+    val displayedLyricsMode = if (landscapeLayout) displayedPage == PlayerPage.Lyrics else lyricsMode
+    val displayedQueueMode = if (landscapeLayout) displayedPage == PlayerPage.Queue else queueMode
+    val splitLayout = wideLayout || landscapeLayout
+    val immersiveMode = !splitLayout && (displayedLyricsMode || displayedQueueMode)
     val expressiveMotion = remember { MotionScheme.expressive() }
     val controlsVisibility = remember(current.track.id) { Animatable(1f) }
     var controlsShown by remember(current.track.id) { mutableStateOf(true) }
     val defaultContentVisibility = remember { Animatable(if (immersiveMode) 0f else 1f) }
     val lyricsHeaderVisibility = remember {
-        Animatable(if (wideLayout || immersiveMode) 1f else 0f)
+        Animatable(if (splitLayout || immersiveMode) 1f else 0f)
     }
-    val lyricsListVisibility = remember { Animatable(if (wideLayout || immersiveMode) 1f else 0f) }
+    val lyricsListVisibility = remember { Animatable(if (splitLayout || immersiveMode) 1f else 0f) }
     val lyricsChromeVisibility = remember {
-        Animatable(if (wideLayout || immersiveMode) 1f else 0f)
+        Animatable(if (splitLayout || immersiveMode) 1f else 0f)
     }
     var controlsActivity by remember(current.track.id) { mutableStateOf(0) }
     val progressInteraction = remember { MutableInteractionSource() }
@@ -2820,7 +2878,7 @@ private fun NowPlayingLyricsScreen(
     var lyricsPositionReady by remember(current.track.id) { mutableStateOf(false) }
     var manualScrollActivity by remember(current.track.id) { mutableStateOf(0) }
     var pendingSeekPositionMs by remember(current.track.id) { mutableStateOf<Long?>(null) }
-    var lastImmersiveContentWasLyrics by remember { mutableStateOf(lyricsMode) }
+    var lastImmersiveContentWasLyrics by remember { mutableStateOf(displayedLyricsMode) }
     var playerRootTopPx by remember { mutableFloatStateOf(0f) }
     var measuredLyricsHeaderBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val lyricPosition =
@@ -2828,7 +2886,7 @@ private fun NowPlayingLyricsScreen(
             current.queueEntryId,
             pendingSeekPositionMs ?: state.positionMs,
             state.durationMs,
-            state.isPlaying && pendingSeekPositionMs == null && lyricsMode,
+            state.isPlaying && pendingSeekPositionMs == null && displayedLyricsMode,
         )
     val activeIndex by
         remember(musicState.lyrics, lyricPosition) {
@@ -2841,6 +2899,8 @@ private fun NowPlayingLyricsScreen(
             }
         }
 
+    var landscapeTouchActive by remember { mutableStateOf(false) }
+
     fun revealControls() {
         controlsActivity += 1
     }
@@ -2852,8 +2912,8 @@ private fun NowPlayingLyricsScreen(
         onSeek(positionMs)
     }
 
-    LaunchedEffect(immersiveMode, lyricsMode) {
-        if (immersiveMode) lastImmersiveContentWasLyrics = lyricsMode
+    LaunchedEffect(immersiveMode, displayedLyricsMode) {
+        if (immersiveMode) lastImmersiveContentWasLyrics = displayedLyricsMode
     }
     LaunchedEffect(state.positionMs, pendingSeekPositionMs) {
         val pendingPosition = pendingSeekPositionMs ?: return@LaunchedEffect
@@ -2866,8 +2926,8 @@ private fun NowPlayingLyricsScreen(
         delay(1_500)
         if (pendingSeekPositionMs == pendingPosition) pendingSeekPositionMs = null
     }
-    LaunchedEffect(followCurrent, manualScrollActivity, lyricsMode, current.track.id) {
-        if (lyricsMode && !followCurrent) {
+    LaunchedEffect(followCurrent, manualScrollActivity, displayedLyricsMode, current.track.id) {
+        if (displayedLyricsMode && !followCurrent) {
             delay(LyricsFollowResumeDelayMillis)
             followCurrent = true
         }
@@ -2888,8 +2948,8 @@ private fun NowPlayingLyricsScreen(
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
 
-    LaunchedEffect(immersiveMode, wideLayout) {
-        if (wideLayout) {
+    LaunchedEffect(immersiveMode, splitLayout) {
+        if (splitLayout) {
             lyricsProgress.snapTo(0f)
             defaultContentVisibility.snapTo(1f)
             lyricsHeaderVisibility.snapTo(0f)
@@ -2929,7 +2989,7 @@ private fun NowPlayingLyricsScreen(
                         tween(durationMillis = 80, easing = FastOutLinearInEasing),
                     )
                 }
-                if (lyricsMode) snapshotFlow { lyricsPositionReady }.first { it }
+                if (displayedLyricsMode) snapshotFlow { lyricsPositionReady }.first { it }
                 snapshotFlow { lyricsProgress.value }.first { it >= 0.995f }
                 delay(60)
                 lyricsListVisibility.animateTo(
@@ -2984,15 +3044,23 @@ private fun NowPlayingLyricsScreen(
     // Activity restarts the idle timer, never an in-flight visibility animation.
     LaunchedEffect(
         wideLayout,
-        lyricsMode,
-        queueMode,
+        landscapeLayout,
+        landscapeTouchActive,
+        displayedLyricsMode,
+        displayedQueueMode,
         controlsActivity,
         current.track.id,
         sliderInteracting,
         lyricsDragging
     ) {
         controlsShown = true
-        if (!wideLayout && lyricsMode && !queueMode && !sliderInteracting && !lyricsDragging) {
+        if (!wideLayout &&
+                displayedLyricsMode &&
+                !displayedQueueMode &&
+                !sliderInteracting &&
+                !lyricsDragging &&
+                !landscapeTouchActive
+        ) {
             snapshotFlow { lyricsListVisibility.value }.first { it >= 0.995f }
             delay(3_000)
             controlsShown = false
@@ -3012,69 +3080,83 @@ private fun NowPlayingLyricsScreen(
             .onGloballyPositioned { playerRootTopPx = it.boundsInRoot().top }
             .testTag("now-playing-lyrics-container"),
     ) {
-        val insets = WindowInsets.safeDrawing.asPaddingValues()
+        val insets = windowInsets.asPaddingValues()
         val direction = LocalLayoutDirection.current
         val safeTop = insets.calculateTopPadding()
         val safeBottom = insets.calculateBottomPadding()
         val safeLeft = insets.calculateLeftPadding(direction)
         val safeRight = insets.calculateRightPadding(direction)
         val geometry =
-            playerLayoutGeometry(maxWidth - safeLeft - safeRight, maxHeight - safeTop - safeBottom)
+            playerLayoutGeometry(maxWidth - safeLeft - safeRight, maxHeight - safeTop - safeBottom, landscapeLayout)
         val compactHeight = wideLayout || geometry.short || maxHeight < 760.dp
-        val availablePlayerHeight = (maxHeight - safeTop - safeBottom - 52.dp).coerceAtLeast(0.dp)
-        val p = if (wideLayout) 0f else lyricsProgress.value.coerceIn(0f, 1f)
+        val playerTopPadding = if (landscapeLayout) LandscapePlayerTopPadding else 32.dp
+        val playerBottomPadding = if (landscapeLayout) LandscapePlayerBottomPadding else 20.dp
+        val availablePlayerHeight = (maxHeight - safeTop - safeBottom - playerTopPadding - playerBottomPadding).coerceAtLeast(0.dp)
+        val p = if (splitLayout) 0f else lyricsProgress.value.coerceIn(0f, 1f)
         val defaultContentAlpha = defaultContentVisibility.value.coerceIn(0f, 1f)
         val lyricsHeaderAlpha = lyricsHeaderVisibility.value.coerceIn(0f, 1f)
         val lyricsListAlpha = lyricsListVisibility.value.coerceIn(0f, 1f)
         val lyricsChromeAlpha = lyricsChromeVisibility.value.coerceIn(0f, 1f)
-        val controlsAlpha = if (wideLayout) 1f else lerpFloat(1f, controlsVisibility.value, p)
+        val controlsAlpha = if (splitLayout) 1f else lerpFloat(1f, controlsVisibility.value, p)
         val controlsTranslationPx = with(density) { 176.dp.toPx() } * (1f - controlsAlpha)
         var bottomControlsTopPx by remember { mutableFloatStateOf(Float.NaN) }
         var controlsHeight by remember { mutableStateOf(244.dp) }
         val metadata: @Composable () -> Unit = {
-            PlayerTrackMetadata(current.track, favorite, onToggleFavorite, onMore)
+            Box(Modifier.padding(horizontal = if (landscapeLayout) 16.dp else 0.dp)) {
+                PlayerTrackMetadata(
+                    current.track,
+                    favorite,
+                    onToggleFavorite,
+                    onMore,
+                    titleMaxLines = if (landscapeLayout) 1 else 2
+                )
+            }
         }
         val controls: @Composable () -> Unit = {
-            PlayerPlaybackControls(
-                state = state,
-                compactHeight = compactHeight,
-                lyricsMode = lyricsMode,
-                queueMode = queueMode,
-                systemVolume = systemVolume,
-                maximumVolume = maximumVolume,
-                progressInteraction = progressInteraction,
-                volumeInteraction = volumeInteraction,
-                onSeek = ::seekAndFollow,
-                onPrevious = {
-                    revealControls()
-                    onPrevious()
-                },
-                onToggle = {
-                    revealControls()
-                    onToggle()
-                },
-                onNext = {
-                    revealControls()
-                    onNext()
-                },
-                onVolumeChange = { value ->
-                    revealControls()
-                    systemVolume = value
-                    audioManager.setStreamVolume(
-                        AudioManager.STREAM_MUSIC,
-                        value.roundToInt().coerceIn(0, maximumVolume),
-                        0
-                    )
-                },
-                onLyricsClick = {
-                    revealControls()
-                    if (lyricsMode) onCloseLyrics() else onOpenLyrics()
-                },
-                onQueueClick = {
-                    revealControls()
-                    if (queueMode) onCloseQueue() else onOpenQueue()
-                },
-            )
+            Box(Modifier.padding(horizontal = if (landscapeLayout) 16.dp else 0.dp)) {
+                PlayerPlaybackControls(
+                    state = state,
+                    compactHeight = compactHeight,
+                    compactTransport = landscapeLayout,
+                    showUtilities = !landscapeLayout,
+                    lyricsMode = displayedLyricsMode,
+                    queueMode = displayedQueueMode,
+                    systemVolume = systemVolume,
+                    maximumVolume = maximumVolume,
+                    progressInteraction = progressInteraction,
+                    volumeInteraction = volumeInteraction,
+                    onSeek = ::seekAndFollow,
+                    onPrevious = {
+                        revealControls()
+                        onPrevious()
+                    },
+                    onToggle = {
+                        revealControls()
+                        onToggle()
+                    },
+                    onNext = {
+                        revealControls()
+                        onNext()
+                    },
+                    onVolumeChange = { value ->
+                        revealControls()
+                        systemVolume = value
+                        audioManager.setStreamVolume(
+                            AudioManager.STREAM_MUSIC,
+                            value.roundToInt().coerceIn(0, maximumVolume),
+                            0
+                        )
+                    },
+                    onLyricsClick = {
+                        revealControls()
+                        if (lyricsMode) onCloseLyrics() else onOpenLyrics()
+                    },
+                    onQueueClick = {
+                        revealControls()
+                        if (queueMode) onCloseQueue() else onOpenQueue()
+                    },
+                )
+            }
         }
         Box(
             Modifier.fillMaxSize()
@@ -3107,413 +3189,508 @@ private fun NowPlayingLyricsScreen(
             )
         }
 
-        PlayerPrimaryPane(
-            geometry = geometry,
-            availableHeight = availablePlayerHeight,
-            maximumCoverSize = if (wideLayout || maxWidth >= 600.dp) 440.dp else 380.dp,
-            immersiveMode = immersiveMode,
-            metadataAlpha = defaultContentAlpha,
-            controlsAlpha = controlsAlpha,
-            controlsTranslationPx = controlsTranslationPx,
-            largeCoverModifier = largeCoverModifier,
-            coverViewportModifier = coverViewportModifier,
-            onControlsPositioned = {
-                controlsHeight = with(density) { it.size.height.toDp() }
-                if (!lyricsMode || controlsAlpha >= 0.995f)
-                    bottomControlsTopPx = it.boundsInRoot().top
-            },
-            modifier =
-                Modifier.offset(x = safeLeft, y = safeTop + 32.dp)
-                    .width(maxWidth - safeLeft - safeRight)
+        if (landscapeLayout) {
+            Box(
+                Modifier.offset(x = safeLeft + geometry.contentStart, y = safeTop + playerTopPadding)
+                    .width(geometry.playerWidth)
                     .height(availablePlayerHeight)
-                    .zIndex(if (wideLayout) 0f else 2f),
-            metadata = metadata,
-            controls = controls,
-        )
-        BoxWithConstraints(
-            (if (wideLayout)
-                    Modifier.offset(x = safeLeft + geometry.detailStart, y = safeTop + 32.dp)
-                        .width(geometry.detailWidth)
-                        .height((maxHeight - safeTop - safeBottom - 52.dp).coerceAtLeast(0.dp))
-                else Modifier.fillMaxSize())
-                .testTag("player-detail-pane"),
-        ) {
-            val lyricsHorizontalPadding =
-                if (wideLayout) 16.dp else if (maxWidth < 600.dp) 24.dp else 64.dp
-            val lyricsCoverSize = if (wideLayout) 0.dp else 56.dp
-            val lyricsHeaderTop = if (wideLayout) 0.dp else safeTop + 34.dp
-            val panelHeight = maxHeight
-            val panelBottom = if (wideLayout) 0.dp else safeBottom
-            val headerBottomPx =
-                if (wideLayout) 0f
-                else
-                    measuredLyricsHeaderBottomPx.takeIf { it.isFinite() }
-                        ?: with(density) { (lyricsHeaderTop + lyricsCoverSize).toPx() }
-            val focusTopPx =
-                headerBottomPx +
-                    (with(density) { (maxHeight - panelBottom).toPx() } - headerBottomPx) * 0.18f
-            val focusTop = with(density) { focusTopPx.toDp() }
-            val lyricsTrailingSpaceHeight = (maxHeight - focusTop).coerceAtLeast(0.dp)
-            val controlsBottomPadding =
-                if (wideLayout) 0.dp
-                else
-                    with(density) {
-                        lerpFloat(
-                                (safeBottom + controlsHeight + 20.dp).toPx(),
-                                (safeBottom + 28.dp).toPx(),
-                                1f - controlsAlpha
-                            )
-                            .toDp()
-                    }
-            val queueBottomPadding =
-                if (wideLayout) 0.dp
-                else
-                    bottomControlsTopPx.takeIf { it.isFinite() }?.let {
-                        with(density) {
-                            (maxHeight.toPx() - (it - playerRootTopPx)).coerceAtLeast(0f).toDp() +
-                                16.dp
-                        }
-                    }
-                        ?: controlsBottomPadding
-            val headerTapInteractionSource =
-                remember(current.track.id) { MutableInteractionSource() }
-            FollowLyricPosition(
-                listState = lyricsListState,
-                contentKey = current.track.id to musicState.lyrics,
-                activeIndex = activeIndex,
-                enabled = lyricsMode,
-                following = followCurrent,
-                focusTopPx = focusTopPx,
-                textInsetPx = with(density) { 4.dp.toPx() },
-                ready = lyricsPositionReady,
-                onReady = { lyricsPositionReady = true },
-            )
-            if (!wideLayout && (lyricsMode || (!queueMode && lastImmersiveContentWasLyrics))) {
+                    .then(coverViewportModifier)
+                    .testTag("player-primary-pane"),
+                contentAlignment = Alignment.Center,
+            ) {
                 Box(
-                    Modifier.offset(x = lyricsHorizontalPadding, y = lyricsHeaderTop)
-                        .size(lyricsCoverSize)
-                        .then(lyricsCoverModifier)
+                    Modifier.size(minOf(geometry.playerWidth, availablePlayerHeight))
+                        .then(largeCoverModifier)
                 )
             }
-            val compactHeader: @Composable (Modifier, Boolean) -> Unit =
-                { headerModifier, inQueue ->
-                    Row(
-                        headerModifier
-                            .height(lyricsCoverSize)
-                            .fillMaxWidth()
-                            .zIndex(3f)
-                            .clickable(
-                                interactionSource = headerTapInteractionSource,
-                                indication = null,
-                                enabled = immersiveMode,
-                            ) {
-                                revealControls()
-                                if (inQueue) onCloseQueue() else onCloseLyrics()
-                            }
-                            .onGloballyPositioned {
-                                if (!inQueue)
-                                    measuredLyricsHeaderBottomPx =
-                                        it.boundsInRoot().bottom - playerRootTopPx
-                            }
-                            .testTag(
-                                if (inQueue) "player-queue-header" else "player-lyrics-header"
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (inQueue) {
-                            Box(Modifier.size(lyricsCoverSize).testTag("player-queue-cover")) {
-                                if (queueMode) Box(Modifier.fillMaxSize().then(lyricsCoverModifier))
-                                CoverImage(
-                                    current.coverUrl,
-                                    current.track.title,
-                                    Modifier.fillMaxSize().graphicsLayer {
-                                        alpha = if (queueMode && p >= 0.999f) 1f else 0f
-                                    },
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                        } else {
-                            Spacer(Modifier.size(lyricsCoverSize + 12.dp))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                current.track.title,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                current.track.artists.joinToString(" / ") { it.name }.ifBlank {
-                                    "未知歌手"
-                                },
-                                color = FnTextSecondary,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Box(
-                            modifier =
-                                Modifier.size(46.dp)
-                                    .clip(CircleShape)
-                                    .pointerInput(current.track.id, favorite) {
-                                        detectTapGestures {
-                                            revealControls()
-                                            onToggleFavorite(
-                                                current.track.copy(isFavorite = favorite)
-                                            )
-                                        }
-                                    }
-                                    .semantics {
-                                        contentDescription = "收藏"
-                                        onClick {
-                                            revealControls()
-                                            onToggleFavorite(
-                                                current.track.copy(isFavorite = favorite)
-                                            )
-                                            true
-                                        }
-                                    }
-                                    .testTag("player-lyrics-favorite-action"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                if (favorite) Icons.Rounded.Favorite
-                                else Icons.Rounded.FavoriteBorder,
-                                "收藏",
-                                tint = if (favorite) FnAccent else FnTextSecondary,
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Box(
-                            modifier =
-                                Modifier.size(46.dp)
-                                    .clip(CircleShape)
-                                    .pointerInput(current.track.id) {
-                                        detectTapGestures {
-                                            revealControls()
-                                            onMore(current.track)
-                                        }
-                                    }
-                                    .semantics {
-                                        contentDescription = "更多操作"
-                                        onClick {
-                                            revealControls()
-                                            onMore(current.track)
-                                            true
-                                        }
-                                    }
-                                    .testTag("player-lyrics-more-action"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Rounded.MoreVert,
-                                null,
-                                tint = FnTextPrimary.copy(alpha = 0.82f)
-                            )
-                        }
-                    }
-                }
-            if (!wideLayout && (lyricsMode || (!queueMode && lastImmersiveContentWasLyrics))) {
-                compactHeader(
-                    Modifier.align(Alignment.TopStart)
-                        .padding(
-                            start = lyricsHorizontalPadding,
-                            top = lyricsHeaderTop,
-                            end = lyricsHorizontalPadding
+        } else
+            PlayerPrimaryPane(
+                geometry = geometry,
+                availableHeight = availablePlayerHeight,
+                maximumCoverSize = if (wideLayout || maxWidth >= 600.dp) 440.dp else 380.dp,
+                immersiveMode = immersiveMode,
+                metadataAlpha = defaultContentAlpha,
+                controlsAlpha = controlsAlpha,
+                controlsTranslationPx = controlsTranslationPx,
+                largeCoverModifier = largeCoverModifier,
+                coverViewportModifier = coverViewportModifier,
+                onControlsPositioned = {
+                    controlsHeight = with(density) { it.size.height.toDp() }
+                    if (!displayedLyricsMode || controlsAlpha >= 0.995f)
+                        bottomControlsTopPx = it.boundsInRoot().top
+                },
+                modifier =
+                    Modifier.offset(x = safeLeft, y = safeTop + playerTopPadding)
+                        .width(maxWidth - safeLeft - safeRight)
+                        .height(availablePlayerHeight)
+                        .zIndex(if (wideLayout) 0f else 2f),
+                metadata = metadata,
+                controls = controls,
+            )
+        val landscapeFooterAlpha =
+            if (landscapeLayout && displayedLyricsMode && !displayedQueueMode) controlsVisibility.value else 1f
+        Column(
+            (if (splitLayout)
+                    Modifier.offset(x = safeLeft + geometry.detailStart, y = safeTop + playerTopPadding)
+                        .width(geometry.detailWidth)
+                        .height(
+                            (maxHeight - safeTop - safeBottom - playerTopPadding - playerBottomPadding +
+                                    if (landscapeLayout) playerBottomPadding * (1f - landscapeFooterAlpha)
+                                    else 0.dp)
+                                .coerceAtLeast(0.dp)
                         )
-                        .graphicsLayer { alpha = lyricsHeaderAlpha }
-                        .then(
-                            if (lyricsHeaderAlpha < 0.1f) Modifier.clearAndSetSemantics {}
-                            else Modifier
-                        ),
-                    false,
+                else Modifier.fillMaxSize())
+                .pointerInput(landscapeLayout, displayedLyricsMode) {
+                    if (landscapeLayout && displayedLyricsMode) {
+                        awaitEachGesture {
+                            awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial
+                            )
+                            landscapeTouchActive = true
+                            revealControls()
+                            try {
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                } while (event.changes.any { it.pressed })
+                            } finally {
+                                landscapeTouchActive = false
+                                revealControls()
+                            }
+                        }
+                    }
+                }
+        ) {
+            if (landscapeLayout && displayedLyricsMode) {
+                Box(Modifier.fillMaxWidth().graphicsLayer { alpha = pageVisibility.value }.testTag("player-landscape-lyrics-header")) {
+                    metadata()
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()
+                .graphicsLayer { alpha = if (landscapeLayout) pageVisibility.value else 1f }
+                .semantics { playerPageAlpha = if (landscapeLayout) pageVisibility.value else 1f }
+                .testTag("player-detail-pane")) {
+                if (landscapeLayout && !displayedLyricsMode && !displayedQueueMode) {
+                    Column(
+                        Modifier.fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .testTag("player-landscape-controls"),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        metadata()
+                        Spacer(Modifier.height(8.dp))
+                        controls()
+                    }
+                }
+                val lyricsHorizontalPadding =
+                    if (splitLayout) 16.dp else if (maxWidth < 600.dp) 24.dp else 64.dp
+                val lyricsCoverSize = if (splitLayout) 0.dp else 56.dp
+                val lyricsHeaderTop = if (splitLayout) 0.dp else safeTop + 34.dp
+                val panelHeight = maxHeight
+                val panelBottom = if (splitLayout) 0.dp else safeBottom
+                val headerBottomPx =
+                    if (splitLayout) 0f
+                    else
+                        measuredLyricsHeaderBottomPx.takeIf { it.isFinite() }
+                            ?: with(density) { (lyricsHeaderTop + lyricsCoverSize).toPx() }
+                val focusTopPx =
+                    headerBottomPx +
+                        (with(density) { (maxHeight - panelBottom).toPx() } - headerBottomPx) *
+                            0.18f
+                val focusTop = with(density) { focusTopPx.toDp() }
+                val lyricsTrailingSpaceHeight = (maxHeight - focusTop).coerceAtLeast(0.dp)
+                val controlsBottomPadding =
+                    if (splitLayout) 0.dp
+                    else
+                        with(density) {
+                            lerpFloat(
+                                    (safeBottom + controlsHeight + 20.dp).toPx(),
+                                    (safeBottom + 28.dp).toPx(),
+                                    1f - controlsAlpha
+                                )
+                                .toDp()
+                        }
+                val queueBottomPadding =
+                    if (splitLayout) 0.dp
+                    else
+                        bottomControlsTopPx.takeIf { it.isFinite() }?.let {
+                            with(density) {
+                                (maxHeight.toPx() - (it - playerRootTopPx))
+                                    .coerceAtLeast(0f)
+                                    .toDp() + 16.dp
+                            }
+                        }
+                            ?: controlsBottomPadding
+                val headerTapInteractionSource =
+                    remember(current.track.id) { MutableInteractionSource() }
+                FollowLyricPosition(
+                    listState = lyricsListState,
+                    contentKey = current.track.id to musicState.lyrics,
+                    activeIndex = activeIndex,
+                    enabled = displayedLyricsMode,
+                    following = followCurrent,
+                    focusTopPx = focusTopPx,
+                    textInsetPx = with(density) { 4.dp.toPx() },
+                    ready = lyricsPositionReady,
+                    onReady = { lyricsPositionReady = true },
+                )
+                if (!splitLayout && (displayedLyricsMode || (!displayedQueueMode && lastImmersiveContentWasLyrics))) {
+                    Box(
+                        Modifier.offset(x = lyricsHorizontalPadding, y = lyricsHeaderTop)
+                            .size(lyricsCoverSize)
+                            .then(lyricsCoverModifier)
+                    )
+                }
+                val compactHeader: @Composable (Modifier, Boolean) -> Unit =
+                    { headerModifier, inQueue ->
+                        Row(
+                            headerModifier
+                                .height(lyricsCoverSize)
+                                .fillMaxWidth()
+                                .zIndex(3f)
+                                .clickable(
+                                    interactionSource = headerTapInteractionSource,
+                                    indication = null,
+                                    enabled = immersiveMode,
+                                ) {
+                                    revealControls()
+                                    if (inQueue) onCloseQueue() else onCloseLyrics()
+                                }
+                                .onGloballyPositioned {
+                                    if (!inQueue)
+                                        measuredLyricsHeaderBottomPx =
+                                            it.boundsInRoot().bottom - playerRootTopPx
+                                }
+                                .testTag(
+                                    if (inQueue) "player-queue-header" else "player-lyrics-header"
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (inQueue) {
+                                Box(Modifier.size(lyricsCoverSize).testTag("player-queue-cover")) {
+                                    if (displayedQueueMode)
+                                        Box(Modifier.fillMaxSize().then(lyricsCoverModifier))
+                                    CoverImage(
+                                        current.coverUrl,
+                                        current.track.title,
+                                        Modifier.fillMaxSize().graphicsLayer {
+                                            alpha = if (displayedQueueMode && p >= 0.999f) 1f else 0f
+                                        },
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                            } else {
+                                Spacer(Modifier.size(lyricsCoverSize + 12.dp))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    current.track.title,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    current.track.artists.joinToString(" / ") { it.name }.ifBlank {
+                                        "未知歌手"
+                                    },
+                                    color = FnTextSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Box(
+                                modifier =
+                                    Modifier.size(46.dp)
+                                        .clip(CircleShape)
+                                        .pointerInput(current.track.id, favorite) {
+                                            detectTapGestures {
+                                                revealControls()
+                                                onToggleFavorite(
+                                                    current.track.copy(isFavorite = favorite)
+                                                )
+                                            }
+                                        }
+                                        .semantics {
+                                            contentDescription = "收藏"
+                                            onClick {
+                                                revealControls()
+                                                onToggleFavorite(
+                                                    current.track.copy(isFavorite = favorite)
+                                                )
+                                                true
+                                            }
+                                        }
+                                        .testTag("player-lyrics-favorite-action"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    if (favorite) Icons.Rounded.Favorite
+                                    else Icons.Rounded.FavoriteBorder,
+                                    "收藏",
+                                    tint = if (favorite) FnAccent else FnTextSecondary,
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Box(
+                                modifier =
+                                    Modifier.size(46.dp)
+                                        .clip(CircleShape)
+                                        .pointerInput(current.track.id) {
+                                            detectTapGestures {
+                                                revealControls()
+                                                onMore(current.track)
+                                            }
+                                        }
+                                        .semantics {
+                                            contentDescription = "更多操作"
+                                            onClick {
+                                                revealControls()
+                                                onMore(current.track)
+                                                true
+                                            }
+                                        }
+                                        .testTag("player-lyrics-more-action"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.MoreVert,
+                                    null,
+                                    tint = FnTextPrimary.copy(alpha = 0.82f)
+                                )
+                            }
+                        }
+                    }
+                if (!splitLayout && (displayedLyricsMode || (!displayedQueueMode && lastImmersiveContentWasLyrics))) {
+                    compactHeader(
+                        Modifier.align(Alignment.TopStart)
+                            .padding(
+                                start = lyricsHorizontalPadding,
+                                top = lyricsHeaderTop,
+                                end = lyricsHorizontalPadding
+                            )
+                            .graphicsLayer { alpha = lyricsHeaderAlpha }
+                            .then(
+                                if (lyricsHeaderAlpha < 0.1f) Modifier.clearAndSetSemantics {}
+                                else Modifier
+                            ),
+                        false,
+                    )
+                }
+
+                // Scroll content must remain above the background's header tint.
+                Box(Modifier.fillMaxSize().zIndex(2f)) {
+                    // The page sequencer owns landscape fades; replace content only at zero opacity.
+                    if (!landscapeLayout || displayedQueueMode) androidx.compose.animation.AnimatedVisibility(
+                        visible = displayedQueueMode,
+                        enter =
+                            fadeIn(
+                                tween(
+                                    durationMillis = 180,
+                                    delayMillis = 24,
+                                    easing = LinearOutSlowInEasing
+                                )
+                            ),
+                        exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
+                        modifier = Modifier.zIndex(2f),
+                        label = "player-queue-content",
+                    ) {
+                        QueuePlayerContent(
+                            state = state,
+                            topPadding = lyricsHeaderTop,
+                            bottomPadding = queueBottomPadding,
+                            alpha = 1f,
+                            onSelect = { index ->
+                                revealControls()
+                                onSelectQueueItem(index)
+                            },
+                            onSelectHistoryItem = { index ->
+                                revealControls()
+                                onSelectHistoryItem(index)
+                            },
+                            onClearPlaybackHistory = onClearPlaybackHistory,
+                            currentHeader = {
+                                if (!splitLayout)
+                                    compactHeader(
+                                        Modifier.padding(
+                                            horizontal = lyricsHorizontalPadding - 16.dp,
+                                            vertical = 0.dp
+                                        ),
+                                        true
+                                    )
+                            },
+                            onMove = onMoveQueueItem,
+                            onRemove = onRemoveQueueItemDirect,
+                            onMore = onRemoveQueueItem,
+                            onToggleShuffle = {
+                                revealControls()
+                                onToggleShuffle()
+                            },
+                            onCycleRepeatMode = {
+                                revealControls()
+                                onCycleRepeatMode()
+                            },
+                        )
+                    }
+                    if (!landscapeLayout || displayedLyricsMode) androidx.compose.animation.AnimatedVisibility(
+                        visible =
+                            !displayedQueueMode &&
+                                (wideLayout ||
+                                    (landscapeLayout && displayedLyricsMode) ||
+                                    ((displayedLyricsMode || lastImmersiveContentWasLyrics) && p > 0.01f)),
+                        enter =
+                            fadeIn(
+                                tween(
+                                    durationMillis = 180,
+                                    delayMillis = 24,
+                                    easing = LinearOutSlowInEasing
+                                )
+                            ),
+                        exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
+                        label = "player-lyrics-content",
+                    ) {
+                        PlayerLyricsPane(
+                            lyrics = musicState.lyrics,
+                            trackKey = current.track.id,
+                            lyricsMode = displayedLyricsMode,
+                            lyricsListState = lyricsListState,
+                            activeIndex = activeIndex,
+                            followCurrent = followCurrent,
+                            lyricTimelines = lyricTimelines,
+                            lyricPosition = lyricPosition,
+                            lyricsListAlpha = lyricsListAlpha,
+                            viewport =
+                                PlayerLyricsViewport(
+                                    emptyTop =
+                                        if (splitLayout) 0.dp
+                                        else lyricsHeaderTop + lyricsCoverSize + 30.dp,
+                                    emptyBottom = controlsBottomPadding,
+                                    focusTop = focusTop,
+                                    trailingSpace = lyricsTrailingSpaceHeight,
+                                    horizontalPadding = lyricsHorizontalPadding,
+                                    removeRendererInset = landscapeLayout,
+                                    bottomInset = panelBottom,
+                                    fadeTopPx = headerBottomPx,
+                                    fadeBottomPx =
+                                        with(density) {
+                                            val fullBottom = (panelHeight - panelBottom).toPx()
+                                            if (splitLayout) fullBottom
+                                            else
+                                                lerpFloat(
+                                                    fullBottom,
+                                                    bottomControlsTopPx
+                                                        .takeIf { it.isFinite() }
+                                                        ?.minus(playerRootTopPx)
+                                                        ?: (panelHeight -
+                                                                safeBottom -
+                                                                controlsHeight -
+                                                                20.dp)
+                                                            .toPx(),
+                                                    controlsAlpha,
+                                                )
+                                        },
+                                ),
+                            onManualScroll = {
+                                pendingSeekPositionMs = null
+                                followCurrent = false
+                                manualScrollActivity += 1
+                                revealControls()
+                            },
+                            onInteraction = ::revealControls,
+                            onSeek = ::seekAndFollow,
+                        )
+                    }
+                }
+
+                Box(
+                    Modifier.align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        // Keep the header fully protected, then give the blur enough room
+                        // to dissolve before the backdrop layer reaches its clipped edge.
+                        .height(
+                            if (displayedQueueMode) lyricsHeaderTop
+                            else lyricsHeaderTop + lyricsCoverSize + 90.dp
+                        )
+                        .zIndex(1f)
+                        .graphicsLayer { alpha = lyricsChromeAlpha }
+                        .drawPlainBackdrop(
+                            backdrop = playerBackgroundBackdrop,
+                            shape = { RoundedCornerShape(0.dp) },
+                            effects = {
+                                blur(32.dp.toPx())
+                                runtimeShaderEffect(
+                                    "FnPlayerLyricsHeaderTint",
+                                    progressiveChromeShader(top = true),
+                                    "content",
+                                ) {
+                                    setFloatUniform("size", size.width, size.height)
+                                    setColorUniform("tint", Color(0xFF18151D))
+                                    setFloatUniform("tintIntensity", 0.28f)
+                                }
+                            },
+                        )
+                        .testTag("player-lyrics-header-blur"),
+                )
+
+                Box(
+                    Modifier.align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(safeBottom + 448.dp)
+                        .zIndex(1f)
+                        .graphicsLayer {
+                            alpha = lyricsChromeAlpha * controlsAlpha
+                            translationY = controlsTranslationPx
+                        }
+                        .drawPlainBackdrop(
+                            backdrop = playerBackgroundBackdrop,
+                            shape = { RoundedCornerShape(0.dp) },
+                            effects = {
+                                blur(32.dp.toPx())
+                                runtimeShaderEffect(
+                                    "FnPlayerBottomControlsTint",
+                                    progressiveChromeShader(top = false),
+                                    "content",
+                                ) {
+                                    setFloatUniform("size", size.width, size.height)
+                                    setColorUniform("tint", Color(0xFF111016))
+                                    setFloatUniform("tintIntensity", 0.34f)
+                                }
+                            },
+                        )
+                        .testTag("player-bottom-controls-blur"),
                 )
             }
-
-            // Scroll content must remain above the background's header tint.
-            Box(Modifier.fillMaxSize().zIndex(2f)) {
-                AnimatedVisibility(
-                    visible = queueMode,
-                    enter =
-                        fadeIn(
-                            tween(
-                                durationMillis = 180,
-                                delayMillis = 24,
-                                easing = LinearOutSlowInEasing
-                            )
-                        ),
-                    exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
-                    modifier = Modifier.zIndex(2f),
-                    label = "player-queue-content",
+            if (landscapeLayout) {
+                val footerAlpha = landscapeFooterAlpha
+                // Return the footer space to the lyrics as the controls disappear.
+                Box(
+                    Modifier.fillMaxWidth().height(56.dp * footerAlpha).graphicsLayer {
+                        alpha = footerAlpha
+                        translationY = (1f - footerAlpha) * 48.dp.toPx()
+                    }
                 ) {
-                    QueuePlayerContent(
-                        state = state,
-                        topPadding = lyricsHeaderTop,
-                        bottomPadding = queueBottomPadding,
-                        alpha = 1f,
-                        onSelect = { index ->
-                            revealControls()
-                            onSelectQueueItem(index)
-                        },
-                        onSelectHistoryItem = { index ->
-                            revealControls()
-                            onSelectHistoryItem(index)
-                        },
-                        onClearPlaybackHistory = onClearPlaybackHistory,
-                        currentHeader = {
-                            if (!wideLayout)
-                                compactHeader(
-                                    Modifier.padding(
-                                        horizontal = lyricsHorizontalPadding - 16.dp,
-                                        vertical = 0.dp
-                                    ),
-                                    true
-                                )
-                        },
-                        onMove = onMoveQueueItem,
-                        onRemove = onRemoveQueueItemDirect,
-                        onMore = onRemoveQueueItem,
-                        onToggleShuffle = {
-                            revealControls()
-                            onToggleShuffle()
-                        },
-                        onCycleRepeatMode = {
-                            revealControls()
-                            onCycleRepeatMode()
-                        },
-                    )
-                }
-                AnimatedVisibility(
-                    visible =
-                        !queueMode &&
-                            (wideLayout ||
-                                ((lyricsMode || lastImmersiveContentWasLyrics) && p > 0.01f)),
-                    enter =
-                        fadeIn(
-                            tween(
-                                durationMillis = 180,
-                                delayMillis = 24,
-                                easing = LinearOutSlowInEasing
+                    if (footerAlpha > 0.01f) {
+                        Column(Modifier.padding(top = 8.dp)) {
+                            PlayerPageControls(
+                                state = state,
+                                lyricsMode = displayedLyricsMode,
+                                queueMode = displayedQueueMode,
+                                onLyricsClick = {
+                                    if (lyricsMode) onCloseLyrics() else onOpenLyrics()
+                                },
+                                onQueueClick = { if (queueMode) onCloseQueue() else onOpenQueue() },
                             )
-                        ),
-                    exit = fadeOut(tween(durationMillis = 130, easing = FastOutLinearInEasing)),
-                    label = "player-lyrics-content",
-                ) {
-                    PlayerLyricsPane(
-                        lyrics = musicState.lyrics,
-                        trackKey = current.track.id,
-                        lyricsMode = lyricsMode,
-                        lyricsListState = lyricsListState,
-                        activeIndex = activeIndex,
-                        followCurrent = followCurrent,
-                        lyricTimelines = lyricTimelines,
-                        lyricPosition = lyricPosition,
-                        lyricsListAlpha = lyricsListAlpha,
-                        viewport =
-                            PlayerLyricsViewport(
-                                emptyTop =
-                                    if (wideLayout) 0.dp
-                                    else lyricsHeaderTop + lyricsCoverSize + 30.dp,
-                                emptyBottom = controlsBottomPadding,
-                                focusTop = focusTop,
-                                trailingSpace = lyricsTrailingSpaceHeight,
-                                horizontalPadding = lyricsHorizontalPadding,
-                                bottomInset = panelBottom,
-                                fadeTopPx = headerBottomPx,
-                                fadeBottomPx =
-                                    with(density) {
-                                        val fullBottom = (panelHeight - panelBottom).toPx()
-                                        if (wideLayout) fullBottom
-                                        else
-                                            lerpFloat(
-                                                fullBottom,
-                                                bottomControlsTopPx
-                                                    .takeIf { it.isFinite() }
-                                                    ?.minus(playerRootTopPx)
-                                                    ?: (panelHeight -
-                                                            safeBottom -
-                                                            controlsHeight -
-                                                            20.dp)
-                                                        .toPx(),
-                                                controlsAlpha,
-                                            )
-                                    },
-                            ),
-                        onManualScroll = {
-                            pendingSeekPositionMs = null
-                            followCurrent = false
-                            manualScrollActivity += 1
-                            revealControls()
-                        },
-                        onInteraction = ::revealControls,
-                        onSeek = ::seekAndFollow,
-                    )
+                        }
+                    }
                 }
             }
-
-            Box(
-                Modifier.align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    // Keep the header fully protected, then give the blur enough room
-                    // to dissolve before the backdrop layer reaches its clipped edge.
-                    .height(
-                        if (queueMode) lyricsHeaderTop
-                        else lyricsHeaderTop + lyricsCoverSize + 90.dp
-                    )
-                    .zIndex(1f)
-                    .graphicsLayer { alpha = lyricsChromeAlpha }
-                    .drawPlainBackdrop(
-                        backdrop = playerBackgroundBackdrop,
-                        shape = { RoundedCornerShape(0.dp) },
-                        effects = {
-                            blur(32.dp.toPx())
-                            runtimeShaderEffect(
-                                "FnPlayerLyricsHeaderTint",
-                                progressiveChromeShader(top = true),
-                                "content",
-                            ) {
-                                setFloatUniform("size", size.width, size.height)
-                                setColorUniform("tint", Color(0xFF18151D))
-                                setFloatUniform("tintIntensity", 0.28f)
-                            }
-                        },
-                    )
-                    .testTag("player-lyrics-header-blur"),
-            )
-
-            Box(
-                Modifier.align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(safeBottom + 448.dp)
-                    .zIndex(1f)
-                    .graphicsLayer {
-                        alpha = lyricsChromeAlpha * controlsAlpha
-                        translationY = controlsTranslationPx
-                    }
-                    .drawPlainBackdrop(
-                        backdrop = playerBackgroundBackdrop,
-                        shape = { RoundedCornerShape(0.dp) },
-                        effects = {
-                            blur(32.dp.toPx())
-                            runtimeShaderEffect(
-                                "FnPlayerBottomControlsTint",
-                                progressiveChromeShader(top = false),
-                                "content",
-                            ) {
-                                setFloatUniform("size", size.width, size.height)
-                                setColorUniform("tint", Color(0xFF111016))
-                                setFloatUniform("tintIntensity", 0.34f)
-                            }
-                        },
-                    )
-                    .testTag("player-bottom-controls-blur"),
-            )
         }
         Box(
             Modifier.fillMaxWidth()
-                .padding(top = safeTop)
-                .height(32.dp)
+                // Leave the top edge to the immersive system-bar reveal gesture.
+                .padding(top = safeTop + if (landscapeLayout) 8.dp else 0.dp)
+                .height(if (landscapeLayout) 24.dp else 32.dp)
                 .zIndex(3f)
                 .then(dragModifier)
                 .semantics { contentDescription = "下拉收起播放器" },
@@ -3535,6 +3712,7 @@ private data class PlayerLyricsViewport(
     val focusTop: Dp,
     val trailingSpace: Dp,
     val horizontalPadding: Dp,
+    val removeRendererInset: Boolean = false,
     val bottomInset: Dp,
     val fadeTopPx: Float,
     val fadeBottomPx: Float,
@@ -3751,6 +3929,7 @@ private fun PlayerLyricsPane(
                                             )
                                 ),
                             highlightColor = FnTextPrimary,
+                            removeHorizontalInset = viewport.removeRendererInset,
                         )
                         line.translation?.takeIf(String::isNotBlank)?.let { translation ->
                             Text(
@@ -3779,6 +3958,7 @@ private fun PlayerTrackMetadata(
     favorite: Boolean,
     onToggleFavorite: (Track) -> Unit,
     onMore: (Track) -> Unit,
+    titleMaxLines: Int = 2,
 ) {
     Row(
         Modifier.testTag("player-track-metadata"),
@@ -3791,7 +3971,7 @@ private fun PlayerTrackMetadata(
                 fontSize = 22.sp,
                 lineHeight = 27.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
@@ -3847,6 +4027,9 @@ private fun PlayerTrackMetadata(
 private fun PlayerPlaybackControls(
     state: PlayerState,
     compactHeight: Boolean,
+    compactTransport: Boolean = false,
+    showUtilities: Boolean = true,
+    showVolume: Boolean = true,
     lyricsMode: Boolean,
     queueMode: Boolean,
     systemVolume: Float,
@@ -3871,91 +4054,121 @@ private fun PlayerPlaybackControls(
             interactionSource = progressInteraction,
         ) { position -> onSeek(position) }
         Row(
-            Modifier.fillMaxWidth().testTag("player-transport-controls"),
+            Modifier.fillMaxWidth()
+                .padding(vertical = if (compactTransport) 8.dp else 0.dp)
+                .testTag("player-transport-controls"),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
                 onClick = onPrevious,
                 enabled = state.canSkipPrevious,
-                modifier = Modifier.size(68.dp)
-            ) { Icon(Icons.Rounded.SkipPrevious, "上一首", Modifier.size(44.dp)) }
-            IconButton(onClick = onToggle, modifier = Modifier.size(84.dp)) {
+                modifier = Modifier.size(if (compactTransport) 60.dp else 68.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.SkipPrevious,
+                    "上一首",
+                    Modifier.size(if (compactTransport) 40.dp else 44.dp)
+                )
+            }
+            IconButton(
+                onClick = onToggle,
+                modifier = Modifier.size(if (compactTransport) 76.dp else 84.dp)
+            ) {
                 Icon(
                     if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     "播放或暂停",
-                    Modifier.size(60.dp).offset(x = if (state.isPlaying) 0.dp else 2.dp),
+                    Modifier.size(if (compactTransport) 54.dp else 60.dp)
+                        .offset(x = if (state.isPlaying) 0.dp else 2.dp),
                     tint = FnTextPrimary,
                 )
             }
             IconButton(
                 onClick = onNext,
                 enabled = state.canSkipNext,
-                modifier = Modifier.size(68.dp)
-            ) { Icon(Icons.Rounded.SkipNext, "下一首", Modifier.size(44.dp)) }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp).testTag("player-volume-control"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Rounded.VolumeDown,
-                null,
-                tint = FnTextPrimary.copy(alpha = 0.58f),
-                modifier = Modifier.size(18.dp),
-            )
-            ThinPlayerSlider(
-                value = systemVolume,
-                onValueChange = onVolumeChange,
-                valueRange = 0f..maximumVolume.toFloat(),
-                modifier = Modifier.weight(1f).testTag("player-volume-slider"),
-                interactionSource = volumeInteraction,
-            )
-            Icon(
-                Icons.AutoMirrored.Rounded.VolumeUp,
-                "媒体音量",
-                tint = FnTextPrimary.copy(alpha = 0.58f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Spacer(
-            Modifier.height(
-                if (compactHeight) 12.dp else 48.dp,
-            ),
-        )
-        Row(
-            Modifier.fillMaxWidth().testTag("player-bottom-utilities"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                IconButton(
-                    onClick = onLyricsClick,
-                    modifier =
-                        Modifier.size(48.dp)
-                            .background(
-                                if (lyricsMode) FnTextPrimary.copy(alpha = .14f)
-                                else Color.Transparent,
-                                CircleShape,
-                            )
-                            .semantics { selected = lyricsMode }
-                            .testTag("player-lyrics-entry"),
-                ) {
-                    Icon(
-                        Icons.Rounded.Lyrics,
-                        "展开完整歌词",
-                        tint = if (lyricsMode) FnTextPrimary else FnTextSecondary,
-                    )
-                }
-            }
-            Spacer(Modifier.weight(1f).height(48.dp).testTag("player-center-entry-placeholder"))
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                PlayerQueueOrRoamEntry(
-                    isRoaming = state.isRoaming,
-                    selected = queueMode,
-                    onOpenQueue = onQueueClick,
+                modifier = Modifier.size(if (compactTransport) 60.dp else 68.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.SkipNext,
+                    "下一首",
+                    Modifier.size(if (compactTransport) 40.dp else 44.dp)
                 )
             }
+        }
+        if (showVolume)
+            Row(
+                Modifier.fillMaxWidth().testTag("player-volume-control"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.VolumeDown,
+                    null,
+                    tint = FnTextPrimary.copy(alpha = 0.58f),
+                    // Track ink starts 3dp inside its bounds (10dp thumb / 2 - 4dp stroke / 2).
+                    // This 24-unit icon starts at x=5: 18 * 5/24 = 3.75dp.
+                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp),
+                )
+                ThinPlayerSlider(
+                    value = systemVolume,
+                    onValueChange = onVolumeChange,
+                    valueRange = 0f..maximumVolume.toFloat(),
+                    modifier = Modifier.weight(1f).testTag("player-volume-slider"),
+                    interactionSource = volumeInteraction,
+                )
+                Icon(
+                    Icons.AutoMirrored.Rounded.VolumeUp,
+                    "媒体音量",
+                    tint = FnTextPrimary.copy(alpha = 0.58f),
+                    // VolumeUp ends at x=21: its 2.25dp end inset needs another 0.75dp.
+                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp),
+                )
+            }
+        if (showUtilities) {
+            Spacer(Modifier.height(if (compactHeight) 12.dp else 48.dp))
+            PlayerPageControls(state, lyricsMode, queueMode, onLyricsClick, onQueueClick)
+        }
+    }
+}
+
+@Composable
+private fun PlayerPageControls(
+    state: PlayerState,
+    lyricsMode: Boolean,
+    queueMode: Boolean,
+    onLyricsClick: () -> Unit,
+    onQueueClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().testTag("player-bottom-utilities"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            IconButton(
+                onClick = onLyricsClick,
+                modifier =
+                    Modifier.size(48.dp)
+                        .background(
+                            if (lyricsMode) FnTextPrimary.copy(alpha = .14f) else Color.Transparent,
+                            CircleShape,
+                        )
+                        .semantics { selected = lyricsMode }
+                        .testTag("player-lyrics-entry"),
+            ) {
+                Icon(
+                    Icons.Rounded.Lyrics,
+                    "展开完整歌词",
+                    tint = if (lyricsMode) FnTextPrimary else FnTextSecondary,
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f).height(48.dp).testTag("player-center-entry-placeholder"))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            PlayerQueueOrRoamEntry(
+                isRoaming = state.isRoaming,
+                selected = queueMode,
+                onOpenQueue = onQueueClick,
+            )
         }
     }
 }
@@ -4862,7 +5075,7 @@ private fun PlaybackProgress(
             previewPosition = null
         },
         valueRange = 0f..duration.toFloat(),
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().height(32.dp),
         interactionSource = interactionSource,
     )
     Box(Modifier.fillMaxWidth()) {

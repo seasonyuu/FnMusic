@@ -12,6 +12,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.offset
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeAlignment
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeSyllable
@@ -44,6 +47,7 @@ internal fun AccompanistLyricText(
     baseColor: Color,
     highlightColor: Color,
     modifier: Modifier = Modifier,
+    removeHorizontalInset: Boolean = false,
 ) {
     if (timeline == null || timeline.segments.isEmpty()) {
         ProgressiveLyricText(text, timeline, position, activeProgress, baseColor, highlightColor, modifier)
@@ -63,6 +67,14 @@ internal fun AccompanistLyricText(
             line = line,
             currentTimeProvider = timeProvider,
             modifier = modifier
+                .then(if (removeHorizontalInset) Modifier.layout { measurable, constraints ->
+                    // The upstream renderer adds 16dp on each side inside its layout.
+                    val inset = 16.dp.roundToPx()
+                    val placeable = measurable.measure(constraints.offset(horizontal = inset * 2))
+                    layout((placeable.width - inset * 2).coerceAtLeast(0), placeable.height) {
+                        placeable.placeRelative(-inset, 0)
+                    }
+                } else Modifier)
                 .semantics { this.text = AnnotatedString(text) }
                 .graphicsLayer {
                     // Keep completed syllables filled; fade the finished line instead of resetting its clock.

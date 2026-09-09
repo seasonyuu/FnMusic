@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
 
+internal val LandscapePlayerTopPadding = 44.dp
+internal val LandscapePlayerBottomPadding = 32.dp
+
 /** Geometry uses the actual safe window, including when resized in split screen. */
 internal data class PlayerLayoutGeometry(
     val wide: Boolean,
@@ -29,7 +32,24 @@ internal data class PlayerLayoutGeometry(
     val detailWidth: Dp,
 )
 
-internal fun playerLayoutGeometry(width: Dp, height: Dp): PlayerLayoutGeometry {
+internal fun isShortLandscapePlayer(width: Dp, height: Dp): Boolean =
+    width >= 600.dp && height < 500.dp && width > height
+
+internal fun playerLayoutGeometry(width: Dp, height: Dp, shortLandscape: Boolean = isShortLandscapePlayer(width, height)): PlayerLayoutGeometry {
+    if (shortLandscape) {
+        val contentWidth = minOf(width, 1440.dp) - 64.dp
+        val start = (width - contentWidth) / 2
+        // Derive the unscaled square from the shared vertical margins.
+        val coverWidth = (height - LandscapePlayerTopPadding - LandscapePlayerBottomPadding).coerceAtLeast(0.dp)
+        return PlayerLayoutGeometry(
+            true,
+            true,
+            start,
+            coverWidth,
+            start + coverWidth + 32.dp,
+            contentWidth - coverWidth - 32.dp,
+        )
+    }
     val wide = width >= 840.dp
     if (!wide) {
         val playerWidth =
