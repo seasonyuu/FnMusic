@@ -20,6 +20,31 @@ import org.junit.Test
 class LyricsPresentationTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun changingFontScaleMatchesFreshLyricsMeasurement() {
+        val scale = mutableFloatStateOf(1f)
+        val text = "歌词会在字号变化后正确换行"
+        val timeline = resolveLyricTimeline(listOf(LyricLine(0, text)), 0, 10_000)
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale.floatValue)) {
+                androidx.compose.foundation.layout.Column {
+                    AccompanistLyricText(text, timeline, { 5_000L }, 1f, Color.Gray, Color.White,
+                        Modifier.width(220.dp).testTag("retained-line"))
+                    key(scale.floatValue) {
+                        AccompanistLyricText(text, timeline, { 5_000L }, 1f, Color.Gray, Color.White,
+                            Modifier.width(220.dp).testTag("fresh-line"))
+                    }
+                }
+            }
+        }
+        for (fontScale in listOf(1.3f, 2f, 1f)) {
+            compose.runOnIdle { scale.floatValue = fontScale }
+            val retained = compose.onNodeWithTag("retained-line").fetchSemanticsNode().boundsInRoot.height
+            val fresh = compose.onNodeWithTag("fresh-line").fetchSemanticsNode().boundsInRoot.height
+            assertEquals("Changing font scale must refresh cached line heights", fresh, retained, 1f)
+        }
+    }
+
     @Test fun highlightingNeverChangesMultilineLayout() {
         val active = mutableFloatStateOf(0f)
         val text = "你好，世界 👩🏽‍💻 Hello music\n让每一个音符留下来"

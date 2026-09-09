@@ -1,9 +1,12 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.platform.app.InstrumentationRegistry
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -57,6 +60,312 @@ import org.junit.Assert.assertTrue
 class MusicShellTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun wideMiniPlayerControlsStayOrderedAndDoNotOpenPlayer() {
+        val calls = mutableListOf<String>()
+        val tracks = (0..2).map { PlayableTrack(Track(TrackId("mini-$it"), "宽屏歌曲 $it"), "https://music.invalid/$it") }
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 800.dp) },
+            playerState = PlayerState(queue = tracks, currentIndex = 1),
+            onToggleShuffle = { calls += "shuffle" },
+            onPrevious = { calls += "previous" },
+            onTogglePlayback = { calls += "toggle" },
+            onNext = { calls += "next" },
+            onCycleRepeatMode = { calls += "repeat" },
+        )
+        val order = listOf("shuffle", "previous", "toggle", "next", "repeat", "lyrics", "queue")
+        val bounds = order.map { compose.onNodeWithTag("wide-mini-$it").assertIsDisplayed().fetchSemanticsNode().boundsInRoot }
+        bounds.zipWithNext().forEach { (left, right) -> assertTrue(left.right <= right.left) }
+        val pill = compose.onNodeWithTag("wide-mini-player").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(pill.left > root.left && pill.right < root.right)
+        order.take(5).forEach { compose.onNodeWithTag("wide-mini-$it").performTouchInput { click() } }
+        compose.runOnIdle { assertEquals(order.take(5), calls) }
+        compose.onNodeWithTag("player-playback-progress").assertDoesNotExist()
+    }
+
+    @Test
+    fun wideMiniPlayerLyricsAndQueueOpenTheirOwnPages() {
+        val input = androidx.navigationevent.DirectNavigationEventInput()
+        val track = PlayableTrack(Track(TrackId("mini-pages"), "宽屏入口测试"), "https://music.invalid/stream")
+        setContent(
+            backInput = input,
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 800.dp) },
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "直接打开歌词"))),
+            playerState = PlayerState(queue = listOf(track), currentIndex = 0),
+        )
+        compose.onNodeWithTag("wide-mini-lyrics").performTouchInput { click() }
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        compose.runOnIdle {
+            input.backStarted(androidx.navigationevent.NavigationEvent(progress = 0f, swipeEdge = androidx.navigationevent.NavigationEvent.EDGE_LEFT))
+        }
+        compose.runOnIdle { input.backCompleted() }
+        compose.onNodeWithTag("wide-mini-queue").performTouchInput { click() }
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun wideMiniPlayerRoamDisablesModesAndQueueWithoutOpeningPlayer() {
+        var modeRequests = 0
+        val track = PlayableTrack(Track(TrackId("mini-roam"), "漫游入口测试"), "https://music.invalid/stream")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 800.dp) },
+            playerState = PlayerState(queue = listOf(track), currentIndex = 0, isRoaming = true),
+            onToggleShuffle = { modeRequests++ },
+            onCycleRepeatMode = { modeRequests++ },
+        )
+        listOf("shuffle", "repeat", "queue").forEach {
+            compose.onNodeWithTag("wide-mini-$it").assertIsNotEnabled().performTouchInput { click() }
+        }
+        compose.onNodeWithContentDescription("漫游模式").assertIsDisplayed()
+        compose.onNodeWithTag("wide-mini-next").assertIsEnabled()
+        compose.onNodeWithTag("wide-mini-lyrics").assertIsEnabled()
+        compose.onNodeWithTag("player-playback-progress").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, modeRequests) }
+    }
+
+    @Test
+    fun adaptivePlayerKeepsControlsAndCoverWhileSwitchingRightPane() {
+        val track = Track(TrackId("adaptive"), "响应式播放测试")
+        val player =
+            PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+                durationMs = 180_000
+            )
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(1024.dp, 768.dp) },
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "右侧歌词"))),
+            playerState = player,
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-lyrics-entry").assertIsSelected()
+        compose.onNodeWithTag("player-lyrics-header").assertDoesNotExist()
+        val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        val right = compose.onNodeWithTag("player-detail-pane").fetchSemanticsNode().boundsInRoot
+        assertTrue(cover.right < right.left)
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-playback-progress").assertIsDisplayed()
+        captureLyricsScreenshot("adaptive-wide-lyrics")
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-header").assertDoesNotExist()
+        assertEquals(
+            cover,
+            compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        )
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun adaptivePlayerPreservesLyricsAndQueueAcrossWindowChanges() {
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(1024.dp, 768.dp))
+        val track = Track(TrackId("adaptive-resize"), "窗口调整测试")
+        setContent(
+            windowSize = { size.value },
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "保留歌词"))),
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(390.dp, 844.dp) }
+        compose.onNodeWithTag("player-lyrics-header").assertIsDisplayed()
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(1024.dp, 768.dp) }
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-header").assertDoesNotExist()
+        compose.onNodeWithTag("player-playback-progress").assertIsDisplayed()
+    }
+
+    @Test
+    fun adaptiveShortWindowAndLargeFontKeepControlsReachable() {
+        val track = Track(TrackId("adaptive-short"), "这是一首标题很长很长的歌曲用于验证大字体不会遮挡播放按钮")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(800.dp, 360.dp) },
+            testFontScale = { 2f },
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.onNodeWithTag("player-lyrics-entry").performScrollTo().assertIsDisplayed()
+        captureLyricsScreenshot("adaptive-short-large-font")
+    }
+
+    @Test
+    fun adaptivePlayerCoversWindowAndFontMatrix() {
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(1024.dp, 768.dp))
+        val font = mutableStateOf(1f)
+        val track =
+            Track(
+                TrackId("adaptive-matrix"),
+                "很长的歌曲标题 · A song with a long title for responsive layout"
+            )
+        setContent(
+            windowSize = { size.value },
+            testFontScale = { font.value },
+            state =
+                MusicUiState(
+                    loading = false,
+                    lyrics =
+                        listOf(
+                            LyricLine(
+                                text = "Nothing holds me down",
+                                timeMs = 0L,
+                                translation = "没有什么能够让我停下"
+                            ),
+                            LyricLine(
+                                text =
+                                    "Asking where the time has gone, dreaming with the lights on",
+                                timeMs = 30_000L
+                            ),
+                            LyricLine(text = "让长句歌词在不同窗口宽度下自然换行，播放控制始终保持可操作", timeMs = 60_000L),
+                        )
+                ),
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0,
+                    isPlaying = false,
+                    durationMs = 180_000
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        for ((width, height) in
+            listOf(390 to 844, 800 to 360, 840 to 600, 1024 to 768, 1280 to 800)) {
+            for (scale in listOf(1f, 1.3f, 2f)) {
+                compose.runOnIdle {
+                    size.value = androidx.compose.ui.unit.DpSize(width.dp, height.dp)
+                    font.value = scale
+                }
+                if (width < 840 &&
+                        compose
+                            .onAllNodesWithTag("player-lyrics-header")
+                            .fetchSemanticsNodes()
+                            .isNotEmpty()
+                ) {
+                    compose.onNodeWithTag("player-lyrics-entry").performScrollTo().performClick()
+                }
+                compose
+                    .onNodeWithTag("player-playback-progress")
+                    .performScrollTo()
+                    .assertIsDisplayed()
+                compose.onNodeWithContentDescription("播放或暂停").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithTag("player-lyrics-entry").performScrollTo().assertIsDisplayed()
+                if (width >= 840) {
+                    compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+                    val left =
+                        compose
+                            .onNodeWithTag("player-primary-pane")
+                            .fetchSemanticsNode()
+                            .boundsInRoot
+                    val right =
+                        compose
+                            .onNodeWithTag("player-detail-pane")
+                            .fetchSemanticsNode()
+                            .boundsInRoot
+                    assertTrue(
+                        "Panes must not overlap at $width x $height / $scale",
+                        left.right < right.left
+                    )
+                }
+                captureLyricsScreenshot("adaptive-matrix-$width-$height-$scale")
+            }
+        }
+    }
+
+    @Test
+    fun adaptiveTimedLyricsKeepControlsVisibleDuringPlayback() {
+        val track = Track(TrackId("adaptive-playing"), "实时歌词测试")
+        val player =
+            mutableStateOf(
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0,
+                    durationMs = 180_000
+                )
+            )
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(1024.dp, 768.dp) },
+            playerStateProvider = { player.value },
+            state =
+                MusicUiState(
+                    loading = false,
+                    lyrics = (0..5).map { LyricLine(text = "实时歌词第 $it 行", timeMs = it * 5_000L) }
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.mainClock.advanceTimeBy(6_000)
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-playback-progress").assertIsDisplayed()
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun adaptivePlayerRestoresQueueAndBackReturnsThroughLyrics() {
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        val input = androidx.navigationevent.DirectNavigationEventInput()
+        val track = Track(TrackId("adaptive-restoration"), "恢复播放页面")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(1024.dp, 768.dp) },
+            restoration = restoration,
+            backInput = input,
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithText("这首歌暂无歌词").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+        fun back() {
+            compose.runOnIdle {
+                input.backStarted(
+                    androidx.navigationevent.NavigationEvent(
+                        progress = 0f,
+                        swipeEdge = androidx.navigationevent.NavigationEvent.EDGE_LEFT
+                    )
+                )
+            }
+            compose.runOnIdle { input.backCompleted() }
+        }
+        back()
+        compose.onNodeWithText("这首歌暂无歌词").assertIsDisplayed()
+        back()
+        compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
+    }
+
+    @Test
+    fun adaptiveShortQueueCanReachAndSelectItsLastRow() {
+        val tracks = (1..24).map { Track(TrackId("short-queue-$it"), "短窗口队列 $it") }
+        var selected: Int? = null
+        setContent(windowSize = { androidx.compose.ui.unit.DpSize(800.dp, 360.dp) },
+            playerState = PlayerState(queue = tracks.map { PlayableTrack(it, "https://music.invalid/stream") }, currentIndex = 0),
+            onSkipToQueueItem = { selected = it },
+        )
+        compose.onNodeWithText(tracks.first().title).performClick()
+        compose.onNodeWithTag("player-queue-entry").performScrollTo().performClick()
+        compose.onNodeWithTag("player-queue-list").performScrollToNode(hasText(tracks.last().title))
+        compose.onNodeWithText(tracks.last().title).assertIsDisplayed().performClick()
+        assertEquals(23, selected)
+    }
 
     @Test
     fun homeFavoriteCardOpensPagedFavorites() {
@@ -1872,7 +2181,8 @@ class MusicShellTest {
     }
 
     private fun captureLyricsScreenshot(name: String) {
-        val directory = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("lyrics-screenshots")!!
+        val directory = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { java.io.File(it).apply { mkdirs() } }
+            ?: InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("lyrics-screenshots")!!
         java.io.File(directory, "$name.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
@@ -2588,77 +2898,111 @@ class MusicShellTest {
         onCreatePlaylist: (String, String?, TrackId?) -> Unit = { _, _, _ -> },
         onAddTrackToPlaylist: (PlaylistId, TrackId) -> Unit = { _, _ -> },
         onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit = { _, _ -> },
-        onSaveTrackMetadata: (suspend (Track, com.seasonyuu.fnmusic.core.model.TrackMetadataEdit) -> TrackMetadata)? = null,
+        onSaveTrackMetadata:
+            (suspend (
+                Track,
+                com.seasonyuu.fnmusic.core.model.TrackMetadataEdit) -> TrackMetadata)? =
+            null,
         openPlayerRequested: () -> Boolean = { false },
         onPlayerOpenRequestConsumed: () -> Unit = {},
+        windowSize: (() -> androidx.compose.ui.unit.DpSize)? = null,
+        testFontScale: () -> Float = { 1f },
     ) {
         val content: @androidx.compose.runtime.Composable () -> Unit = {
-            val detailKey = androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
-            FnMusicTheme {
-                MusicShell(
-                    state = stateProvider?.invoke() ?: state.copy(detailKey = detailKey.value),
-                    playerState = playerStateProvider?.invoke() ?: playerState,
-                    pagedTracks = flowOf(PagingData.empty()),
-                    pagedAlbums = flowOf(albums),
-                    pagedArtists = flowOf(PagingData.empty()),
-                    pagedFavorites = flowOf(PagingData.empty()),
-                    pagedSearch = flowOf(PagingData.empty<SearchItem>()),
-                    coverUrl = { _, _ -> null },
-                    onRefresh = {},
-                    onSearch = {},
-                    onSearchType = { _: SearchType -> },
-                    onTrackSort = onTrackSort,
-                    onAlbumSort = {},
-                    onRoam = onRoam,
-                    onPlayAllTracks = {},
-                    onPlayAllFavorites = {},
-                    onLoadAlbum = { detailKey.value = DetailRequestKey("album", it.value) },
-                    onLoadArtist = { detailKey.value = DetailRequestKey("artist", it.value) },
-                    onLoadPlaylist = { detailKey.value = DetailRequestKey("playlist", it.value) },
-                    onCreatePlaylist = onCreatePlaylist,
-                    onUpdatePlaylist = { _, _, _ -> },
-                    onDeletePlaylist = {},
-                    onAddTrackToPlaylist = onAddTrackToPlaylist,
-                    onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
-                    onPurgeInvalidPlaylistTracks = {},
-                    onLoadTrackMetadata = { detailKey.value = DetailRequestKey("track", it.value) },
-                    onSaveTrackMetadata = onSaveTrackMetadata,
-                    onPlay = { _, _ -> },
-                    onPlayNext = onPlayNext,
-                    onAddToQueue = {},
-                    onToggleFavorite = onToggleFavorite,
-                    onTogglePlayback = onTogglePlayback,
-                    onSeek = onSeek,
-                    onPrevious = onPrevious,
-                    onNext = onNext,
-                    onSkipToQueueItem = onSkipToQueueItem,
-                    onSkipToHistoryItem = onSkipToHistoryItem,
-                    onClearPlaybackHistory = onClearPlaybackHistory,
-                    onMoveQueueItem = onMoveQueueItem,
-                    onRemoveFromQueue = onRemoveFromQueue,
-                    onToggleShuffle = onToggleShuffle,
-                    onCycleRepeatMode = onCycleRepeatMode,
-                    onCacheSizeChange = {},
-                    onLogout = {},
-                    openPlayerRequested = openPlayerRequested(),
-                    onPlayerOpenRequestConsumed = onPlayerOpenRequestConsumed,
-                )
+            val detailKey =
+                androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
+            val originalDensity = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides
+                    androidx.compose.ui.unit.Density(originalDensity.density, testFontScale()),
+            ) {
+                FnMusicTheme {
+                    val size = windowSize?.invoke()
+                    androidx.compose.foundation.layout.Box(
+                        if (size != null)
+                            androidx.compose.ui.Modifier.requiredSize(size.width, size.height)
+                        else androidx.compose.ui.Modifier,
+                    ) {
+                        MusicShell(
+                            state = stateProvider?.invoke()
+                                    ?: state.copy(detailKey = detailKey.value),
+                            playerState = playerStateProvider?.invoke() ?: playerState,
+                            pagedTracks = flowOf(PagingData.empty()),
+                            pagedAlbums = flowOf(albums),
+                            pagedArtists = flowOf(PagingData.empty()),
+                            pagedFavorites = flowOf(PagingData.empty()),
+                            pagedSearch = flowOf(PagingData.empty<SearchItem>()),
+                            coverUrl = { _, _ -> null },
+                            onRefresh = {},
+                            onSearch = {},
+                            onSearchType = { _: SearchType -> },
+                            onTrackSort = onTrackSort,
+                            onAlbumSort = {},
+                            onRoam = onRoam,
+                            onPlayAllTracks = {},
+                            onPlayAllFavorites = {},
+                            onLoadAlbum = { detailKey.value = DetailRequestKey("album", it.value) },
+                            onLoadArtist = {
+                                detailKey.value = DetailRequestKey("artist", it.value)
+                            },
+                            onLoadPlaylist = {
+                                detailKey.value = DetailRequestKey("playlist", it.value)
+                            },
+                            onCreatePlaylist = onCreatePlaylist,
+                            onUpdatePlaylist = { _, _, _ -> },
+                            onDeletePlaylist = {},
+                            onAddTrackToPlaylist = onAddTrackToPlaylist,
+                            onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
+                            onPurgeInvalidPlaylistTracks = {},
+                            onLoadTrackMetadata = {
+                                detailKey.value = DetailRequestKey("track", it.value)
+                            },
+                            onSaveTrackMetadata = onSaveTrackMetadata,
+                            onPlay = { _, _ -> },
+                            onPlayNext = onPlayNext,
+                            onAddToQueue = {},
+                            onToggleFavorite = onToggleFavorite,
+                            onTogglePlayback = onTogglePlayback,
+                            onSeek = onSeek,
+                            onPrevious = onPrevious,
+                            onNext = onNext,
+                            onSkipToQueueItem = onSkipToQueueItem,
+                            onSkipToHistoryItem = onSkipToHistoryItem,
+                            onClearPlaybackHistory = onClearPlaybackHistory,
+                            onMoveQueueItem = onMoveQueueItem,
+                            onRemoveFromQueue = onRemoveFromQueue,
+                            onToggleShuffle = onToggleShuffle,
+                            onCycleRepeatMode = onCycleRepeatMode,
+                            onCacheSizeChange = {},
+                            onLogout = {},
+                            openPlayerRequested = openPlayerRequested(),
+                            onPlayerOpenRequestConsumed = onPlayerOpenRequestConsumed,
+                        )
+                    }
+                }
             }
         }
         val hostedContent: @androidx.compose.runtime.Composable () -> Unit = {
             if (backInput != null) {
-                val owner = androidx.compose.runtime.remember {
-                    object : androidx.navigationevent.NavigationEventDispatcherOwner {
-                        override val navigationEventDispatcher = androidx.navigationevent.NavigationEventDispatcher().apply {
-                            addInput(backInput)
+                val owner =
+                    androidx.compose.runtime.remember {
+                        object : androidx.navigationevent.NavigationEventDispatcherOwner {
+                            override val navigationEventDispatcher =
+                                androidx.navigationevent.NavigationEventDispatcher().apply {
+                                    addInput(backInput)
+                                }
                         }
                     }
+                androidx.compose.runtime.DisposableEffect(owner) {
+                    onDispose { owner.navigationEventDispatcher.removeInput(backInput) }
                 }
                 androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner provides owner,
+                    androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner provides
+                        owner,
                 ) { content() }
             } else content()
         }
-        if (restoration != null) restoration.setContent(hostedContent) else compose.setContent(hostedContent)
+        if (restoration != null) restoration.setContent(hostedContent)
+        else compose.setContent(hostedContent)
     }
 }
