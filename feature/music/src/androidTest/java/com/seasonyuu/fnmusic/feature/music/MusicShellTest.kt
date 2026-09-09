@@ -1,6 +1,8 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.platform.app.InstrumentationRegistry
@@ -126,6 +128,235 @@ class MusicShellTest {
     }
 
     @Test
+    fun largeCoverTogglesPlaybackAcrossLayoutsWithoutChangingSmallCoverAction() {
+        val window = mutableStateOf(androidx.compose.ui.unit.DpSize(390.dp, 844.dp))
+        val track = Track(TrackId("cover-toggle"), "封面播放控制")
+        var toggles = 0
+        setContent(
+            windowSize = { window.value },
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+            ),
+            onTogglePlayback = { toggles++ },
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "封面交互测试"))),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithTag("player-morph-cover").performClick()
+        compose.runOnIdle { assertEquals(1, toggles) }
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithTag("player-morph-cover").performClick()
+        compose.onNodeWithTag("player-playback-progress").assertIsDisplayed()
+        compose.runOnIdle { assertEquals("Small cover returns to playback without toggling", 1, toggles) }
+        for (size in listOf(
+            androidx.compose.ui.unit.DpSize(850.dp, 411.dp),
+            androidx.compose.ui.unit.DpSize(1100.dp, 800.dp),
+        )) {
+            compose.runOnIdle { window.value = size }
+            compose.onNodeWithTag("player-morph-cover").performClick()
+            compose.onNodeWithTag("player-lyrics-entry").performClick()
+            compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+            compose.onNodeWithTag("player-morph-cover").performClick()
+            compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        }
+        compose.runOnIdle { assertEquals(5, toggles) }
+    }
+
+    @Test
+    fun shortLandscapePlayerKeepsLargeCoverAndFixedPageSwitches() {
+        val track = Track(TrackId("short-wide-artwork"), "横屏下仍然清晰可见的专辑封面")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 411.dp) },
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0
+                ),
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "横屏歌词"))),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        captureLyricsScreenshot("short-landscape-playback")
+        val renderedDensity = compose.onNodeWithTag("player-morph-overlay").fetchSemanticsNode().boundsInRoot.width / 850f
+        assertTrue(
+            "Paused landscape artwork should remain at least 200dp: $cover",
+            cover.width >= 200f * renderedDensity,
+        )
+        val metadata =
+            compose
+                .onNodeWithTag("player-track-metadata")
+                .assertIsDisplayed()
+                .fetchSemanticsNode()
+                .boundsInRoot
+        assertTrue("Track information should sit beside the artwork", metadata.left >= cover.right)
+        val artworkPane = compose.onNodeWithTag("player-primary-pane").fetchSemanticsNode().boundsInRoot
+        assertEquals("Metadata aligns with the unscaled artwork", artworkPane.top, metadata.top, 1f)
+        assertEquals("Unscaled artwork uses the full available height", artworkPane.height, artworkPane.width, 1f)
+        assertEquals("Pause keeps the existing artwork scale", artworkPane.height * 0.73f, cover.height, 2f)
+        val progress = compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot
+        assertEquals(metadata.left, progress.left, 1f)
+        assertEquals(metadata.right, progress.right, 1f)
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.onNodeWithTag("player-volume-slider").assertIsDisplayed()
+        compose.onNodeWithTag("player-playback-entry").assertDoesNotExist()
+        val footer =
+            compose.onNodeWithTag("player-bottom-utilities").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+        val header = compose.onNodeWithTag("player-landscape-lyrics-header").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val lyricsPane = compose.onNodeWithTag("player-detail-pane").fetchSemanticsNode().boundsInRoot
+        assertTrue("Lyrics stay below the song information", header.bottom <= lyricsPane.top)
+        val lyricText = compose.onNodeWithText("横屏歌词", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(metadata.left, lyricText.left, 1f)
+        compose.onNodeWithTag("player-playback-progress").assertDoesNotExist()
+        compose.onNodeWithTag("player-track-metadata").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-bottom-utilities").assertDoesNotExist()
+        compose.onNodeWithTag("player-landscape-lyrics-header").assertIsDisplayed()
+        val expandedLyricsPane = compose.onNodeWithTag("player-detail-pane").fetchSemanticsNode().boundsInRoot
+        assertEquals(lyricsPane.top, expandedLyricsPane.top, 1f)
+        assertEquals(88f * renderedDensity, expandedLyricsPane.bottom - lyricsPane.bottom, 2f)
+        assertEquals(cover, compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithTag("player-detail-pane").performTouchInput { click() }
+        compose.onNodeWithTag("player-lyrics-entry").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-entry").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-header").assertDoesNotExist()
+        compose.onNodeWithTag("player-playback-progress").assertDoesNotExist()
+        assertEquals(
+            cover,
+            compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+        )
+        assertEquals(
+            footer,
+            compose.onNodeWithTag("player-bottom-utilities").fetchSemanticsNode().boundsInRoot
+        )
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.onNodeWithTag("player-playback-entry").assertDoesNotExist()
+    }
+
+    @Test
+    fun landscapePageExitNeverOverlaysPlaybackControls() {
+        val track = Track(TrackId("landscape-page-exit"), "横屏页面退出")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 411.dp) },
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+            ),
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "退出时不能叠在控制上"))),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+        compose.mainClock.autoAdvance = false
+        fun pageAlpha() = compose.onNodeWithTag("player-detail-pane").fetchSemanticsNode().config[PlayerPageAlphaKey]
+        for (idleFirst in listOf(false, true)) {
+            compose.onNodeWithTag("player-lyrics-entry").performClick()
+            compose.mainClock.advanceTimeBy(600)
+            compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+            if (idleFirst) {
+                compose.mainClock.advanceTimeBy(5_000)
+                compose.onNodeWithTag("player-detail-pane").performTouchInput { click() }
+                compose.mainClock.advanceTimeBy(240)
+            }
+            val outgoingLine = compose.onNodeWithTag("lyrics-line-0").fetchSemanticsNode().boundsInRoot
+            compose.onNodeWithTag("player-lyrics-entry").performClick()
+            compose.mainClock.advanceTimeBy(64)
+            compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+            assertTrue("Outgoing lyrics must actually fade", pageAlpha() in 0.01f..0.99f)
+            compose.onNodeWithTag("player-landscape-controls").assertDoesNotExist()
+            assertEquals(outgoingLine, compose.onNodeWithTag("lyrics-line-0").fetchSemanticsNode().boundsInRoot)
+            compose.mainClock.advanceTimeBy(400)
+            repeat(16) {
+                compose.mainClock.advanceTimeByFrame()
+                compose.onNodeWithTag("player-landscape-controls").assertIsDisplayed()
+                compose.onNodeWithTag("lyrics-list").assertDoesNotExist()
+            }
+        }
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithTag("player-queue-list").assertIsDisplayed()
+        compose.onNodeWithTag("player-landscape-controls").assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(400)
+        repeat(16) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.onNodeWithTag("player-landscape-controls").assertIsDisplayed()
+            compose.onNodeWithTag("player-queue-list").assertDoesNotExist()
+        }
+        // Reverse an exit before it finishes; the latest request must win without a flash.
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        repeat(24) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
+            compose.onNodeWithTag("player-landscape-controls").assertDoesNotExist()
+        }
+        assertEquals(1f, pageAlpha(), 0.001f)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun landscapeLyricsIdleTimerResetsOnTouchAndKeepsOtherPagesVisible() {
+        val track = Track(TrackId("landscape-idle"), "歌词空闲计时")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(850.dp, 411.dp) },
+            playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-bottom-utilities").assertDoesNotExist()
+        compose.onNodeWithTag("player-detail-pane").performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+        compose.onNodeWithTag("player-detail-pane").performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithTag("player-bottom-utilities").assertDoesNotExist()
+        compose.onNodeWithTag("player-detail-pane").performTouchInput { click() }
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.mainClock.advanceTimeBy(5_000)
+        compose.onNodeWithTag("player-queue-entry").assertIsDisplayed()
+    }
+
+    @Test
+    fun landscapePagesSurviveRotationAndRoamingKeepsItsGuard() {
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(800.dp, 360.dp))
+        val track = Track(TrackId("landscape-rotate"), "横屏漫游")
+        setContent(
+            windowSize = { size.value },
+            playerState =
+                PlayerState(
+                    queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                    currentIndex = 0,
+                    isRoaming = true
+                ),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        compose.onNodeWithTag("player-playback-entry").assertDoesNotExist()
+        compose.onNodeWithTag("player-roam-indicator").assertIsDisplayed()
+        compose.onNodeWithTag("player-queue-entry").assertDoesNotExist()
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithText("这首歌暂无歌词").assertIsDisplayed()
+        compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(390.dp, 844.dp) }
+        compose.onNodeWithTag("player-lyrics-header").assertIsDisplayed()
+        compose.onNodeWithText("这首歌暂无歌词").assertIsDisplayed()
+        compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(800.dp, 360.dp) }
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+        compose.onNodeWithTag("player-lyrics-entry").assertIsSelected().performClick()
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
+        compose.onNodeWithTag("player-playback-entry").assertDoesNotExist()
+    }
+    @Test
     fun adaptivePlayerKeepsControlsAndCoverWhileSwitchingRightPane() {
         val track = Track(TrackId("adaptive"), "响应式播放测试")
         val player =
@@ -197,8 +428,9 @@ class MusicShellTest {
                 ),
         )
         compose.onNodeWithText(track.title).performClick()
-        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
-        compose.onNodeWithTag("player-lyrics-entry").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("播放或暂停").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("player-volume-slider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
         captureLyricsScreenshot("adaptive-short-large-font")
     }
 
@@ -261,7 +493,11 @@ class MusicShellTest {
                     .performScrollTo()
                     .assertIsDisplayed()
                 compose.onNodeWithContentDescription("播放或暂停").performScrollTo().assertIsDisplayed()
-                compose.onNodeWithTag("player-lyrics-entry").performScrollTo().assertIsDisplayed()
+                if (isShortLandscapePlayer(width.dp, height.dp)) {
+                    compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
+                } else {
+                    compose.onNodeWithTag("player-lyrics-entry").performScrollTo().assertIsDisplayed()
+                }
                 if (width >= 840) {
                     compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
                     val left =
@@ -361,7 +597,7 @@ class MusicShellTest {
             onSkipToQueueItem = { selected = it },
         )
         compose.onNodeWithText(tracks.first().title).performClick()
-        compose.onNodeWithTag("player-queue-entry").performScrollTo().performClick()
+        compose.onNodeWithTag("player-queue-entry").assertIsDisplayed().performClick()
         compose.onNodeWithTag("player-queue-list").performScrollToNode(hasText(tracks.last().title))
         compose.onNodeWithText(tracks.last().title).assertIsDisplayed().performClick()
         assertEquals(23, selected)
@@ -1596,6 +1832,7 @@ class MusicShellTest {
         compose.onNodeWithTag("player-queue-entry").assertIsDisplayed()
 
         compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithTag("player-lyrics-entry").assertIsSelected()
         compose.waitUntil(timeoutMillis = 2_000) {
             compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot.height < largeCover.height * 0.4f
         }
@@ -2905,80 +3142,71 @@ class MusicShellTest {
             null,
         openPlayerRequested: () -> Boolean = { false },
         onPlayerOpenRequestConsumed: () -> Unit = {},
-        windowSize: (() -> androidx.compose.ui.unit.DpSize)? = null,
+        windowSize: (() -> androidx.compose.ui.unit.DpSize)? = {
+            androidx.compose.ui.unit.DpSize(390.dp, 844.dp)
+        },
         testFontScale: () -> Float = { 1f },
     ) {
         val content: @androidx.compose.runtime.Composable () -> Unit = {
             val detailKey =
                 androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
-            val originalDensity = androidx.compose.ui.platform.LocalDensity.current
-            androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalDensity provides
-                    androidx.compose.ui.unit.Density(originalDensity.density, testFontScale()),
-            ) {
+            MusicTestWindow(windowSize?.invoke(), testFontScale()) {
                 FnMusicTheme {
-                    val size = windowSize?.invoke()
-                    androidx.compose.foundation.layout.Box(
-                        if (size != null)
-                            androidx.compose.ui.Modifier.requiredSize(size.width, size.height)
-                        else androidx.compose.ui.Modifier,
-                    ) {
-                        MusicShell(
-                            state = stateProvider?.invoke()
-                                    ?: state.copy(detailKey = detailKey.value),
-                            playerState = playerStateProvider?.invoke() ?: playerState,
-                            pagedTracks = flowOf(PagingData.empty()),
-                            pagedAlbums = flowOf(albums),
-                            pagedArtists = flowOf(PagingData.empty()),
-                            pagedFavorites = flowOf(PagingData.empty()),
-                            pagedSearch = flowOf(PagingData.empty<SearchItem>()),
-                            coverUrl = { _, _ -> null },
-                            onRefresh = {},
-                            onSearch = {},
-                            onSearchType = { _: SearchType -> },
-                            onTrackSort = onTrackSort,
-                            onAlbumSort = {},
-                            onRoam = onRoam,
-                            onPlayAllTracks = {},
-                            onPlayAllFavorites = {},
-                            onLoadAlbum = { detailKey.value = DetailRequestKey("album", it.value) },
-                            onLoadArtist = {
-                                detailKey.value = DetailRequestKey("artist", it.value)
-                            },
-                            onLoadPlaylist = {
-                                detailKey.value = DetailRequestKey("playlist", it.value)
-                            },
-                            onCreatePlaylist = onCreatePlaylist,
-                            onUpdatePlaylist = { _, _, _ -> },
-                            onDeletePlaylist = {},
-                            onAddTrackToPlaylist = onAddTrackToPlaylist,
-                            onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
-                            onPurgeInvalidPlaylistTracks = {},
-                            onLoadTrackMetadata = {
-                                detailKey.value = DetailRequestKey("track", it.value)
-                            },
-                            onSaveTrackMetadata = onSaveTrackMetadata,
-                            onPlay = { _, _ -> },
-                            onPlayNext = onPlayNext,
-                            onAddToQueue = {},
-                            onToggleFavorite = onToggleFavorite,
-                            onTogglePlayback = onTogglePlayback,
-                            onSeek = onSeek,
-                            onPrevious = onPrevious,
-                            onNext = onNext,
-                            onSkipToQueueItem = onSkipToQueueItem,
-                            onSkipToHistoryItem = onSkipToHistoryItem,
-                            onClearPlaybackHistory = onClearPlaybackHistory,
-                            onMoveQueueItem = onMoveQueueItem,
-                            onRemoveFromQueue = onRemoveFromQueue,
-                            onToggleShuffle = onToggleShuffle,
-                            onCycleRepeatMode = onCycleRepeatMode,
-                            onCacheSizeChange = {},
-                            onLogout = {},
-                            openPlayerRequested = openPlayerRequested(),
-                            onPlayerOpenRequestConsumed = onPlayerOpenRequestConsumed,
-                        )
-                    }
+                    MusicShell(
+                        playerWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
+                        immersivePlayerInsets = androidx.compose.foundation.layout.WindowInsets(0),
+                        managePlayerSystemBars = false,
+                        state = stateProvider?.invoke() ?: state.copy(detailKey = detailKey.value),
+                        playerState = playerStateProvider?.invoke() ?: playerState,
+                        pagedTracks = flowOf(PagingData.empty()),
+                        pagedAlbums = flowOf(albums),
+                        pagedArtists = flowOf(PagingData.empty()),
+                        pagedFavorites = flowOf(PagingData.empty()),
+                        pagedSearch = flowOf(PagingData.empty<SearchItem>()),
+                        coverUrl = { _, _ -> null },
+                        onRefresh = {},
+                        onSearch = {},
+                        onSearchType = { _: SearchType -> },
+                        onTrackSort = onTrackSort,
+                        onAlbumSort = {},
+                        onRoam = onRoam,
+                        onPlayAllTracks = {},
+                        onPlayAllFavorites = {},
+                        onLoadAlbum = { detailKey.value = DetailRequestKey("album", it.value) },
+                        onLoadArtist = { detailKey.value = DetailRequestKey("artist", it.value) },
+                        onLoadPlaylist = {
+                            detailKey.value = DetailRequestKey("playlist", it.value)
+                        },
+                        onCreatePlaylist = onCreatePlaylist,
+                        onUpdatePlaylist = { _, _, _ -> },
+                        onDeletePlaylist = {},
+                        onAddTrackToPlaylist = onAddTrackToPlaylist,
+                        onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
+                        onPurgeInvalidPlaylistTracks = {},
+                        onLoadTrackMetadata = {
+                            detailKey.value = DetailRequestKey("track", it.value)
+                        },
+                        onSaveTrackMetadata = onSaveTrackMetadata,
+                        onPlay = { _, _ -> },
+                        onPlayNext = onPlayNext,
+                        onAddToQueue = {},
+                        onToggleFavorite = onToggleFavorite,
+                        onTogglePlayback = onTogglePlayback,
+                        onSeek = onSeek,
+                        onPrevious = onPrevious,
+                        onNext = onNext,
+                        onSkipToQueueItem = onSkipToQueueItem,
+                        onSkipToHistoryItem = onSkipToHistoryItem,
+                        onClearPlaybackHistory = onClearPlaybackHistory,
+                        onMoveQueueItem = onMoveQueueItem,
+                        onRemoveFromQueue = onRemoveFromQueue,
+                        onToggleShuffle = onToggleShuffle,
+                        onCycleRepeatMode = onCycleRepeatMode,
+                        onCacheSizeChange = {},
+                        onLogout = {},
+                        openPlayerRequested = openPlayerRequested(),
+                        onPlayerOpenRequestConsumed = onPlayerOpenRequestConsumed,
+                    )
                 }
             }
         }
@@ -3004,5 +3232,40 @@ class MusicShellTest {
         }
         if (restoration != null) restoration.setContent(hostedContent)
         else compose.setContent(hostedContent)
+    }
+}
+
+/** Keep virtual test windows visible without changing the device display or fold state. */
+@androidx.compose.runtime.Composable
+private fun MusicTestWindow(
+    size: androidx.compose.ui.unit.DpSize?,
+    fontScale: Float,
+    content: @androidx.compose.runtime.Composable () -> Unit,
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        androidx.compose.ui.Modifier.fillMaxSize().safeDrawingPadding(),
+    ) {
+        val originalDensity = androidx.compose.ui.platform.LocalDensity.current
+        val fitDensity =
+            if (size == null) originalDensity.density
+            else
+                minOf(
+                    originalDensity.density,
+                    constraints.maxWidth / size.width.value,
+                    constraints.maxHeight / size.height.value,
+                )
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides
+                androidx.compose.ui.unit.Density(fitDensity, fontScale),
+        ) {
+            androidx.compose.foundation.layout.Box(
+                if (size == null) androidx.compose.ui.Modifier
+                else
+                    androidx.compose.ui.Modifier.requiredSize(
+                        (kotlin.math.ceil(size.width.value * fitDensity) / fitDensity).dp,
+                        (kotlin.math.ceil(size.height.value * fitDensity) / fitDensity).dp,
+                    ),
+            ) { content() }
+        }
     }
 }
