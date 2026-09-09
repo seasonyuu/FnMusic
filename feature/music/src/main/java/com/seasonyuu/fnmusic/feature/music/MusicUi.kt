@@ -303,8 +303,15 @@ internal val LyricBlurRadiusKey = SemanticsPropertyKey<Float>("LyricBlurRadius")
 internal var SemanticsPropertyReceiver.lyricBlurRadius by LyricBlurRadiusKey
 private const val LyricsFollowResumeDelayMillis = 8_000L
 
+enum class CatalogSection(val title: String) {
+    Tracks("最近添加"), Albums("专辑"), Artists("歌手"), Favorites("收藏"), Recent("最近播放"), Playlists("歌单"), TrackTotal("曲目总数"),
+}
+
 data class MusicUiState(
     val loading: Boolean = true,
+    val pendingSections: Set<CatalogSection> = CatalogSection.entries.toSet(),
+    val loadedSections: Set<CatalogSection> = emptySet(),
+    val sectionErrors: Map<CatalogSection, String> = emptyMap(),
     val tracks: List<Track> = emptyList(),
     val trackTotal: Int? = null,
     val albums: List<Album> = emptyList(),
@@ -359,20 +366,6 @@ internal fun edgeToEdgeContentPadding(
             LocalBottomOverlayPadding.current,
         ),
     )
-}
-
-@Composable
-fun MusicLoadingScreen(modifier: Modifier = Modifier) {
-    FnGradientBackground {
-        Box(modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Image(painterResource(R.drawable.fn_music_logo), "飞牛音乐", Modifier.size(72.dp))
-                Text("飞牛音乐", style = MaterialTheme.typography.headlineMedium, color = FnTextPrimary)
-                androidx.compose.material3.CircularProgressIndicator(color = FnAccent)
-                Text("正在加载音乐库…", color = FnTextSecondary)
-            }
-        }
-    }
 }
 
 @Composable
@@ -689,6 +682,7 @@ fun MusicShell(
                                                         { navigate(MusicDestination.More, MorePage.Playlists) },
                                                         { pushDetail(LibraryDetail.AlbumPage(it)) },
                                                         { pushDetail(LibraryDetail.PlaylistPage(it)) },
+                                                        onRefresh,
                                                     )
                                                     MusicDestination.Library -> PagingTrackScreen(
                                                         "音乐库", trackItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
@@ -966,6 +960,7 @@ private fun HomeScreen(
     onPlaylists: () -> Unit,
     onAlbum: (Album) -> Unit,
     onPlaylist: (Playlist) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     // Keep the vertical page rhythm inset, but let horizontal carousels own the
     // full-width viewport so cards can slide under the screen edge instead of
@@ -987,20 +982,30 @@ private fun HomeScreen(
         item {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val cardWidth = if (maxWidth < 420.dp) maxWidth - 48.dp else 340.dp
-                RecentTracksGrid(
-                    tracks = state.tracks.take(12),
-                    state = state,
-                    coverUrl = coverUrl,
-                    cardWidth = cardWidth,
-                    onPlay = { track -> onPlay(state.tracks, state.tracks.indexOf(track)) },
-                    onToggleFavorite = onToggleFavorite,
-                )
+                HomeSectionContent(state, CatalogSection.Tracks, state.tracks.isNotEmpty(), onRefresh) {
+                    RecentTracksGrid(
+                        tracks = state.tracks.take(12),
+                        state = state,
+                        coverUrl = coverUrl,
+                        cardWidth = cardWidth,
+                        onPlay = { track -> onPlay(state.tracks, state.tracks.indexOf(track)) },
+                        onToggleFavorite = onToggleFavorite,
+                    )
+                }
             }
         }
         item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("专辑", onAlbums) } }
-        item { AlbumRow(state.albums, coverUrl, onAlbum) }
+        item {
+            HomeSectionContent(state, CatalogSection.Albums, state.albums.isNotEmpty(), onRefresh) {
+                AlbumRow(state.albums, coverUrl, onAlbum)
+            }
+        }
         item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("歌单", onPlaylists) } }
-        item { PlaylistRow(state.playlists, coverUrl, onPlaylist) }
+        item {
+            HomeSectionContent(state, CatalogSection.Playlists, state.playlists.isNotEmpty(), onRefresh) {
+                PlaylistRow(state.playlists, coverUrl, onPlaylist)
+            }
+        }
     }
 }
 

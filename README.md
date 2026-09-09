@@ -27,6 +27,8 @@ Current version `0.1.0`, early development stage — APIs and build setup may ch
 
 **Music library**
 
+- After authentication, enter the home screen immediately. Cached sections remain visible while independent catalog requests refresh in parallel; uncached sections show skeletons with local retry on failure.
+
 - Home, library, search, favorites, recently played, albums, artists, and playlists.
 
 **Playback**

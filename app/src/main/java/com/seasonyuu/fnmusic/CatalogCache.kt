@@ -85,6 +85,16 @@ class CatalogCache(context: Context, private val json: Json) {
 
 fun CatalogCacheSnapshot.toMusicState(previous: MusicUiState = MusicUiState()): MusicUiState = previous.copy(
     loading = false,
+    pendingSections = emptySet(),
+    loadedSections = setOf(
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.Tracks,
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.Albums,
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.Favorites,
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.Recent,
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.Playlists,
+        com.seasonyuu.fnmusic.feature.music.CatalogSection.TrackTotal,
+    ),
+    sectionErrors = emptyMap(),
     tracks = tracks,
     albums = albums,
     favorites = favorites,

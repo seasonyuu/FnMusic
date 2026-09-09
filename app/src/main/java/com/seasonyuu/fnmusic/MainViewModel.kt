@@ -23,6 +23,7 @@ import com.seasonyuu.fnmusic.feature.music.cacheCurrentDetail
 import com.seasonyuu.fnmusic.feature.music.forDetail
 import com.seasonyuu.fnmusic.feature.music.MusicDetailSnapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -77,6 +78,19 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     fun previewLiquidGlassBlur(value: Float) = liquidGlassSettings.preview(value)
     fun saveLiquidGlassBlur() = liquidGlassSettings.save()
+
+    private var refreshJob: Job? = null
+    private val catalogRefresh = CatalogRefresh(graph.catalog, mutableMusic, graph.favorites::seed)
+
+    private fun resetCatalog() {
+        refreshJob?.cancel()
+        val previous = mutableMusic.value
+        mutableMusic.value = MusicUiState(
+            cacheBytes = previous.cacheBytes,
+            liquidGlassBlur = previous.liquidGlassBlur,
+            liquidGlassSaveError = previous.liquidGlassSaveError,
+        )
+    }
 
     private var searchJob: Job? = null
     private var detailJob: Job? = null
@@ -170,40 +184,20 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     fun connect(profile: ConnectionProfile, password: CharArray) {
         clearDetailCache()
+        resetCatalog()
         viewModelScope.launch { graph.session.connect(profile, password) }
     }
 
     fun refresh() {
-        viewModelScope.launch {
-            mutableMusic.value = mutableMusic.value.copy(loading = true, error = null)
-            runCatching {
-                val tracks = graph.catalog.firstTracks(60, TrackSort.RecentlyAdded)
-                val trackTotal = runCatching { graph.catalog.trackCount(TrackSort.RecentlyAdded) }.getOrNull()
-                val albums = graph.catalog.firstAlbums(20, AlbumSort.RecentlyUpdated)
-                val artists = graph.catalog.firstArtists(30)
-                val favorites = graph.catalog.favoritePage(100)
-                val recent = graph.catalog.recent(30)
-                val playlists = graph.catalog.playlists()
-                graph.favorites.seed(tracks + favorites + recent)
-                val refreshed = mutableMusic.value.copy(
-                    loading = false,
-                    tracks = tracks,
-                    trackTotal = trackTotal,
-                    albums = albums,
-                    artists = artists,
-                    favorites = favorites,
-                    recent = recent,
-                    playlists = playlists,
-                    favoriteOverrides = graph.favorites.overrides.value,
-                    trackSort = trackSort.value,
-                    albumSort = albumSort.value,
-                )
-                (session.value as? SessionState.Ready)?.profile?.let { profile ->
-                    graph.catalogCache.save(profile, refreshed)
-                }
-                refreshed
-            }.onSuccess { mutableMusic.value = it }
-                .onFailure { mutableMusic.value = mutableMusic.value.copy(loading = false, error = it.message ?: "加载曲库失败") }
+        val profile = (session.value as? SessionState.Ready)?.profile ?: return
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            catalogRefresh.refresh()
+            // A cancelled or replaced session must never overwrite another account's cache.
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if ((session.value as? SessionState.Ready)?.profile == profile && mutableMusic.value.sectionErrors.isEmpty()) {
+                graph.catalogCache.save(profile, mutableMusic.value)
+            }
         }
     }
 
@@ -584,6 +578,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     fun logout() {
         clearDetailCache()
+        resetCatalog()
         viewModelScope.launch {
             exitRoamMode()
             graph.player.clear()
