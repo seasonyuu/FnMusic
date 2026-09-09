@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.semantics
@@ -54,28 +55,33 @@ internal fun AccompanistLyricText(
     val timeProvider = remember(line) {
         { currentPosition().coerceIn(0, Int.MAX_VALUE.toLong()).toInt() }
     }
-    KaraokeLineText(
-        line = line,
-        currentTimeProvider = timeProvider,
-        modifier = modifier
-            .semantics { this.text = AnnotatedString(text) }
-            .graphicsLayer {
-                // Keep completed syllables filled; fade the finished line instead of resetting its clock.
-                // Upcoming lines already have the renderer's unsung tint, so do not dim them twice.
-                alpha = if (timeProvider() >= line.end) {
-                    val restingAlpha = (baseColor.alpha / highlightColor.alpha.coerceAtLeast(0.001f)).coerceIn(0f, 1f)
-                    restingAlpha + (1f - restingAlpha) * active
-                } else 1f
-            },
-        normalLineTextStyle = TextStyle(
-            fontSize = 28.sp,
-            lineHeight = 36.sp,
-            fontWeight = FontWeight.SemiBold,
-            // Center the line-height leading rather than distributing it by font ascent/descent.
-            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-        ),
-        activeColor = highlightColor,
-        showTranslation = false,
-        showPhonetic = false,
-    )
+    val density = LocalDensity.current
+    // Upstream caches line height by TextStyle alone. Recreate its measurements when
+    // font scale/density changes while keeping playback and list state outside this key.
+    key(density.density, density.fontScale) {
+        KaraokeLineText(
+            line = line,
+            currentTimeProvider = timeProvider,
+            modifier = modifier
+                .semantics { this.text = AnnotatedString(text) }
+                .graphicsLayer {
+                    // Keep completed syllables filled; fade the finished line instead of resetting its clock.
+                    // Upcoming lines already have the renderer's unsung tint, so do not dim them twice.
+                    alpha = if (timeProvider() >= line.end) {
+                        val restingAlpha = (baseColor.alpha / highlightColor.alpha.coerceAtLeast(0.001f)).coerceIn(0f, 1f)
+                        restingAlpha + (1f - restingAlpha) * active
+                    } else 1f
+                },
+            normalLineTextStyle = TextStyle(
+                fontSize = 28.sp,
+                lineHeight = 36.sp,
+                fontWeight = FontWeight.SemiBold,
+                // Center the line-height leading rather than distributing it by font ascent/descent.
+                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+            ),
+            activeColor = highlightColor,
+            showTranslation = false,
+            showPhonetic = false,
+        )
+    }
 }

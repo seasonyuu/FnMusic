@@ -133,6 +133,8 @@ fun MiniPlayer(
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onOpen: () -> Unit,
+    leadingControls: (@Composable () -> Unit)? = null,
+    trailingControls: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     coverModifier: Modifier = Modifier,
     playerMorphProgress: Float = 0f,
@@ -194,6 +196,7 @@ fun MiniPlayer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                leadingControls?.invoke()
                 CoverImage(
                     current.coverUrl,
                     current.track.title,
@@ -212,7 +215,7 @@ fun MiniPlayer(
                         maxLines = 1,
                     )
                 }
-                Row {
+                if (trailingControls != null) trailingControls() else Row {
                     IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
                         Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
                     }
