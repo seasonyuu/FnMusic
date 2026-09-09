@@ -164,9 +164,15 @@ class NetworkRuntime {
         .addInterceptor(AuthxInterceptor())
         .build()
 
-    val api: MusicApi = Retrofit.Builder()
+    val api: MusicApi = createApi(httpClient)
+
+    // Recovery runs while catalog requests occupy dispatcher slots. Give its
+    // bypassed auth calls their own slots so a full queue cannot deadlock login.
+    internal val sessionApi: MusicApi = createApi(httpClient.newBuilder().dispatcher(okhttp3.Dispatcher()).build())
+
+    private fun createApi(client: OkHttpClient): MusicApi = Retrofit.Builder()
         .baseUrl("https://music.invalid/")
-        .client(httpClient)
+        .client(client)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
         .create(MusicApi::class.java)

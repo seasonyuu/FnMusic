@@ -241,6 +241,20 @@ data class PlayerState(
         get() = orderedQueueIndices.indexOf(currentIndex) > 0 || (current != null && repeatMode != RepeatMode.Off)
 }
 
+/** Editable login details, stored separately from the active session in the encrypted vault. */
+@Serializable
+data class LoginForm(
+    val useDirectConnection: Boolean = false,
+    val fnId: String = "",
+    val directUrl: String = "",
+    val username: String = "",
+    val password: String = "",
+    val allowPrivateLanHttp: Boolean = false,
+) {
+    // Do not expose passwords through incidental logging.
+    override fun toString(): String = "LoginForm(redacted)"
+}
+
 interface SessionRepository {
     val state: StateFlow<SessionState>
     suspend fun connect(profile: ConnectionProfile, password: CharArray)

@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.seasonyuu.fnmusic.core.model.ConnectionProfile
+import com.seasonyuu.fnmusic.core.model.LoginForm
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -27,6 +28,8 @@ interface SessionVault {
     fun deviceId(): String
     fun save(credentials: SavedCredentials)
     fun load(): SavedCredentials?
+    fun saveLoginForm(form: LoginForm)
+    fun loadLoginForm(): LoginForm?
     fun clearCredentials()
 }
 
@@ -37,21 +40,40 @@ class CredentialVault(context: Context, private val json: Json) : SessionVault {
         .also { value -> preferences.edit { putString(KEY_DEVICE_ID, value) } }
 
     override fun save(credentials: SavedCredentials) {
-        val plain = json.encodeToString(credentials).encodeToByteArray()
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-        val combined = cipher.iv + cipher.doFinal(plain)
-        preferences.edit { putString(KEY_CREDENTIALS, Base64.encodeToString(combined, Base64.NO_WRAP)) }
+        writeEncrypted(KEY_CREDENTIALS, json.encodeToString(credentials))
     }
 
-    override fun load(): SavedCredentials? {
-        val encoded = preferences.getString(KEY_CREDENTIALS, null) ?: return null
+    override fun load(): SavedCredentials? = readEncrypted(KEY_CREDENTIALS)?.let {
+        runCatching { json.decodeFromString<SavedCredentials>(it) }.getOrNull()
+    }
+
+    override fun saveLoginForm(form: LoginForm) = writeEncrypted(KEY_LOGIN_FORM, json.encodeToString(form))
+
+    override fun loadLoginForm(): LoginForm? = readEncrypted(KEY_LOGIN_FORM)?.let {
+        runCatching { json.decodeFromString<LoginForm>(it) }.getOrNull()
+    }
+
+    private fun writeEncrypted(key: String, value: String) {
+        val plain = value.encodeToByteArray()
+        try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey())
+            val combined = cipher.iv + cipher.doFinal(plain)
+            preferences.edit { putString(key, Base64.encodeToString(combined, Base64.NO_WRAP)) }
+        } finally {
+            plain.fill(0)
+        }
+    }
+
+    private fun readEncrypted(key: String): String? {
+        val encoded = preferences.getString(key, null) ?: return null
         return runCatching {
             val combined = Base64.decode(encoded, Base64.NO_WRAP)
             require(combined.size > IV_SIZE)
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, combined.copyOfRange(0, IV_SIZE)))
-            json.decodeFromString<SavedCredentials>(cipher.doFinal(combined.copyOfRange(IV_SIZE, combined.size)).decodeToString())
+            val plain = cipher.doFinal(combined.copyOfRange(IV_SIZE, combined.size))
+            try { plain.decodeToString() } finally { plain.fill(0) }
         }.getOrNull()
     }
 
@@ -77,6 +99,7 @@ class CredentialVault(context: Context, private val json: Json) : SessionVault {
 
     private companion object {
         const val KEY_ALIAS = "fn_music_session_key"
+        const val KEY_LOGIN_FORM = "login_form"
         const val KEY_CREDENTIALS = "credentials"
         const val KEY_DEVICE_ID = "device_id"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

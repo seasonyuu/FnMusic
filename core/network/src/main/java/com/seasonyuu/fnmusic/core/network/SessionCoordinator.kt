@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.core.network
 
 import com.seasonyuu.fnmusic.core.model.ConnectionProfile
 import com.seasonyuu.fnmusic.core.model.Endpoint
+import com.seasonyuu.fnmusic.core.model.LoginForm
 import com.seasonyuu.fnmusic.core.model.MusicError
 import com.seasonyuu.fnmusic.core.model.SessionRepository
 import com.seasonyuu.fnmusic.core.model.SessionState
@@ -26,6 +27,22 @@ class SessionCoordinator(
     // login form before encrypted credentials have been checked.
     private val mutableState = MutableStateFlow<SessionState>(SessionState.Restoring)
     override val state: StateFlow<SessionState> = mutableState.asStateFlow()
+    private val mutableLoginForm = MutableStateFlow(vault.loadLoginForm() ?: vault.load()?.let {
+        LoginForm(
+            useDirectConnection = it.profile.endpoint is Endpoint.Direct,
+            fnId = (it.profile.endpoint as? Endpoint.FnConnect)?.fnId.orEmpty(),
+            directUrl = (it.profile.endpoint as? Endpoint.Direct)?.baseUrl.orEmpty(),
+            username = it.profile.username,
+            allowPrivateLanHttp = it.profile.allowPrivateLanHttp,
+        ).also(vault::saveLoginForm)
+    } ?: LoginForm())
+    val loginForm: StateFlow<LoginForm> = mutableLoginForm.asStateFlow()
+
+    fun updateLoginForm(form: LoginForm) {
+        vault.saveLoginForm(form)
+        mutableLoginForm.value = form
+    }
+
     private val connectionMutex = Mutex()
 
     init {
@@ -34,7 +51,16 @@ class SessionCoordinator(
 
     override suspend fun connect(profile: ConnectionProfile, password: CharArray) {
         val passwordHash = try {
-            password.concatToString().sha256()
+            val plainPassword = password.concatToString()
+            updateLoginForm(loginForm.value.copy(
+                useDirectConnection = profile.endpoint is Endpoint.Direct,
+                fnId = (profile.endpoint as? Endpoint.FnConnect)?.fnId ?: loginForm.value.fnId,
+                directUrl = (profile.endpoint as? Endpoint.Direct)?.baseUrl ?: loginForm.value.directUrl,
+                username = profile.username,
+                password = plainPassword,
+                allowPrivateLanHttp = profile.allowPrivateLanHttp,
+            ))
+            plainPassword.sha256()
         } finally {
             Arrays.fill(password, '\u0000')
         }
@@ -62,7 +88,15 @@ class SessionCoordinator(
 
     private suspend fun recoverForRequest(): Boolean = connectionMutex.withLock {
         val saved = vault.load() ?: return@withLock false
-        runCatching { establish(saved.profile, saved.passwordHash, saved.token) }.isSuccess
+        try {
+            establish(saved.profile, saved.passwordHash, saved.token)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            mutableState.value = SessionState.Error(error.userFacingMessage())
+            false
+        }
     }
 
     private suspend fun establish(profile: ConnectionProfile, passwordHash: String, existingToken: String?) {
@@ -83,8 +117,8 @@ class SessionCoordinator(
         val reusableToken = existingToken?.takeIf(String::isNotBlank)
         val restoredSession = reusableToken?.let { token ->
             network.cookieJar.setMusicToken(baseUrl, token)
-            if (runCatching { network.api.currentUser().requireData() }.isSuccess) {
-                runCatching { token to network.api.systemConfig().requireData() }.getOrNull()
+            if (runCatching { network.sessionApi.currentUser().requireData() }.isSuccess) {
+                runCatching { token to network.sessionApi.systemConfig().requireData() }.getOrNull()
             } else null
         }
         if (restoredSession != null) {
@@ -95,19 +129,19 @@ class SessionCoordinator(
         }
 
         val token = authenticate(profile, passwordHash, baseUrl)
-        val config = network.api.systemConfig().requireData()
+        val config = network.sessionApi.systemConfig().requireData()
         vault.save(SavedCredentials(profile, passwordHash, token))
         mutableState.value = SessionState.Ready(profile, config.serverName, config.serverVersion)
     }
 
     private suspend fun authenticate(profile: ConnectionProfile, passwordHash: String, baseUrl: HttpUrl): String {
-        val login = network.api.passwordLogin(LoginRequest(profile.username, passwordHash, vault.deviceId())).requireData()
+        val login = network.sessionApi.passwordLogin(LoginRequest(profile.username, passwordHash, vault.deviceId())).requireData()
         network.cookieJar.setMusicToken(baseUrl, login.userToken)
         mutableState.value = SessionState.MusicAuthenticated
         return login.userToken
     }
 
-    override suspend fun logout(clearCredentials: Boolean) {
+    override suspend fun logout(clearCredentials: Boolean) = connectionMutex.withLock {
         network.cookieJar.clear()
         if (clearCredentials) vault.clearCredentials()
         mutableState.value = SessionState.Unresolved

@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.core.network
 
 import com.seasonyuu.fnmusic.core.model.ConnectionProfile
 import com.seasonyuu.fnmusic.core.model.Endpoint
+import com.seasonyuu.fnmusic.core.model.LoginForm
 import com.seasonyuu.fnmusic.core.model.SessionState
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
@@ -72,6 +73,10 @@ class SessionCoordinatorTest {
 
     private class FakeSessionVault(initial: SavedCredentials?) : SessionVault {
         var saved: SavedCredentials? = initial
+        var form: LoginForm? = null
+
+        override fun saveLoginForm(form: LoginForm) { this.form = form }
+        override fun loadLoginForm() = form
 
         override fun deviceId() = "device-placeholder"
         override fun save(credentials: SavedCredentials) { saved = credentials }
