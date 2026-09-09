@@ -21,6 +21,7 @@ Current version `0.1.0`, early development stage — APIs and build setup may ch
 **Connection & sign-in**
 
 - FN Connect discovery, relay activation, and username/password sign-in.
+- Login fields (including the password) are remembered locally with Android Keystore encryption; signing out clears the active session while preserving the form, without signing in again on restart. Legacy installs restore address and account and require the password once.
 - Custom HTTPS NAS address; plain-HTTP LAN addresses require explicit user confirmation.
 - On cold start, the persisted token is validated against the protected `user/me` endpoint and refreshed by automatic re-login when expired, so the app never boots into an empty library.
 
@@ -109,7 +110,7 @@ python3 scripts/test_verify_fn_connect.py -v
 
 ## Security & Privacy
 
-- Login digest, tokens, and connection config are encrypted with Keystore-wrapped AES-GCM keys.
+- Remembered login fields, login digest, tokens, and connection config are encrypted with Keystore-wrapped AES-GCM keys.
 - The password digest remains valid for replay login; logs must never record digests, cookies, tokens, request bodies, or media identifiers.
 - HTTPS always validates against system CAs; the app offers no option to skip certificate verification.
 - Plain HTTP is accepted only for loopback, RFC 1918, link-local, or IPv6 ULA addresses; the network interceptor re-checks redirect targets.

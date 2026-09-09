@@ -94,7 +94,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else {
-                    ConnectionScreen(session, viewModel::connect)
+                    val loginForm by viewModel.loginForm.collectAsState()
+                    ConnectionScreen(session, viewModel::connect, loginForm, viewModel::updateLoginForm)
                 }
             }
         }
