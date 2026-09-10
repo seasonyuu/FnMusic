@@ -150,8 +150,10 @@ internal fun DynamicMusicBottomBar(
 
         val compactTabAlpha = 1f - interval(expansionProgress, 0.16f, 0.58f)
         if (compactTabAlpha > 0.001f) {
-            Box(
-                Modifier
+            LiquidButton(
+                onClick = onExpand,
+                backdrop = backdrop,
+                modifier = Modifier
                     .place(geometry.primaryTabs, density)
                     .graphicsLayer {
                         alpha = compactTabAlpha
@@ -159,12 +161,8 @@ internal fun DynamicMusicBottomBar(
                         scaleX = scale
                         scaleY = scale
                     }
-                    .glassCapsule(backdrop)
-                    .clip(Capsule())
-                    .clickable(onClick = onExpand)
                     .semantics { selected = selectedDestination != MusicDestination.Search }
                     .testTag("dynamic-primary-tab"),
-                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     compactDestination.icon,
