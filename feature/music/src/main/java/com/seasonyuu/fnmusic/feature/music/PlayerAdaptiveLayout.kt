@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
 
+internal val PortraitPlayerHorizontalPadding = 40.dp
 internal val LandscapePlayerTopPadding = 44.dp
 internal val LandscapePlayerBottomPadding = 32.dp
 
@@ -52,8 +53,9 @@ internal fun playerLayoutGeometry(width: Dp, height: Dp, shortLandscape: Boolean
     }
     val wide = width >= 840.dp
     if (!wide) {
+        val horizontalPadding = if (width < 600.dp) PortraitPlayerHorizontalPadding else 16.dp
         val playerWidth =
-            minOf((width - 32.dp).coerceAtLeast(0.dp), if (width < 600.dp) 380.dp else 440.dp)
+            minOf((width - horizontalPadding * 2).coerceAtLeast(0.dp), if (width < 600.dp) 380.dp else 440.dp)
         return PlayerLayoutGeometry(
             false,
             height < 600.dp,
@@ -120,9 +122,8 @@ internal fun PlayerPrimaryPane(
             sectionGap,
             maximumCoverSize
         )
-    val primaryWidth =
-        if (geometry.wide) geometry.playerWidth
-        else coverSize.coerceAtLeast(minOf(geometry.playerWidth, 280.dp))
+    // Metadata and controls share a stable gutter with lyrics even if height limits the artwork.
+    val primaryWidth = geometry.playerWidth
     val primaryStart = geometry.contentStart + (geometry.playerWidth - primaryWidth) / 2
     val artworkScrollState = rememberScrollState()
     Box(modifier) {

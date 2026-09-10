@@ -3088,6 +3088,7 @@ private fun NowPlayingLyricsScreen(
         val safeRight = insets.calculateRightPadding(direction)
         val geometry =
             playerLayoutGeometry(maxWidth - safeLeft - safeRight, maxHeight - safeTop - safeBottom, landscapeLayout)
+        val portraitPhoneLayout = !splitLayout && maxWidth - safeLeft - safeRight < 600.dp
         val compactHeight = wideLayout || geometry.short || maxHeight < 760.dp
         val playerTopPadding = if (landscapeLayout) LandscapePlayerTopPadding else 32.dp
         val playerBottomPadding = if (landscapeLayout) LandscapePlayerBottomPadding else 20.dp
@@ -3262,7 +3263,7 @@ private fun NowPlayingLyricsScreen(
                 }
         ) {
             if (landscapeLayout && displayedLyricsMode) {
-                Box(Modifier.fillMaxWidth().graphicsLayer { alpha = pageVisibility.value }.testTag("player-landscape-lyrics-header")) {
+                Box(Modifier.fillMaxWidth().then(dragModifier).graphicsLayer { alpha = pageVisibility.value }.testTag("player-landscape-lyrics-header")) {
                     metadata()
                 }
                 Spacer(Modifier.height(12.dp))
@@ -3284,7 +3285,9 @@ private fun NowPlayingLyricsScreen(
                     }
                 }
                 val lyricsHorizontalPadding =
-                    if (splitLayout) 16.dp else if (maxWidth < 600.dp) 24.dp else 64.dp
+                    if (splitLayout) 16.dp
+                    else if (portraitPhoneLayout) safeLeft + geometry.contentStart
+                    else 64.dp
                 val lyricsCoverSize = if (splitLayout) 0.dp else 56.dp
                 val lyricsHeaderTop = if (splitLayout) 0.dp else safeTop + 34.dp
                 val panelHeight = maxHeight
@@ -3346,6 +3349,7 @@ private fun NowPlayingLyricsScreen(
                     { headerModifier, inQueue ->
                         Row(
                             headerModifier
+                                .then(dragModifier)
                                 .height(lyricsCoverSize)
                                 .fillMaxWidth()
                                 .zIndex(3f)
@@ -3402,7 +3406,7 @@ private fun NowPlayingLyricsScreen(
                             }
                             Box(
                                 modifier =
-                                    Modifier.size(46.dp)
+                                    Modifier.size(if (inQueue) 40.dp else 46.dp)
                                         .clip(CircleShape)
                                         .pointerInput(current.track.id, favorite) {
                                             detectTapGestures {
@@ -3435,7 +3439,7 @@ private fun NowPlayingLyricsScreen(
                             Spacer(Modifier.width(10.dp))
                             Box(
                                 modifier =
-                                    Modifier.size(46.dp)
+                                    Modifier.size(if (inQueue) 40.dp else 46.dp)
                                         .clip(CircleShape)
                                         .pointerInput(current.track.id) {
                                             detectTapGestures {
@@ -3514,7 +3518,7 @@ private fun NowPlayingLyricsScreen(
                                 if (!splitLayout)
                                     compactHeader(
                                         Modifier.padding(
-                                            horizontal = lyricsHorizontalPadding - 16.dp,
+                                            horizontal = 8.dp,
                                             vertical = 0.dp
                                         ),
                                         true
@@ -3569,7 +3573,7 @@ private fun NowPlayingLyricsScreen(
                                     focusTop = focusTop,
                                     trailingSpace = lyricsTrailingSpaceHeight,
                                     horizontalPadding = lyricsHorizontalPadding,
-                                    removeRendererInset = landscapeLayout,
+                                    removeRendererInset = landscapeLayout || portraitPhoneLayout,
                                     bottomInset = panelBottom,
                                     fadeTopPx = headerBottomPx,
                                     fadeBottomPx =
