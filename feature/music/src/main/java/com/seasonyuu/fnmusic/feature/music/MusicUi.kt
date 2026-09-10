@@ -2875,8 +2875,13 @@ private fun NowPlayingLyricsScreen(
         remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maximumVolume =
         remember(audioManager) {
-            audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(0)
         }
+    val minimumVolume = remember(audioManager, maximumVolume) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            audioManager.getStreamMinVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maximumVolume)
+        } else 0
+    }
     var systemVolume by
         remember(current.track.id, audioManager) {
             mutableFloatStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat())
@@ -3130,6 +3135,7 @@ private fun NowPlayingLyricsScreen(
                     lyricsMode = displayedLyricsMode,
                     queueMode = displayedQueueMode,
                     systemVolume = systemVolume,
+                    minimumVolume = minimumVolume,
                     maximumVolume = maximumVolume,
                     progressInteraction = progressInteraction,
                     volumeInteraction = volumeInteraction,
@@ -3148,10 +3154,11 @@ private fun NowPlayingLyricsScreen(
                     },
                     onVolumeChange = { value ->
                         revealControls()
-                        systemVolume = value
+                        val volume = value.roundToInt().coerceIn(minimumVolume, maximumVolume)
+                        systemVolume = volume.toFloat()
                         audioManager.setStreamVolume(
                             AudioManager.STREAM_MUSIC,
-                            value.roundToInt().coerceIn(0, maximumVolume),
+                            volume,
                             0
                         )
                     },
@@ -4044,6 +4051,7 @@ private fun PlayerPlaybackControls(
     lyricsMode: Boolean,
     queueMode: Boolean,
     systemVolume: Float,
+    minimumVolume: Int,
     maximumVolume: Int,
     progressInteraction: MutableInteractionSource,
     volumeInteraction: MutableInteractionSource,
@@ -4123,7 +4131,9 @@ private fun PlayerPlaybackControls(
                 ThinPlayerSlider(
                     value = systemVolume,
                     onValueChange = onVolumeChange,
-                    valueRange = 0f..maximumVolume.toFloat(),
+                    valueRange = minimumVolume.toFloat()..maximumVolume.toFloat(),
+                    steps = (maximumVolume - minimumVolume - 1).coerceAtLeast(0),
+                    enabled = maximumVolume > minimumVolume,
                     modifier = Modifier.weight(1f).testTag("player-volume-slider"),
                     interactionSource = volumeInteraction,
                 )
@@ -5154,6 +5164,8 @@ private fun ThinPlayerSlider(
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    steps: Int = 0,
+    enabled: Boolean = true,
 ) {
     Slider(
         value = value,
@@ -5161,6 +5173,8 @@ private fun ThinPlayerSlider(
         onValueChangeFinished = onValueChangeFinished,
         interactionSource = interactionSource,
         valueRange = valueRange,
+        steps = steps,
+        enabled = enabled,
         modifier = modifier,
         thumb = {
             Spacer(Modifier.size(10.dp).graphicsLayer { alpha = 0f })
