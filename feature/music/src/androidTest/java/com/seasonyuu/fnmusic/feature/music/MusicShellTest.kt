@@ -128,6 +128,48 @@ class MusicShellTest {
     }
 
     @Test
+    fun portraitTwentyByNineKeepsArtworkControlsAndLyricsAligned() {
+        val window = mutableStateOf(androidx.compose.ui.unit.DpSize(390.dp, (390f * 20f / 9f).dp))
+        val track = Track(TrackId("portrait-alignment"), "竖屏对齐")
+        setContent(
+            windowSize = { window.value },
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+            ),
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "统一的歌词边距"))),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        for (width in listOf(360f, 390f, 443f)) {
+            compose.runOnIdle { window.value = androidx.compose.ui.unit.DpSize(width.dp, (width * 20f / 9f).dp) }
+            val root = compose.onNodeWithTag("player-morph-overlay").fetchSemanticsNode().boundsInRoot
+            val density = root.width / width
+            val metadata = compose.onNodeWithTag("player-track-metadata").fetchSemanticsNode().boundsInRoot
+            val controls = compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot
+            val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+            assertEquals(root.left + 40f * density, metadata.left, 2f)
+            assertEquals(root.right - 40f * density, metadata.right, 2f)
+            assertEquals(metadata.left, controls.left, 1f)
+            assertEquals(metadata.right, controls.right, 1f)
+            assertEquals("Unscaled artwork shares the text gutter", metadata.width * 0.73f, cover.width, 2f)
+            compose.onNodeWithTag("player-lyrics-entry").performClick()
+            val lyrics = compose.onNodeWithText("统一的歌词边距", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(metadata.left, lyrics.left, 2f)
+            val smallCover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
+            assertEquals(metadata.left, smallCover.left, 2f)
+            compose.onNodeWithTag("player-morph-cover").performClick()
+            compose.onNodeWithTag("player-track-metadata").assertIsDisplayed()
+            compose.onNodeWithTag("player-queue-entry").performClick()
+            val queueHeader = compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot
+            assertEquals("Queue cover uses the same inset as queue rows", root.left + 24f * density, queueHeader.left, 2f)
+            assertEquals("Queue header right matches queue rows", root.right - 24f * density, queueHeader.right, 2f)
+            val more = compose.onNodeWithTag("player-lyrics-more-action", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals("Queue actions share the trailing button center", root.right - 44f * density, more.center.x, 2f)
+            compose.onNodeWithTag("player-queue-header").performClick()
+        }
+    }
+
+    @Test
     fun largeCoverTogglesPlaybackAcrossLayoutsWithoutChangingSmallCoverAction() {
         val window = mutableStateOf(androidx.compose.ui.unit.DpSize(390.dp, 844.dp))
         val track = Track(TrackId("cover-toggle"), "封面播放控制")
@@ -927,7 +969,45 @@ class MusicShellTest {
         verifyLyricsHandleDrag(closes = false)
     }
 
-    private fun verifyLyricsHandleDrag(closes: Boolean) {
+    @Test
+    fun lyricsHeaderDragKeepsCoverAttachedAndClosesTogether() {
+        verifyLyricsHandleDrag(closes = true, dragTag = "player-lyrics-header")
+    }
+
+    @Test
+    fun shortLyricsHeaderDragReboundsWithoutOpeningPlayback() {
+        verifyLyricsHandleDrag(closes = false, dragTag = "player-lyrics-header")
+        compose.onNodeWithTag("player-lyrics-header").assertIsDisplayed().performTouchInput {
+            down(center)
+            up()
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-lyrics-header").assertDoesNotExist()
+        compose.onNodeWithTag("player-morph-overlay").assertIsDisplayed()
+    }
+
+    @Test
+    fun queueHeaderDragKeepsCoverAttachedAndClosesTogether() {
+        verifyLyricsHandleDrag(closes = true, dragTag = "player-queue-header", inQueue = true)
+    }
+
+    @Test
+    fun shortQueueHeaderDragReboundsAndStillAllowsTap() {
+        verifyLyricsHandleDrag(closes = false, dragTag = "player-queue-header", inQueue = true)
+        compose.onNodeWithTag("player-queue-header").assertIsDisplayed().performTouchInput {
+            down(center)
+            up()
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("player-queue-header").assertDoesNotExist()
+        compose.onNodeWithTag("player-morph-overlay").assertIsDisplayed()
+    }
+
+    private fun verifyLyricsHandleDrag(
+        closes: Boolean,
+        dragTag: String = "player-drag-handle",
+        inQueue: Boolean = false,
+    ) {
         val track = Track(TrackId("lyrics-dismiss"), "歌词收回验证")
         setContent(
             state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "第一句"))),
@@ -937,14 +1017,14 @@ class MusicShellTest {
             ),
         )
         compose.onNodeWithText("歌词收回验证").performClick()
-        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.onNodeWithTag(if (inQueue) "player-queue-entry" else "player-lyrics-entry").performClick()
         compose.mainClock.autoAdvance = false
         compose.mainClock.advanceTimeBy(1_500)
         val cover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode()
-        val header = compose.onNodeWithTag("player-lyrics-header").fetchSemanticsNode()
+        val header = compose.onNodeWithTag(if (inQueue) "player-queue-header" else "player-lyrics-header").fetchSemanticsNode()
         val surface = compose.onNodeWithTag("player-morph-surface").fetchSemanticsNode()
         val content = compose.onNodeWithTag("player-morph-content").fetchSemanticsNode()
-        val start = compose.onNodeWithTag("player-drag-handle").fetchSemanticsNode().boundsInWindow.center
+        val start = compose.onNodeWithTag(dragTag).fetchSemanticsNode().boundsInWindow.center
         val originalCover = cover.boundsInRoot
         val originalHeader = header.boundsInRoot
         var decor: android.view.View? = null

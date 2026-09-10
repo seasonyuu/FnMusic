@@ -6,6 +6,18 @@ import org.junit.Test
 
 class PlayerAdaptiveLayoutTest {
     @Test
+    fun portraitPhoneUsesGenerousCenteredGutters() {
+        listOf(360.dp, 390.dp, 443.dp).forEach { width ->
+            val layout = playerLayoutGeometry(width, width * 20f / 9f)
+            assertEquals(40.dp, layout.contentStart)
+            assertEquals(width - 80.dp, layout.playerWidth)
+        }
+        val capped = playerLayoutGeometry(520.dp, 1000.dp)
+        assertEquals(380.dp, capped.playerWidth)
+        assertEquals(70.dp, capped.contentStart)
+    }
+
+    @Test
     fun breakpointUsesAvailableWidth() {
         assertFalse(playerLayoutGeometry(839.dp, 800.dp).wide)
         assertTrue(playerLayoutGeometry(840.dp, 600.dp).wide)
