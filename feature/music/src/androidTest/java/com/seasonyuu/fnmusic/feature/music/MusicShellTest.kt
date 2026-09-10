@@ -32,6 +32,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
@@ -95,12 +96,221 @@ class MusicShellTest {
                 slider.performTouchInput { up() }
                 compose.waitForIdle()
                 assertEquals(dragged, range().current, 0f)
+                slider.performTouchInput {
+                    down(center)
+                    moveTo(Offset(width * 0.3f, centerY), delayMillis = 100)
+                }
+                val beforeCancel = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                slider.performTouchInput { cancel() }
+                compose.waitForIdle()
+                assertEquals(beforeCancel, audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC))
+                assertEquals(beforeCancel.toFloat(), range().current, 0f)
             } else {
                 slider.assertIsNotEnabled()
             }
         } finally {
             audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0)
         }
+    }
+
+    @Test
+    fun timeEdgesAndVolumeInkGapsFollowTheTrackThroughoutExpansion() {
+        val audio = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val originalVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        try {
+            val track = Track(TrackId("slider-alignment"), "滑条边缘对齐")
+            setContent(playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, positionMs = 90_000, durationMs = 180_000,
+            ))
+            compose.onNodeWithText(track.title).performClick()
+            fun bounds(tag: String): androidx.compose.ui.geometry.Rect {
+                val coordinates = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().layoutInfo.coordinates
+                return coordinates.findRootCoordinates().localBoundingBoxOf(coordinates, clipBounds = false)
+            }
+            fun gaps(): Pair<Float, Float> {
+                val trackBounds = bounds("player-volume-slider")
+                val low = bounds("player-volume-low-icon")
+                val high = bounds("player-volume-high-icon")
+                return (trackBounds.left - (low.left + low.width * 18.5f / 24f)) to
+                    (high.left + high.width * 3f / 24f - trackBounds.right)
+            }
+            val restingGaps = gaps()
+            compose.mainClock.autoAdvance = false
+            val progress = compose.onNodeWithTag("player-playback-progress")
+            progress.performTouchInput { down(center) }
+            repeat(8) {
+                compose.mainClock.advanceTimeBy(32)
+                val trackBounds = bounds("player-playback-progress")
+                assertEquals(trackBounds.left, bounds("player-elapsed-time").left, 1f)
+                assertEquals(trackBounds.right, bounds("player-remaining-time").right, 1f)
+            }
+            progress.performTouchInput { up() }
+            repeat(8) {
+                compose.mainClock.advanceTimeBy(32)
+                val trackBounds = bounds("player-playback-progress")
+                assertEquals(trackBounds.left, bounds("player-elapsed-time").left, 1f)
+                assertEquals(trackBounds.right, bounds("player-remaining-time").right, 1f)
+            }
+            val volume = compose.onNodeWithTag("player-volume-slider")
+            volume.performTouchInput { down(center) }
+            repeat(8) {
+                compose.mainClock.advanceTimeBy(32)
+                val animated = gaps()
+                assertEquals("Track=${bounds("player-volume-slider")}, low=${bounds("player-volume-low-icon")}, e=${volume.fetchSemanticsNode().config[PlayerSliderExpansion]}", restingGaps.first, animated.first, 1f)
+                assertEquals(restingGaps.second, animated.second, 1f)
+            }
+            volume.performTouchInput { up() }
+            repeat(8) {
+                compose.mainClock.advanceTimeBy(32)
+                val animated = gaps()
+                assertEquals("Track=${bounds("player-volume-slider")}, low=${bounds("player-volume-low-icon")}, e=${volume.fetchSemanticsNode().config[PlayerSliderExpansion]}", restingGaps.first, animated.first, 1f)
+                assertEquals(restingGaps.second, animated.second, 1f)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalVolume, 0)
+        }
+    }
+
+    @Test
+    fun volumeEdgesDeformAndPulseOnceUntilReentered() {
+        val audio = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val originalVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        try {
+            val track = Track(TrackId("slider-edge-pulse"), "音量边界反馈")
+            setContent(playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0,
+            ))
+            compose.onNodeWithText(track.title).performClick()
+            val volume = compose.onNodeWithTag("player-volume-slider")
+            volume.assertIsDisplayed()
+            fun height(tag: String): Float {
+                val coordinates = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().layoutInfo.coordinates
+                return coordinates.findRootCoordinates().localBoundingBoxOf(coordinates, clipBounds = false).height
+            }
+            fun pull() = volume.fetchSemanticsNode().config[PlayerSliderPull]
+            val lowTag = "player-volume-low-icon"
+            val highTag = "player-volume-high-icon"
+            compose.mainClock.autoAdvance = false
+            volume.performTouchInput { down(center) }
+            compose.mainClock.advanceTimeBy(240)
+            val lowHeight = height(lowTag)
+            val highHeight = height(highTag)
+            volume.performTouchInput { moveTo(Offset(width * 1.2f, centerY), delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(80)
+            assertTrue("Maximum icon pulses on entering the edge", height(highTag) > highHeight * 1.1f)
+            assertEquals(lowHeight, height(lowTag), 1f)
+            assertTrue("Track follows the outward pull", pull() > 1f)
+            assertEquals(audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC), audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC))
+            compose.mainClock.advanceTimeBy(400)
+            assertEquals(highHeight, height(highTag), 1f)
+            volume.performTouchInput { moveTo(Offset(width * 1.4f, centerY), delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(80)
+            assertEquals("Holding past the edge does not retrigger", highHeight, height(highTag), 1f)
+            volume.performTouchInput { moveTo(center, delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(100)
+            volume.performTouchInput { moveTo(Offset(-width * 0.2f, centerY), delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(80)
+            assertTrue("Minimum icon pulses independently", height(lowTag) > lowHeight * 1.1f)
+            assertEquals(highHeight, height(highTag), 1f)
+            assertTrue(pull() < -1f)
+            compose.mainClock.advanceTimeBy(400)
+            volume.performTouchInput { moveTo(center, delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(100)
+            volume.performTouchInput { moveTo(Offset(-width * 0.2f, centerY), delayMillis = 16) }
+            compose.mainClock.advanceTimeBy(80)
+            assertTrue("Returning from the middle rearms the pulse", height(lowTag) > lowHeight * 1.1f)
+            volume.performTouchInput { cancel() }
+            compose.mainClock.advanceTimeBy(800)
+            assertEquals(0f, pull(), 0.5f)
+            assertEquals(lowHeight / 1.15f, height(lowTag), 1f)
+        } finally {
+            compose.mainClock.autoAdvance = true
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalVolume, 0)
+        }
+    }
+
+    @Test
+    fun sliderEndpointsScaleAndHighlightTogetherThenRestore() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val originalVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        try {
+            val track = Track(TrackId("endpoint-feedback"), "滑条两端反馈")
+            setContent(playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0, positionMs = 90_000, durationMs = 180_000,
+            ))
+            compose.onNodeWithText(track.title).performClick()
+            val quality = compose.onNodeWithTag("player-quality").fetchSemanticsNode().boundsInRoot
+            val transport = compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot
+            fun brightest(tag: String): Int {
+                val bitmap = compose.onNodeWithTag(tag, useUnmergedTree = true).captureToImage().asAndroidBitmap()
+                var maximum = 0
+                for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
+                    maximum = maxOf(maximum, android.graphics.Color.red(bitmap.getPixel(x, y)))
+                }
+                return maximum
+            }
+            for ((sliderTag, endpointTags) in listOf(
+                "player-playback-progress" to listOf("player-elapsed-time", "player-remaining-time"),
+                "player-volume-slider" to listOf("player-volume-low-icon", "player-volume-high-icon"),
+            )) {
+                val resting = endpointTags.map { compose.onNodeWithTag(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot }
+                val brightness = endpointTags.map(::brightest)
+                compose.mainClock.autoAdvance = false
+                val slider = compose.onNodeWithTag(sliderTag)
+                slider.performTouchInput { down(center) }
+                compose.mainClock.advanceTimeBy(240)
+                endpointTags.forEachIndexed { index, tag ->
+                    val expanded = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                    assertEquals("$tag grows in place", resting[index].height * 1.15f, expanded.height, 1f)
+                    assertEquals(resting[index].center.y, expanded.center.y, 1f)
+                    assertTrue("$tag becomes visibly brighter", brightest(tag) > brightness[index] + 30)
+                }
+                assertEquals(quality, compose.onNodeWithTag("player-quality").fetchSemanticsNode().boundsInRoot)
+                assertEquals(transport, compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot)
+                slider.performTouchInput { up() }
+                compose.mainClock.advanceTimeBy(300)
+                endpointTags.forEachIndexed { index, tag ->
+                    val restored = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                    assertEquals(resting[index].height, restored.height, 1f)
+                    assertTrue("$tag restores its muted color", kotlin.math.abs(brightest(tag) - brightness[index]) < 5)
+                }
+                compose.mainClock.autoAdvance = true
+            }
+        } finally {
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, originalVolume, 0)
+        }
+    }
+
+    @Test
+    fun expandedPlaybackTrackIsNotClippedByTheControlsContainer() {
+        val track = Track(TrackId("expanded-track"), "进度条圆角验证")
+        setContent(playerState = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+            currentIndex = 0, positionMs = 90_000, durationMs = 180_000,
+        ))
+        compose.onNodeWithText(track.title).performClick()
+        val slider = compose.onNodeWithTag("player-playback-progress")
+        val resting = slider.fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        slider.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(240)
+        val root = compose.onRoot()
+        val rootBounds = root.fetchSemanticsNode().boundsInRoot
+        val bitmap = root.captureToImage().asAndroidBitmap()
+        val pixel = bitmap.getPixel(
+            (resting.left - rootBounds.left - 4).toInt(),
+            (resting.center.y - rootBounds.top).toInt(),
+        )
+        assertTrue("Expanded white ink must extend outside the resting controls bounds", android.graphics.Color.red(pixel) > 230)
+        slider.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(300)
+        compose.mainClock.autoAdvance = true
     }
 
     @Test

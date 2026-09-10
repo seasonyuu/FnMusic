@@ -3,11 +3,10 @@ package com.seasonyuu.fnmusic.feature.music
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -160,9 +159,9 @@ internal fun PlayerPrimaryPane(
                     else Spacer(Modifier.height(metadataHeight))
                 }
             }
-            Surface(
-                color = Color.Transparent,
-                contentColor = FnTextPrimary,
+            // A transparent Surface still clips its children. Keep the slider's horizontal
+            // expansion visible outside this slot while preserving the scrollable height limit.
+            Box(
                 modifier =
                     Modifier.fillMaxWidth()
                         // Even with large fonts, leave a scrollable viewport for track information.
@@ -183,7 +182,11 @@ internal fun PlayerPrimaryPane(
                             if (controlsAlpha < 0.1f) Modifier.clearAndSetSemantics {} else Modifier
                         )
                         .testTag("player-bottom-controls"),
-            ) { Column(Modifier.verticalScroll(rememberScrollState())) { controls() } }
+            ) {
+                CompositionLocalProvider(LocalContentColor provides FnTextPrimary) {
+                    Column(Modifier.verticalScroll(rememberScrollState())) { controls() }
+                }
+            }
         }
     }
 }

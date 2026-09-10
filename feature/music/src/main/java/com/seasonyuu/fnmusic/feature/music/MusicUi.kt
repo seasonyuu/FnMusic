@@ -155,7 +155,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -204,7 +203,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -4063,6 +4061,10 @@ private fun PlayerPlaybackControls(
     onLyricsClick: () -> Unit,
     onQueueClick: () -> Unit,
 ) {
+    val volumeExpansion = playerSliderExpansion(volumeInteraction, maximumVolume > minimumVolume)
+    val volumeMotion = rememberPlayerSliderMotion()
+    val startOnLeft = LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Ltr
+    val volumeTint = FnTextPrimary.copy(alpha = 0.58f + 0.42f * volumeExpansion)
     Column(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(if (compactHeight) 2.dp else 6.dp)
@@ -4123,26 +4125,43 @@ private fun PlayerPlaybackControls(
                 Icon(
                     Icons.AutoMirrored.Rounded.VolumeDown,
                     null,
-                    tint = FnTextPrimary.copy(alpha = 0.58f),
-                    // Track ink starts 3dp inside its bounds (10dp thumb / 2 - 4dp stroke / 2).
-                    // This 24-unit icon starts at x=5: 18 * 5/24 = 3.75dp.
-                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp),
+                    tint = volumeTint,
+                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp)
+                        // Anchor at the vector's inner ink edge, not its padded 24-unit viewport.
+                        .playerSliderEndpoint(
+                            volumeExpansion,
+                            originX = if (startOnLeft) 18.5f / 24f else 5.5f / 24f,
+                            translationPx = if (startOnLeft) volumeMotion.leftShift(volumeExpansion) else volumeMotion.rightShift(volumeExpansion),
+                            pulse = volumeMotion.minimumPulse.value,
+                        )
+                        .testTag("player-volume-low-icon"),
                 )
-                ThinPlayerSlider(
+                PlayerSlider(
                     value = systemVolume,
                     onValueChange = onVolumeChange,
                     valueRange = minimumVolume.toFloat()..maximumVolume.toFloat(),
                     steps = (maximumVolume - minimumVolume - 1).coerceAtLeast(0),
                     enabled = maximumVolume > minimumVolume,
-                    modifier = Modifier.weight(1f).testTag("player-volume-slider"),
+                    modifier = Modifier.weight(1f).testTag("player-volume-slider")
+                        .semantics { contentDescription = "媒体音量" },
                     interactionSource = volumeInteraction,
+                    expansion = volumeExpansion,
+                    motion = volumeMotion,
+                    elastic = true,
                 )
                 Icon(
                     Icons.AutoMirrored.Rounded.VolumeUp,
-                    "媒体音量",
-                    tint = FnTextPrimary.copy(alpha = 0.58f),
+                    null,
+                    tint = volumeTint,
                     // VolumeUp ends at x=21: its 2.25dp end inset needs another 0.75dp.
-                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp),
+                    modifier = Modifier.size(18.dp).offset(x = (-0.75).dp)
+                        .playerSliderEndpoint(
+                            volumeExpansion,
+                            originX = if (startOnLeft) 3f / 24f else 21f / 24f,
+                            translationPx = if (startOnLeft) volumeMotion.rightShift(volumeExpansion) else volumeMotion.leftShift(volumeExpansion),
+                            pulse = volumeMotion.maximumPulse.value,
+                        )
+                        .testTag("player-volume-high-icon"),
                 )
             }
         if (showUtilities) {
@@ -5118,26 +5137,54 @@ private fun QueueTrackRow(
 }
 
 @Composable
-private fun PlaybackProgress(
+internal fun PlaybackProgress(
     state: PlayerState,
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     onSeek: (Long) -> Unit,
 ) {
-    val duration = state.durationMs.coerceAtLeast(1)
-    var previewPosition by remember(state.current?.track?.id) { mutableStateOf<Float?>(null) }
-    val displayed = previewPosition ?: state.positionMs.toFloat().coerceIn(0f, duration.toFloat())
-    ThinPlayerSlider(
-        value = displayed,
-        onValueChange = { previewPosition = it },
-        onValueChangeFinished = {
-            previewPosition?.let { onSeek(it.toLong()) }
-            previewPosition = null
-        },
-        valueRange = 0f..duration.toFloat(),
-        modifier = modifier.fillMaxWidth().height(32.dp),
-        interactionSource = interactionSource,
-    )
+    val duration = state.durationMs.coerceAtLeast(0)
+    val entryId = state.current?.queueEntryId
+    val enabled = state.current != null && state.durationMs > 0
+    var previewPosition by remember(entryId) { mutableStateOf<Float?>(null) }
+    var pendingPosition by remember(entryId) { mutableStateOf<Long?>(null) }
+    val expansion = playerSliderExpansion(interactionSource, enabled)
+    val motion = rememberPlayerSliderMotion()
+    val startOnLeft = LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Ltr
+    val timeColor = FnTextPrimary.copy(alpha = 0.58f + 0.42f * expansion)
+    LaunchedEffect(pendingPosition, state.positionMs) {
+        val target = pendingPosition ?: return@LaunchedEffect
+        if (kotlin.math.abs(state.positionMs - target) <= 1_000L) pendingPosition = null
+    }
+    LaunchedEffect(pendingPosition) {
+        if (pendingPosition != null) {
+            delay(1_000)
+            pendingPosition = null
+        }
+    }
+    val displayed = (previewPosition ?: pendingPosition?.toFloat() ?: state.positionMs.toFloat())
+        .coerceIn(0f, duration.toFloat())
+    androidx.compose.runtime.key(entryId) {
+        PlayerSlider(
+            value = displayed,
+            onValueChange = { previewPosition = it },
+            onValueChangeFinished = {
+                previewPosition?.let {
+                    val target = it.toLong().coerceIn(0L, duration)
+                    pendingPosition = target
+                    previewPosition = null
+                    onSeek(target)
+                }
+            },
+            onValueChangeCancelled = { previewPosition = null },
+            valueRange = 0f..duration.toFloat(),
+            enabled = enabled,
+            modifier = modifier.fillMaxWidth().height(32.dp).semantics { contentDescription = "播放进度" },
+            interactionSource = interactionSource,
+            expansion = expansion,
+            motion = motion,
+        )
+    }
     Box(Modifier.fillMaxWidth()) {
         Text(
             playbackQualityLabel(state.current?.track?.audioSpec),
@@ -5145,75 +5192,31 @@ private fun PlaybackProgress(
             color = FnTextSecondary, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center,
         )
         Row(Modifier.fillMaxWidth()) {
-        Text(formatDuration(displayed.toLong()), color = FnTextSecondary, style = tabularBodyStyle())
-        Spacer(Modifier.weight(1f))
-        Text(
-            "−${formatDuration((state.durationMs - displayed.toLong()).coerceAtLeast(0L))}",
-            color = FnTextSecondary,
-            style = tabularBodyStyle(),
-        )
+            Text(
+                formatDuration(displayed.toLong()),
+                modifier = Modifier.playerSliderEndpoint(
+                    expansion,
+                    originX = if (startOnLeft) 0f else 1f,
+                    translationPx = if (startOnLeft) motion.leftShift(expansion) else motion.rightShift(expansion),
+                )
+                    .testTag("player-elapsed-time"),
+                color = timeColor,
+                style = tabularBodyStyle(),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "−${formatDuration((state.durationMs - displayed.toLong()).coerceAtLeast(0L))}",
+                modifier = Modifier.playerSliderEndpoint(
+                    expansion,
+                    originX = if (startOnLeft) 1f else 0f,
+                    translationPx = if (startOnLeft) motion.rightShift(expansion) else motion.leftShift(expansion),
+                )
+                    .testTag("player-remaining-time"),
+                color = timeColor,
+                style = tabularBodyStyle(),
+            )
         }
     }
-}
-
-@Composable
-private fun ThinPlayerSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-    onValueChangeFinished: (() -> Unit)? = null,
-    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    steps: Int = 0,
-    enabled: Boolean = true,
-) {
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        onValueChangeFinished = onValueChangeFinished,
-        interactionSource = interactionSource,
-        valueRange = valueRange,
-        steps = steps,
-        enabled = enabled,
-        modifier = modifier,
-        thumb = {
-            Spacer(Modifier.size(10.dp).graphicsLayer { alpha = 0f })
-        },
-        track = { sliderState ->
-            val start = valueRange.start
-            val range = (valueRange.endInclusive - start).coerceAtLeast(0.0001f)
-            val fraction = ((sliderState.value - start) / range).coerceIn(0f, 1f)
-            Canvas(
-                Modifier
-                    .fillMaxWidth()
-                    .height(20.dp),
-            ) {
-                val centerY = size.height / 2f
-                val strokeWidth = 4.dp.toPx()
-                val thumbRadius = 5.dp.toPx()
-                val thumbCenterX = size.width * fraction
-                drawLine(
-                    color = FnTextPrimary.copy(alpha = 0.24f),
-                    start = Offset(0f, centerY),
-                    end = Offset(size.width, centerY),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    color = FnTextPrimary.copy(alpha = 0.88f),
-                    start = Offset(0f, centerY),
-                    end = Offset(thumbCenterX, centerY),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round,
-                )
-                drawCircle(
-                    color = FnTextPrimary,
-                    radius = thumbRadius,
-                    center = Offset(thumbCenterX, centerY),
-                )
-            }
-        },
-    )
 }
 
 private fun activeLyricIndex(lyrics: List<LyricLine>, positionMs: Long): Int {
