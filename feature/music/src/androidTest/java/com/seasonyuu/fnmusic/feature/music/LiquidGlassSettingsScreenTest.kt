@@ -10,6 +10,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxSize
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.seasonyuu.fnmusic.core.designsystem.LocalFnBackdrop
+import com.seasonyuu.fnmusic.core.designsystem.FnProgressiveSystemBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -175,5 +179,52 @@ class LiquidGlassSettingsScreenTest {
             assertTrue(loggedOut)
             assertEquals(2_048L * 1024 * 1024, cache)
         }
+    }
+
+    @Test fun switchDisablesAdjustmentsAndPreservesIntensity() {
+        val enabled = mutableStateOf(true)
+        val value = mutableFloatStateOf(1.75f)
+        var switches = 0
+        compose.setContent {
+            FnMusicTheme {
+                LiquidGlassSettingsScreen(value.floatValue, null, { value.floatValue = it }, {}, {},
+                    enabled = enabled.value, onEnabledChange = { enabled.value = it; switches++ })
+            }
+        }
+        compose.onNodeWithTag("liquid-glass-toggle").performScrollTo().assertIsOn().performClick().assertIsOff()
+        compose.onNodeWithTag("liquid-glass-slider").performScrollTo().assertIsNotEnabled()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+            .performTouchInput { swipeLeft() }
+        compose.runOnIdle { assertEquals(1.75f, value.floatValue, 0f); assertEquals(1, switches) }
+        compose.onNodeWithText("恢复默认").performScrollTo().assertIsNotEnabled().performTouchInput { click() }
+        compose.runOnIdle { assertFalse(enabled.value); assertEquals(1.75f, value.floatValue, 0f) }
+        compose.onNodeWithTag("liquid-glass-toggle").performScrollTo().performClick().assertIsOn()
+        compose.onNodeWithTag("liquid-glass-slider").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("恢复默认").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue(enabled.value); assertEquals(1f, value.floatValue, 0f) }
+    }
+
+    @Test fun settingsSummaryShowsDisabled() {
+        compose.setContent { FnMusicTheme { SettingsScreen(MusicUiState(liquidGlassEnabled = false), {}, {}, {}, {}) } }
+        compose.onNodeWithText("已关闭").assertIsDisplayed()
+    }
+
+
+    @Test fun settingsInsideCapturedSceneCanToggleWithoutSamplingItself() {
+        val enabled = mutableStateOf(true)
+        compose.setContent {
+            FnMusicTheme {
+                FnProgressiveSystemBars {
+                    Box(Modifier.fillMaxSize().layerBackdrop(LocalFnBackdrop.current!!)) {
+                        LiquidGlassSettingsScreen(1f, null, {}, {}, {},
+                            enabled = enabled.value, onEnabledChange = { enabled.value = it })
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("liquid-glass-toggle").performScrollTo().performClick().assertIsOff()
+        compose.onRoot().captureToImage()
+        compose.onNodeWithTag("liquid-glass-toggle").performClick().assertIsOn()
+        compose.onRoot().captureToImage()
     }
 }

@@ -44,4 +44,14 @@ class LiquidGlassMaterialTest {
         assertEquals(resolveLiquidGlassMaterial(0.1f), resolveLiquidGlassMaterial(-1f))
         assertEquals(resolveLiquidGlassMaterial(2f), resolveLiquidGlassMaterial(100f))
     }
+
+    @Test fun disabledGlassUsesMaximumTintWithoutEffectsRegardlessOfIntensity() {
+        for (value in listOf(0.1f, 1f, 2f, Float.NaN)) {
+            val disabled = resolveLiquidGlassMaterial(value, enabled = false)
+            assertEquals(false, disabled.enabled)
+            assertEquals(resolveLiquidGlassMaterial(2f).surfaceColor, disabled.surfaceColor)
+            assertEquals(0f, disabled.blurScale, 0f)
+        }
+    }
+
 }
