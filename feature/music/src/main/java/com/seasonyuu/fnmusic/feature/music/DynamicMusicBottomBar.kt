@@ -1,5 +1,6 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -136,7 +137,7 @@ internal fun DynamicMusicBottomBar(
                         )
                         Text(
                             destination.label,
-                            color = if (selectedDestination == destination) FnTextPrimary else FnTextSecondary,
+                            color = if (selectedDestination == destination) FnAccent else FnTextSecondary,
                             fontSize = 12.sp,
                             lineHeight = 14.sp,
                             maxLines = 1,
@@ -288,6 +289,9 @@ private fun Modifier.glassCapsule(
     refractionAmount: androidx.compose.ui.unit.Dp = 8.dp,
 ): Modifier {
     val glass = com.seasonyuu.fnmusic.core.designsystem.currentLiquidGlassMaterial()
+    if (!glass.enabled) return this
+        .graphicsLayer { layerBlock?.invoke(this) }
+        .background(glass.surfaceColor, Capsule())
     return drawBackdrop(
         backdrop = backdrop,
         shape = { Capsule() },

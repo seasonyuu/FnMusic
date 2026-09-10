@@ -72,11 +72,12 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         .cachedIn(viewModelScope)
     private val liquidGlassSettings = com.seasonyuu.fnmusic.data.LiquidGlassSettings(
         scope = viewModelScope,
-        read = { graph.settings.liquidGlassBlur.first() },
-        write = graph.settings::setLiquidGlassBlur,
+        read = { graph.settings.liquidGlass.first() },
+        write = graph.settings::setLiquidGlass,
     )
 
     fun previewLiquidGlassBlur(value: Float) = liquidGlassSettings.preview(value)
+    fun setLiquidGlassEnabled(enabled: Boolean) = liquidGlassSettings.setEnabled(enabled)
     fun saveLiquidGlassBlur() = liquidGlassSettings.save()
 
     private var refreshJob: Job? = null
@@ -88,6 +89,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         mutableMusic.value = MusicUiState(
             cacheBytes = previous.cacheBytes,
             liquidGlassBlur = previous.liquidGlassBlur,
+            liquidGlassEnabled = previous.liquidGlassEnabled,
             liquidGlassSaveError = previous.liquidGlassSaveError,
         )
     }
@@ -118,6 +120,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             liquidGlassSettings.state.collect { setting ->
                 mutableMusic.value = mutableMusic.value.copy(
                     liquidGlassBlur = setting.multiplier,
+                    liquidGlassEnabled = setting.enabled,
                     liquidGlassSaveError = setting.error,
                 )
             }

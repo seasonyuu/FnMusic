@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -54,7 +56,7 @@ fun LiquidBottomTabs(
     val scope = rememberCoroutineScope()
     val tabsBackdrop = rememberLayerBackdrop()
     val panelOffset = remember { Animatable(0f) }
-    val useBackdrop = true
+    val useBackdrop = glass.enabled
     BoxWithConstraints(modifier, contentAlignment = Alignment.CenterStart) {
         val tabWidth = (maxWidth - 8.dp) / tabsCount
         val density = androidx.compose.ui.platform.LocalDensity.current
@@ -95,6 +97,16 @@ fun LiquidBottomTabs(
                 }
         }
         CompositionLocalProvider(LocalLiquidTabScale provides lerp(1f, 1.2f, dragAnimation.pressProgress)) {
+            // Static surfaces must sit behind the real labels. The glass path samples
+            // a tinted copy above them, which is deliberately absent when disabled.
+            if (!useBackdrop) {
+                Box(Modifier.zIndex(-2f).graphicsLayer {
+                    translationX = panelPx
+                    val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
+                    scaleX = scale
+                    scaleY = scale
+                }.background(glass.surfaceColor, Capsule()).height(64.dp).fillMaxWidth())
+            }
             Row(
                 Modifier
                     .graphicsLayer { translationX = panelPx }
@@ -116,7 +128,11 @@ fun LiquidBottomTabs(
                                 onDrawSurface = { drawRect(glass.surfaceColor) },
                             )
                         } else {
-                            Modifier.background(glass.surfaceColor, Capsule())
+                            Modifier.graphicsLayer {
+                                val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
+                                scaleX = scale
+                                scaleY = scale
+                            }
                         },
                     )
                     .height(64.dp)
@@ -158,11 +174,11 @@ fun LiquidBottomTabs(
                     content = content,
                 )
             }
-            if (showSelectionIndicator) Box(Modifier.padding(horizontal = 4.dp)
+            if (showSelectionIndicator) Box(Modifier.zIndex(if (useBackdrop) 0f else -1f).padding(horizontal = 4.dp)
                 .graphicsLayer {
                     translationX = dragAnimation.value * tabWidthPx + panelPx
                 }
-                .then(dragAnimation.modifier)
+                .then(if (useBackdrop) dragAnimation.modifier else Modifier)
                 .then(
                     if (useBackdrop) {
                         Modifier.drawBackdrop(
@@ -200,12 +216,30 @@ fun LiquidBottomTabs(
                             },
                         )
                     } else {
-                        Modifier.background(Color.White.copy(alpha = .12f), Capsule())
+                        Modifier.graphicsLayer {
+                            scaleX = dragAnimation.scaleX
+                            scaleY = dragAnimation.scaleY
+                            val velocity = dragAnimation.velocity / 10f
+                            scaleX /= 1f - (velocity * .75f).coerceIn(-.2f, .2f)
+                            scaleY *= 1f - (velocity * .25f).coerceIn(-.2f, .2f)
+                        }.clip(Capsule()).drawBehind {
+                            drawRect(glass.surfaceColor)
+                            drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
+                            drawRect(FnAccent.copy(alpha = .08f * dragAnimation.pressProgress))
+                        }
                     },
                 )
                 .height(56.dp).fillMaxWidth(1f / tabsCount)
-                .testTag("liquid-bottom-tabs-indicator")
+                .then(if (useBackdrop) Modifier.testTag("liquid-bottom-tabs-indicator") else Modifier)
             )
+            if (showSelectionIndicator && !useBackdrop) {
+                // Keep the selected tab's drag target above the row without painting over it.
+                Box(Modifier.padding(horizontal = 4.dp)
+                    .graphicsLayer { translationX = dragAnimation.value * tabWidthPx + panelPx }
+                    .then(dragAnimation.modifier)
+                    .height(56.dp).fillMaxWidth(1f / tabsCount)
+                    .testTag("liquid-bottom-tabs-indicator"))
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.seasonyuu.fnmusic.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import com.seasonyuu.fnmusic.core.model.LiquidGlassPreference
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.seasonyuu.fnmusic.core.model.LiquidGlassBlur
 import androidx.datastore.core.DataStore
@@ -17,6 +19,21 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     constructor(context: Context) : this(PreferenceDataStoreFactory.create {
         context.applicationContext.preferencesDataStoreFile("settings")
     })
+
+    val liquidGlass: Flow<LiquidGlassPreference> = dataStore.data.map { values ->
+        LiquidGlassPreference(
+            multiplier = values[LIQUID_GLASS_BLUR] ?: LiquidGlassBlur.Default,
+            enabled = values[LIQUID_GLASS_ENABLED] ?: true,
+        ).normalized()
+    }
+
+    suspend fun setLiquidGlass(value: LiquidGlassPreference) {
+        val normalized = value.normalized()
+        dataStore.edit {
+            it[LIQUID_GLASS_BLUR] = normalized.multiplier
+            it[LIQUID_GLASS_ENABLED] = normalized.enabled
+        }
+    }
 
     val liquidGlassBlur: Flow<Float> = dataStore.data.map { values ->
         LiquidGlassBlur.normalize(values[LIQUID_GLASS_BLUR] ?: LiquidGlassBlur.Default)
@@ -40,6 +57,7 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     companion object {
         val ALLOWED_CACHE_BYTES = setOf(128L, 512L, 1_024L, 2_048L).map { it * 1024L * 1024L }.toSet()
         const val DEFAULT_CACHE_BYTES = 512L * 1024L * 1024L
+        private val LIQUID_GLASS_ENABLED = booleanPreferencesKey("liquid_glass_enabled")
         private val LIQUID_GLASS_BLUR = floatPreferencesKey("liquid_glass_blur")
         private val CACHE_BYTES = longPreferencesKey("media_cache_bytes")
     }

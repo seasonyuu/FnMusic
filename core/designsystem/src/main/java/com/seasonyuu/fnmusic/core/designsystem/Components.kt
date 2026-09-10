@@ -155,7 +155,7 @@ fun MiniPlayer(
                 }
                 .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
                 .then(
-                    if (backdrop != null) {
+                    if (backdrop != null && glass.enabled) {
                         Modifier.drawBackdrop(
                             backdrop = backdrop,
                             shape = { Capsule() },
@@ -179,7 +179,7 @@ fun MiniPlayer(
                             },
                         )
                     } else {
-                        Modifier.graphicsLayer(interaction.layerBlock).background(Color(0xE624202E), Capsule())
+                        Modifier.graphicsLayer(interaction.layerBlock).background(if (glass.enabled) Color(0xE624202E) else glass.surfaceColor, Capsule())
                     },
                 )
                 .clip(Capsule())

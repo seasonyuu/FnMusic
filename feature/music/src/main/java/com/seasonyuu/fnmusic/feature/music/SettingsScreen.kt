@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +50,7 @@ internal fun SettingsScreen(
                         Text("Liquid Glass", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text(
                             when {
+                                !state.liquidGlassEnabled -> "已关闭"
                                 state.liquidGlassBlur < LiquidGlassBlur.Default -> "更透明"
                                 state.liquidGlassBlur > LiquidGlassBlur.Default -> "色调更深"
                                 else -> "默认"
@@ -103,9 +105,12 @@ internal fun LiquidGlassSettingsScreen(
     onValueChange: (Float) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    enabled: Boolean = true,
+    onEnabledChange: (Boolean) -> Unit = {},
 ) {
     CompositionLocalProvider(
         LocalLiquidGlassBlur provides multiplier,
+        LocalLiquidGlassEnabled provides enabled,
         LocalContentColor provides FnTextPrimary,
     ) {
         LazyColumn(
@@ -114,11 +119,30 @@ internal fun LiquidGlassSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item { PageTitle("Liquid Glass", onBack) }
-            item { LiquidGlassPreview() }
             item {
                 SettingsCard {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("启用 Liquid Glass", modifier = Modifier.weight(1f))
+                        // The page is part of the scene backdrop. Sampling that ancestor
+                        // from this toggle would create a RenderNode cycle; use its track only.
+                        CompositionLocalProvider(LocalFnBackdrop provides null) {
+                            LiquidToggle(
+                                checked = enabled,
+                                onCheckedChange = onEnabledChange,
+                                modifier = Modifier.testTag("liquid-glass-toggle").semantics {
+                                    contentDescription = "启用 Liquid Glass"
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            item { LiquidGlassPreview() }
+            item {
+                SettingsCard(modifier = Modifier.alpha(if (enabled) 1f else 0.38f)) {
                     LiquidSlider(
                         value = LiquidGlassBlur.toSlider(multiplier),
+                        enabled = enabled,
                         onValueChange = { onValueChange(LiquidGlassBlur.fromSlider(it)) },
                         onValueChangeFinished = onSave,
                         modifier = Modifier.fillMaxWidth().testTag("liquid-glass-slider").semantics {
@@ -137,14 +161,17 @@ internal fun LiquidGlassSettingsScreen(
                         Text("默认", style = MaterialTheme.typography.labelMedium, color = FnTextSecondary)
                         Text("色调", style = MaterialTheme.typography.labelMedium, color = FnTextSecondary)
                     }
-                    if (saveError != null) {
-                        Text(saveError, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("liquid-glass-save-error"))
-                        TextButton(onClick = onSave) { Text("重试保存") }
-                    }
                     OutlinedButton(
+                        enabled = enabled,
                         onClick = { onValueChange(LiquidGlassBlur.Default); onSave() },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("恢复默认") }
+                }
+            }
+            if (saveError != null) {
+                item {
+                    Text(saveError, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("liquid-glass-save-error"))
+                    TextButton(onClick = onSave) { Text("重试保存") }
                 }
             }
         }
@@ -181,7 +208,7 @@ private fun LiquidGlassPreview() {
     ) {
         // Record the moving introduction, while the glass controls stay outside this layer.
         Column(
-            Modifier.fillMaxSize().layerBackdrop(backdrop)
+            Modifier.fillMaxSize().then(if (LocalLiquidGlassEnabled.current) Modifier.layerBackdrop(backdrop) else Modifier)
                 .verticalScroll(scrollState).testTag("liquid-glass-preview-scroll"),
         ) {
             PreviewBand(Color(0xFFFFF2CB), Color(0xFF342B3E), "飞牛音乐", "让每一首喜欢的歌，回到日常。", introduction = true)
@@ -238,8 +265,8 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(colors = settingsCardColors(), modifier = Modifier.fillMaxWidth()) {
+private fun SettingsCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(colors = settingsCardColors(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }

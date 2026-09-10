@@ -7,11 +7,12 @@ import com.seasonyuu.fnmusic.core.model.LiquidGlassBlur
 
 /** Experimental clear/default/tinted material, independently resolving blur, brightness, and surface opacity. */
 @Immutable
-data class LiquidGlassMaterial(val blurScale: Float, val surfaceAlpha: Float, val brightness: Float) {
+data class LiquidGlassMaterial(val blurScale: Float, val surfaceAlpha: Float, val brightness: Float, val enabled: Boolean = true) {
     val surfaceColor: Color get() = Color(0xFF14121B).copy(alpha = surfaceAlpha)
 }
 
-fun resolveLiquidGlassMaterial(setting: Float): LiquidGlassMaterial {
+fun resolveLiquidGlassMaterial(setting: Float, enabled: Boolean = true): LiquidGlassMaterial {
+    if (!enabled) return LiquidGlassMaterial(blurScale = 0f, surfaceAlpha = 0.60f, brightness = 0f, enabled = false)
     val position = LiquidGlassBlur.toSlider(setting)
     val alpha = if (position <= 0.5f) {
         0.25f + (0.55f - 0.25f) * (position * 2f)
@@ -27,4 +28,4 @@ fun resolveLiquidGlassMaterial(setting: Float): LiquidGlassMaterial {
 }
 
 @Composable
-fun currentLiquidGlassMaterial(): LiquidGlassMaterial = resolveLiquidGlassMaterial(LocalLiquidGlassBlur.current)
+fun currentLiquidGlassMaterial(): LiquidGlassMaterial = resolveLiquidGlassMaterial(LocalLiquidGlassBlur.current, LocalLiquidGlassEnabled.current)

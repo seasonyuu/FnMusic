@@ -1,5 +1,8 @@
 package com.seasonyuu.fnmusic.core.designsystem
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +40,7 @@ fun LiquidButton(
 
     Row(
         modifier
-            .drawBackdrop(
+            .then(if (glass.enabled) Modifier.drawBackdrop(
                 backdrop = backdrop,
                 shape = { Capsule() },
                 effects = {
@@ -53,7 +56,14 @@ fun LiquidButton(
                     }
                     if (surfaceColor.isSpecified) drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                 },
-            )
+            ) else Modifier.graphicsLayer { if (isInteractive) interaction.layerBlock(this) }
+                .clip(Capsule()).drawBehind {
+                    if (tint.isSpecified) {
+                        drawRect(tint, blendMode = BlendMode.Hue)
+                        drawRect(tint.copy(alpha = glass.surfaceAlpha))
+                    }
+                    if (surfaceColor.isSpecified) drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
+                })
             .clickable(
                 interactionSource = null,
                 indication = if (isInteractive) null else LocalIndication.current,

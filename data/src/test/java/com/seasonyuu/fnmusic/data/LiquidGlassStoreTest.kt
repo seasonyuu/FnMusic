@@ -1,5 +1,6 @@
 package com.seasonyuu.fnmusic.data
 
+import com.seasonyuu.fnmusic.core.model.LiquidGlassPreference
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -24,8 +25,13 @@ class LiquidGlassStoreTest {
         }
         openStore { store ->
             assertEquals(1.75f, store.liquidGlassBlur.first(), 0f)
-            store.setLiquidGlassBlur(1f)
+            assertEquals(LiquidGlassPreference(1.75f, true), store.liquidGlass.first())
+            store.setLiquidGlass(LiquidGlassPreference(1.75f, false))
         }
-        openStore { assertEquals(1f, it.liquidGlassBlur.first(), 0f) }
+        openStore {
+            assertEquals(LiquidGlassPreference(1.75f, false), it.liquidGlass.first())
+            it.setLiquidGlass(LiquidGlassPreference(Float.NaN, true))
+            assertEquals(LiquidGlassPreference(1f, true), it.liquidGlass.first())
+        }
     }
 }

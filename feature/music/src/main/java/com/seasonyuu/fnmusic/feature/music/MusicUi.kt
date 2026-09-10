@@ -338,6 +338,7 @@ data class MusicUiState(
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
     val lyrics: List<LyricLine> = emptyList(),
+    val liquidGlassEnabled: Boolean = true,
     val liquidGlassBlur: Float = com.seasonyuu.fnmusic.core.model.LiquidGlassBlur.Default,
     val liquidGlassSaveError: String? = null,
     val cacheBytes: Long = 512L * 1024L * 1024L,
@@ -425,6 +426,7 @@ fun MusicShell(
     onCycleRepeatMode: () -> Unit,
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
+    onLiquidGlassEnabledChange: (Boolean) -> Unit = {},
     onLiquidGlassBlurChange: (Float) -> Unit = {},
     onLiquidGlassBlurSave: () -> Unit = {},
     onSaveTrackMetadata: (suspend (Track, TrackMetadataEdit) -> TrackMetadata)? = null,
@@ -542,6 +544,7 @@ fun MusicShell(
         }
         CompositionLocalProvider(
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
+            com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassEnabled provides state.liquidGlassEnabled,
             LocalContentColor provides FnTextPrimary,
             LocalTrackAction provides { track ->
                 queueActionEntryId = null
@@ -774,6 +777,8 @@ fun MusicShell(
                                                                 multiplier = state.liquidGlassBlur,
                                                                 saveError = state.liquidGlassSaveError,
                                                                 onValueChange = onLiquidGlassBlurChange,
+                                                                enabled = state.liquidGlassEnabled,
+                                                                onEnabledChange = onLiquidGlassEnabledChange,
                                                                 onSave = onLiquidGlassBlurSave,
                                                                 onBack = ::popPage,
                                                             )

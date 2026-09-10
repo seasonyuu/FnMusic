@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
                         onCycleRepeatMode = viewModel::cycleRepeatMode,
                         onCacheSizeChange = viewModel::setCacheSize,
                         onLiquidGlassBlurChange = viewModel::previewLiquidGlassBlur,
+                        onLiquidGlassEnabledChange = viewModel::setLiquidGlassEnabled,
                         onLiquidGlassBlurSave = viewModel::saveLiquidGlassBlur,
                         onLogout = viewModel::logout,
                         openPlayerRequested = openPlayerRequested,

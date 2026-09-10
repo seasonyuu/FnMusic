@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,7 @@ fun LiquidSlider(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -78,14 +80,16 @@ fun LiquidSlider(
         scale(lerp(2f / 3f, 1f, progress), lerp(0f, 1f, progress)) { drawBackdrop() }
     }
     Slider(
+        enabled = enabled,
         value = value,
-        onValueChange = onValueChange,
-        onValueChangeFinished = onValueChangeFinished,
+        // Material Slider exposes SetProgress even when disabled. Guard both callbacks.
+        onValueChange = { if (enabled) onValueChange(it) },
+        onValueChangeFinished = { if (enabled) onValueChangeFinished() },
         interactionSource = interactionSource,
         modifier = modifier.fillMaxWidth().height(56.dp),
         track = { state ->
             Box(
-                Modifier.fillMaxWidth().height(6.dp).layerBackdrop(trackBackdrop)
+                Modifier.fillMaxWidth().height(6.dp).then(if (glass.enabled) Modifier.layerBackdrop(trackBackdrop) else Modifier)
                     .clip(Capsule()).background(Color(0xFF787880).copy(alpha = 0.36f)),
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -94,7 +98,7 @@ fun LiquidSlider(
         },
         thumb = {
             Box(
-                Modifier.drawBackdrop(
+                Modifier.then(if (glass.enabled) Modifier.drawBackdrop(
                     backdrop = thumbBackdrop,
                     shape = { Capsule() },
                     effects = {
@@ -119,7 +123,13 @@ fun LiquidSlider(
                         scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
                     },
                     onDrawSurface = { drawRect(Color.White.copy(alpha = 1f - motion.pressProgress)) },
-                ).size(40.dp, 24.dp),
+                ) else Modifier.graphicsLayer {
+                    scaleX = motion.scaleX
+                    scaleY = motion.scaleY
+                    val velocity = if (pressed || dragged) motion.velocity / 10f else 0f
+                    scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                    scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                }.background(glass.surfaceColor, Capsule())).size(40.dp, 24.dp),
             )
         },
     )
