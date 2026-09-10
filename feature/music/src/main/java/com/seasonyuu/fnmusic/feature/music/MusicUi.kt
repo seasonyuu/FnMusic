@@ -172,6 +172,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -212,6 +213,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ContentScale
@@ -4584,6 +4586,7 @@ private fun QueuePlayerContent(
     val listState = rememberSaveable(state.playbackSessionId, saver = LazyListState.Saver) {
         LazyListState(firstVisibleItemIndex = currentHeaderIndex)
     }
+    var currentHeaderHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val edgeThresholdPx = with(density) { 64.dp.toPx() }
     val maxAutoScrollPerFramePx = with(density) { 12.dp.toPx() }
@@ -4594,6 +4597,15 @@ private fun QueuePlayerContent(
     val latestState by rememberUpdatedState(state)
     val latestMove by rememberUpdatedState(onMove)
     var revealedKey by remember { mutableStateOf<String?>(null) }
+
+    val snapBehavior = rememberQueueSnapBehavior(
+        listState = listState,
+        historyCount = historyCount,
+        currentHeightPx = currentHeaderHeightPx,
+        contentKey = listOf(state.playbackSessionId, state.current?.queueEntryId,
+            state.playbackHistory.map { it.queueEntryId }, displayedQueue.map { it.key }),
+        enabled = draggedKey == null && revealedKey == null,
+    )
 
     fun queueIndex(entry: QueueDisplayItem): Int = latestState.queue.indexOfFirst { it.queueEntryId == entry.item.queueEntryId }
 
@@ -4720,6 +4732,7 @@ private fun QueuePlayerContent(
         LazyColumn(
             state = listState,
             userScrollEnabled = draggedKey == null,
+            flingBehavior = snapBehavior,
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
@@ -4737,9 +4750,21 @@ private fun QueuePlayerContent(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = tailPadding),
         ) {
             if (state.playbackHistory.isNotEmpty()) {
-                item(key = "history-title") {
+                val historyHeader: @Composable () -> Unit = {
+                    // Leave with the current-song boundary rather than lingering over it.
+                    val currentOffset = listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.key == "queue-current" }?.offset?.toFloat()
+                    val historyVisible = !pinModeHeader || (listState.firstVisibleItemIndex < currentHeaderIndex &&
+                        (currentOffset == null || currentOffset > 0f))
+                    val titleHeight = with(density) { QueueHistoryTitleHeight.toPx() }
                     Row(
-                        Modifier.fillMaxWidth().height(52.dp)
+                        Modifier.fillMaxWidth().height(QueueHistoryTitleHeight)
+                            .graphicsLayer {
+                                translationY = if (pinModeHeader && currentOffset != null)
+                                    (currentOffset - titleHeight).coerceAtMost(0f) else 0f
+                                this.alpha = if (historyVisible) 1f else 0f
+                            }
+                            .then(if (historyVisible) Modifier else Modifier.clearAndSetSemantics { })
                             .padding(horizontal = 8.dp)
                             .testTag("player-playback-history"),
                         verticalAlignment = Alignment.CenterVertically,
@@ -4756,12 +4781,26 @@ private fun QueuePlayerContent(
                         )
                     }
                 }
+                if (pinModeHeader) {
+                    stickyHeader(key = "history-title") { historyHeader() }
+                } else {
+                    item(key = "history-title") { historyHeader() }
+                }
                 itemsIndexed(
                     state.playbackHistory,
                     key = { _, item -> "history:" + item.queueEntryId },
                 ) { index, item ->
                     Row(
-                        Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp)
+                        Modifier.fillMaxWidth().height(QueueHistoryRowHeight).padding(horizontal = 8.dp)
+                            .drawWithContent {
+                                val row = listState.layoutInfo.visibleItemsInfo
+                                    .firstOrNull { it.key == "history:" + item.queueEntryId }
+                                val covered = if (pinModeHeader && row != null)
+                                    QueueHistoryTitleHeight.toPx() - row.offset else 0f
+                                clipRect(top = covered.coerceIn(0f, size.height)) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -4782,11 +4821,13 @@ private fun QueuePlayerContent(
                     }
                 }
                 item(key = "history-current-gap") {
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(QueueHistoryGap))
                 }
             }
             item(key = "queue-current") {
-                Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) { currentHeader() }
+                Column(Modifier.fillMaxWidth()
+                    .onSizeChanged { currentHeaderHeightPx = it.height }
+                    .padding(bottom = 22.dp)) { currentHeader() }
             }
             if (pinModeHeader) {
                 stickyHeader(key = "queue-modes") { modeHeader() }
