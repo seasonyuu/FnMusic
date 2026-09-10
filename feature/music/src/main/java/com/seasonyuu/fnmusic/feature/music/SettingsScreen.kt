@@ -49,7 +49,7 @@ internal fun SettingsScreen(
                         Text("Liquid Glass", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text(
                             when {
-                                state.liquidGlassBlur < LiquidGlassBlur.Default -> "更清晰"
+                                state.liquidGlassBlur < LiquidGlassBlur.Default -> "更透明"
                                 state.liquidGlassBlur > LiquidGlassBlur.Default -> "色调更深"
                                 else -> "默认"
                             },
