@@ -64,6 +64,46 @@ class MusicShellTest {
     val compose = createComposeRule()
 
     @Test
+    fun playerVolumeUsesSystemStepsAndStaysAtSameValueAfterRelease() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val original = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val maximum = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        val minimum = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            audio.getStreamMinVolume(android.media.AudioManager.STREAM_MUSIC)
+        } else 0
+        try {
+            val track = Track(TrackId("volume-steps"), "音量档位测试")
+            setContent(playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+            ))
+            compose.onNodeWithText(track.title).performClick()
+            val slider = compose.onNodeWithTag("player-volume-slider")
+            fun range() = slider.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo]
+            assertEquals(minimum.toFloat()..maximum.toFloat(), range().range)
+            assertEquals((maximum - minimum - 1).coerceAtLeast(0), range().steps)
+            if (maximum > minimum) {
+                slider.performTouchInput {
+                    down(Offset(width * 0.2f, centerY))
+                    moveTo(Offset(width * 0.63f, centerY), delayMillis = 100)
+                }
+                compose.waitForIdle()
+                val dragged = range().current
+                assertEquals(dragged.toInt().toFloat(), dragged, 0f)
+                assertEquals(audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat(), dragged, 0f)
+                slider.performTouchInput { up() }
+                compose.waitForIdle()
+                assertEquals(dragged, range().current, 0f)
+            } else {
+                slider.assertIsNotEnabled()
+            }
+        } finally {
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0)
+        }
+    }
+
+    @Test
     fun wideMiniPlayerControlsStayOrderedAndDoNotOpenPlayer() {
         val calls = mutableListOf<String>()
         val tracks = (0..2).map { PlayableTrack(Track(TrackId("mini-$it"), "宽屏歌曲 $it"), "https://music.invalid/$it") }
