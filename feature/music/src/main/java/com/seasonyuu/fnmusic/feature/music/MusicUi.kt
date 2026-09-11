@@ -162,8 +162,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.RippleConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -872,6 +874,7 @@ fun MusicShell(
                 TrackActionSheet(
                     track = track,
                     coverUrl = coverUrl(track.coverId, 160),
+                    showTrackHeader = !(playerComposed && queueActionEntryId == null && track.id == playerState.current?.track?.id),
                 onDismiss = {
                     actionTrack = null
                     queueActionEntryId = null
@@ -1925,41 +1928,46 @@ private fun PlaylistPickerSheet(
     onSelect: (Playlist) -> Unit,
     onCreate: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF24202E),
-        contentColor = FnTextPrimary,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-            Text("添加到歌单", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            Text(track.title, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
-            Spacer(Modifier.height(10.dp))
-            ActionSheetRow(Icons.Rounded.Add, "新建歌单", onCreate)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                items(playlists, key = { it.id.value }) { playlist ->
-                    val disabled = busy || playlist.id == disabledPlaylistId
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "添加到歌单：${playlist.name}" }
-                            .clickable(enabled = !disabled) { onSelect(playlist) }
-                            .padding(horizontal = 24.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = if (disabled) FnTextSecondary.copy(alpha = .45f) else FnAccent, modifier = Modifier.size(28.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (disabled) FnTextSecondary else FnTextPrimary)
-                            Text(
-                                if (playlist.id == disabledPlaylistId) "已在当前歌单中" else playlist.trackCount.countLabel(),
-                                color = FnTextSecondary,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+    val rippleConfiguration = LocalRippleConfiguration.current
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            containerColor = Color(0xFF24202E),
+            contentColor = FnTextPrimary,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ) {
+            CompositionLocalProvider(LocalRippleConfiguration provides rippleConfiguration) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    Text("添加到歌单", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                    Text(track.title, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 24.dp))
+                    Spacer(Modifier.height(10.dp))
+                    ActionSheetRow(Icons.Rounded.Add, "新建歌单", onCreate)
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                        items(playlists, key = { it.id.value }) { playlist ->
+                            val disabled = busy || playlist.id == disabledPlaylistId
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "添加到歌单：${playlist.name}" }
+                                    .clickable(enabled = !disabled) { onSelect(playlist) }
+                                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = if (disabled) FnTextSecondary.copy(alpha = .45f) else FnAccent, modifier = Modifier.size(28.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (disabled) FnTextSecondary else FnTextPrimary)
+                                    Text(
+                                        if (playlist.id == disabledPlaylistId) "已在当前歌单中" else playlist.trackCount.countLabel(),
+                                        color = FnTextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
                         }
+                        if (playlists.isEmpty()) item { EmptyPane("还没有歌单") }
                     }
                 }
-                if (playlists.isEmpty()) item { EmptyPane("还没有歌单") }
             }
         }
     }
@@ -1986,6 +1994,7 @@ private fun SearchCategoryRow(title: String, subtitle: String, cover: String?, o
 private fun TrackActionSheet(
     track: Track,
     coverUrl: String?,
+    showTrackHeader: Boolean,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -1996,32 +2005,39 @@ private fun TrackActionSheet(
     onArtist: (() -> Unit)?,
     onInfo: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF24202E),
-        contentColor = FnTextPrimary,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+    val rippleConfiguration = LocalRippleConfiguration.current
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            containerColor = Color(0xFF24202E),
+            contentColor = FnTextPrimary,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
-            CoverImage(coverUrl, track.title, Modifier.size(64.dp))
-            Column(Modifier.weight(1f)) {
-                Text(track.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            CompositionLocalProvider(LocalRippleConfiguration provides rippleConfiguration) {
+                if (showTrackHeader) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        CoverImage(coverUrl, track.title, Modifier.size(64.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(track.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放", onPlayNext)
+                ActionSheetRow(Icons.AutoMirrored.Rounded.QueueMusic, "加入待播队列", onAddToQueue)
+                ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "添加到歌单", onAddToPlaylist)
+                onAlbum?.let { ActionSheetRow(Icons.Rounded.Album, "查看专辑", it) }
+                onArtist?.let { ActionSheetRow(Icons.Rounded.Person, "查看歌手", it) }
+                onRemoveFromPlaylist?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从歌单移除", it) }
+                onRemoveFromQueue?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从待播队列移除", it) }
+                ActionSheetRow(Icons.Rounded.Info, "歌曲信息", onInfo)
+                Spacer(Modifier.height(24.dp))
             }
         }
-        ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放", onPlayNext)
-        ActionSheetRow(Icons.AutoMirrored.Rounded.QueueMusic, "加入待播队列", onAddToQueue)
-        ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "添加到歌单", onAddToPlaylist)
-        onAlbum?.let { ActionSheetRow(Icons.Rounded.Album, "查看专辑", it) }
-        onArtist?.let { ActionSheetRow(Icons.Rounded.Person, "查看歌手", it) }
-        onRemoveFromPlaylist?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从歌单移除", it) }
-        onRemoveFromQueue?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从待播队列移除", it) }
-        ActionSheetRow(Icons.Rounded.Info, "歌曲信息", onInfo)
-        Spacer(Modifier.height(24.dp))
     }
 }
 
