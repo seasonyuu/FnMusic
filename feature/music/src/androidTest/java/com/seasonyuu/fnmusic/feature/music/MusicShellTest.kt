@@ -96,6 +96,9 @@ class MusicShellTest {
                 slider.performTouchInput { up() }
                 compose.waitForIdle()
                 assertEquals(dragged, range().current, 0f)
+                slider.performTouchInput { click(Offset(width * 0.9f, centerY)) }
+                compose.waitForIdle()
+                assertEquals("A volume track tap must not jump to its absolute position", dragged, range().current, 0f)
                 slider.performTouchInput {
                     down(center)
                     moveTo(Offset(width * 0.3f, centerY), delayMillis = 100)
@@ -108,6 +111,51 @@ class MusicShellTest {
             } else {
                 slider.assertIsNotEnabled()
             }
+        } finally {
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0)
+        }
+    }
+
+    @Test
+    fun playerVolumeSlowDragAccumulatesSmallDeltasAcrossSteps() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val original = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val maximum = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        val minimum = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            audio.getStreamMinVolume(android.media.AudioManager.STREAM_MUSIC)
+        } else 0
+        if (maximum - minimum < 2) return
+        val startVolume = ((minimum + maximum) / 2).coerceAtMost(maximum - 1)
+        try {
+            audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, startVolume, 0)
+            val track = Track(TrackId("volume-slow-drag"), "音量慢速拖动")
+            setContent(playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+            ))
+            compose.onNodeWithText(track.title).performClick()
+            val slider = compose.onNodeWithTag("player-volume-slider")
+            val range = slider.fetchSemanticsNode().config[
+                androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo
+            ]
+            assertEquals(startVolume.toFloat(), range.current, 0f)
+
+            slider.performTouchInput {
+                val startX = width * 0.1f
+                val increment = width / (maximum - minimum).toFloat() * 0.2f
+                down(Offset(startX, centerY))
+                repeat(8) { index ->
+                    moveTo(Offset(startX + (index + 1) * increment, centerY), delayMillis = 100)
+                }
+            }
+            compose.waitForIdle()
+            val dragged = slider.fetchSemanticsNode().config[
+                androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo
+            ].current
+            assertTrue("Slow small deltas must move the stepped volume slider", dragged > startVolume)
+            assertEquals(audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat(), dragged, 0f)
+            slider.performTouchInput { up() }
         } finally {
             audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0)
         }

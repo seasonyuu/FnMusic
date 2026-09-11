@@ -86,6 +86,58 @@ class PlayerSliderTest {
         assertEquals(state.value.positionMs.toFloat(), current(), 1f)
     }
 
+    @Test fun trackTapDoesNotJumpButDragFromAnyPositionAccumulatesDelta() {
+        val value = mutableFloatStateOf(0.5f)
+        var finishes = 0
+        compose.setContent {
+            FnMusicTheme {
+                PlayerSlider(
+                    value = value.floatValue,
+                    onValueChange = { value.floatValue = it },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.width(300.dp).testTag("slider"),
+                    onValueChangeFinished = { finishes++ },
+                )
+            }
+        }
+        val initial = current()
+        slider().performTouchInput { click(Offset(width * 0.9f, centerY)) }
+        assertEquals("A track tap must not jump to its absolute position", initial, current(), 0f)
+        assertEquals("A track tap is not a completed drag", 0, finishes)
+
+        slider().performTouchInput {
+            down(Offset(width * 0.9f, centerY))
+            moveTo(Offset(width * 1.1f, centerY), delayMillis = 100)
+            up()
+        }
+        assertEquals("A drag accumulates movement from its starting position", 0.7f, current(), 0.03f)
+        assertEquals(1, finishes)
+    }
+
+    @Test fun slowSteppedDragAccumulatesSubStepDistance() {
+        val value = mutableFloatStateOf(5f)
+        compose.setContent {
+            FnMusicTheme {
+                PlayerSlider(
+                    value = value.floatValue,
+                    onValueChange = { value.floatValue = it },
+                    valueRange = 0f..10f,
+                    modifier = Modifier.width(300.dp).testTag("slider"),
+                    steps = 9,
+                )
+            }
+        }
+
+        slider().performTouchInput {
+            down(Offset(width * 0.3f, centerY))
+            repeat(16) { index ->
+                moveTo(Offset(width * 0.3f + (index + 1) * 6f, centerY), delayMillis = 100)
+            }
+        }
+        assertEquals("Small drag deltas must accumulate across stepped values", 6f, current(), 0f)
+        slider().performTouchInput { up() }
+    }
+
     @Test fun cancelledDragDoesNotSeekAndNextGestureStillWorks() {
         val state = mutableStateOf(player())
         val seeks = mutableListOf<Long>()
@@ -95,6 +147,7 @@ class PlayerSliderTest {
             moveTo(Offset(width * 0.8f, centerY), delayMillis = 100)
         }
         assertTrue(current() > 100_000)
+        assertTrue("A drag that is still held must not seek", seeks.isEmpty())
         slider().performTouchInput { cancel() }
         compose.waitForIdle()
         assertTrue("A cancelled gesture must not seek", seeks.isEmpty())
@@ -103,7 +156,7 @@ class PlayerSliderTest {
         slider().performSemanticsAction(SemanticsActions.SetProgress) { it(120_000f) }
         assertEquals(listOf(120_000L), seeks)
         slider().performTouchInput { click(center) }
-        assertEquals(2, seeks.size)
+        assertEquals("A playback track tap must not seek", 1, seeks.size)
     }
 
     @Test fun seekTimeoutAndDuplicateQueueEntryResetPreview() {
@@ -169,9 +222,9 @@ class PlayerSliderTest {
         slider().performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         slider().performKeyInput { pressKey(Key.DirectionRight) }
         assertEquals(7f, current(), 0f)
-        slider().performTouchInput { swipe(center, Offset(width * 1.2f, centerY), 200) }
+        slider().performTouchInput { swipe(Offset(width * 0.5f, centerY), Offset(width * 1.2f, centerY), 200) }
         assertEquals(10f, current(), 0f)
-        slider().performTouchInput { swipe(center, Offset(-width * 0.2f, centerY), 200) }
+        slider().performTouchInput { swipe(Offset(width * 0.1f, centerY), Offset(-width * 1.2f, centerY), 200) }
         assertEquals(0f, current(), 0f)
         assertTrue(finishes >= 3)
     }
