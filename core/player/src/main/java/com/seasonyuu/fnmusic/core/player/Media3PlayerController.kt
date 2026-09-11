@@ -15,6 +15,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.seasonyuu.fnmusic.core.model.PlayableTrack
 import com.seasonyuu.fnmusic.core.model.PlayerController
 import com.seasonyuu.fnmusic.core.model.PlayerState
+import com.seasonyuu.fnmusic.core.model.PlaybackStatus
 import com.seasonyuu.fnmusic.core.model.RepeatMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +75,7 @@ class Media3PlayerController(context: Context) : PlayerController {
             0L,
             if (isRoaming) false else state.value.shuffleEnabled,
             if (isRoaming) RepeatMode.Off else state.value.repeatMode,
+            PlaybackStatus.Buffering,
         )
         val requestSession = playbackSessionId
         withController { controller ->
@@ -104,7 +106,7 @@ class Media3PlayerController(context: Context) : PlayerController {
         playbackHistory = emptyList()
         observedCurrent = queue[startIndex.coerceIn(queue.indices)]
         isRoaming = false
-        publishPendingState(startIndex, positionMs, shuffleEnabled, repeatMode)
+        publishPendingState(startIndex, positionMs, shuffleEnabled, repeatMode, PlaybackStatus.Paused)
         val requestSession = playbackSessionId
         withController { controller ->
             if (requestSession != playbackSessionId) return@withController
@@ -122,12 +124,19 @@ class Media3PlayerController(context: Context) : PlayerController {
         }
     }
 
-    private fun publishPendingState(index: Int, position: Long, shuffle: Boolean, repeat: RepeatMode) {
+    private fun publishPendingState(
+        index: Int,
+        position: Long,
+        shuffle: Boolean,
+        repeat: RepeatMode,
+        playbackStatus: PlaybackStatus,
+    ) {
         pendingTimeline = true
         mutableState.value = PlayerState(
             queue = queue,
             playbackSessionId = playbackSessionId,
             currentIndex = index.coerceIn(queue.indices),
+            playbackStatus = playbackStatus,
             positionMs = position.coerceAtLeast(0),
             durationMs = (queue[index.coerceIn(queue.indices)].track.durationSeconds * 1000).toLong(),
             shuffleEnabled = shuffle,
@@ -337,7 +346,7 @@ class Media3PlayerController(context: Context) : PlayerController {
             playbackHistory = playbackHistory,
             playbackSessionId = playbackSessionId,
             currentIndex = controller.currentMediaItemIndex,
-            isPlaying = controller.isPlaying,
+            playbackStatus = controller.playbackStatus(),
             positionMs = controller.currentPosition.coerceAtLeast(0),
             durationMs = controller.duration.coerceAtLeast(0),
             shuffleEnabled = controller.shuffleModeEnabled,
@@ -351,6 +360,8 @@ class Media3PlayerController(context: Context) : PlayerController {
             playbackOrder = publishedOrder,
         )
     }
+
+    private fun Player.playbackStatus(): PlaybackStatus = playbackStatus(playbackState, isPlaying, playWhenReady)
 
     private fun prepareHistoryTransition(target: PlayableTrack) {
         val previous = observedCurrent ?: mutableState.value.current
@@ -389,4 +400,16 @@ class Media3PlayerController(context: Context) : PlayerController {
     private fun withController(block: (MediaController) -> Unit) {
         controllerFuture.addListener({ runCatching { block(controllerFuture.get()) } }, ContextCompat.getMainExecutor(appContext))
     }
+}
+
+internal fun playbackStatus(
+    playbackState: Int,
+    isPlaying: Boolean,
+    playWhenReady: Boolean,
+): PlaybackStatus = when {
+    playbackState == Player.STATE_BUFFERING && playWhenReady -> PlaybackStatus.Buffering
+    isPlaying -> PlaybackStatus.Playing
+    playbackState == Player.STATE_ENDED -> PlaybackStatus.Ended
+    playbackState == Player.STATE_IDLE -> PlaybackStatus.Idle
+    else -> PlaybackStatus.Paused
 }

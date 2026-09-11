@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalRippleConfiguration
@@ -67,6 +65,7 @@ import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
 import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
+import com.seasonyuu.fnmusic.core.designsystem.PlaybackToggleIcon
 import com.seasonyuu.fnmusic.core.designsystem.rememberLiquidInteraction
 import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.RepeatMode
@@ -259,7 +258,7 @@ internal fun LiquidMiniPlayer(
                 )
             }
             IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
-                Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+                PlaybackToggleIcon(state, iconSize = 24.dp)
             }
             IconButton(
                 onClick = onNext,

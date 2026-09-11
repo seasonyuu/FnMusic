@@ -261,6 +261,7 @@ import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
 import com.seasonyuu.fnmusic.core.designsystem.LocalFnBackdrop
 import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
+import com.seasonyuu.fnmusic.core.designsystem.PlaybackToggleIcon
 import com.seasonyuu.fnmusic.core.designsystem.rememberDynamicBottomBarState
 import com.seasonyuu.fnmusic.core.designsystem.R
 import com.seasonyuu.fnmusic.core.designsystem.TrackRow
@@ -2474,7 +2475,7 @@ private fun PlayerMorphOverlay(
     // Retarget from the current scale/velocity on rapid toggles; keep this state
     // across track changes. Only the large-cover endpoint uses the playback scale.
     val playbackCoverScale by animateFloatAsState(
-        targetValue = if (state.isPlaying) 1f else 0.73f,
+        targetValue = if (state.playbackIntentActive) 1f else 0.73f,
         animationSpec = playbackCoverMotion,
         visibilityThreshold = 0.0001f,
         label = "player-playback-cover-scale",
@@ -2696,7 +2697,7 @@ private fun PlayerMorphOverlay(
                         Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClickLabel = if (state.isPlaying) "暂停" else "播放",
+                            onClickLabel = if (state.playbackIntentActive) "暂停" else "播放",
                             onClick = onLargeCoverClick,
                         )
                     } else {
@@ -4096,11 +4097,9 @@ private fun PlayerPlaybackControls(
                 onClick = onToggle,
                 modifier = Modifier.size(if (compactTransport) 76.dp else 84.dp)
             ) {
-                Icon(
-                    if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    "播放或暂停",
-                    Modifier.size(if (compactTransport) 54.dp else 60.dp)
-                        .offset(x = if (state.isPlaying) 0.dp else 2.dp),
+                PlaybackToggleIcon(
+                    state,
+                    iconSize = if (compactTransport) 54.dp else 60.dp,
                     tint = FnTextPrimary,
                 )
             }
@@ -4356,7 +4355,7 @@ private fun NowPlayingScreen(
                     }
                     IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "上一首", Modifier.size(34.dp)) }
                     FilledIconButton(onClick = onToggle, modifier = Modifier.size(72.dp)) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停", Modifier.size(38.dp))
+                        PlaybackToggleIcon(state, iconSize = 38.dp)
                     }
                     IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "下一首", Modifier.size(34.dp)) }
                     IconButton(onClick = onCycleRepeatMode, enabled = !state.isRoaming, modifier = Modifier.size(48.dp)) {
@@ -4575,7 +4574,7 @@ private fun LyricsScreen(
                 ) {
                     IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(52.dp)) { Icon(Icons.Rounded.SkipPrevious, "上一首") }
                     FilledIconButton(onClick = onToggle, modifier = Modifier.size(60.dp)) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停", Modifier.size(32.dp))
+                        PlaybackToggleIcon(state, iconSize = 32.dp)
                     }
                     IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(52.dp)) { Icon(Icons.Rounded.SkipNext, "下一首") }
                 }

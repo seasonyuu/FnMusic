@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.stateDescription
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,8 +48,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.SkipNext
@@ -92,6 +106,80 @@ fun CoverImage(
         }
     }
 }
+
+@Composable
+fun PlaybackToggleIcon(
+    state: PlayerState,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 32.dp,
+    tint: Color = FnTextPrimary,
+    contentDescription: String = "播放或暂停",
+) {
+    var bufferingVisible by remember(state.current?.queueEntryId) { mutableStateOf(false) }
+    LaunchedEffect(state.isBuffering, state.current?.queueEntryId) {
+        bufferingVisible = false
+        if (state.isBuffering) {
+            delay(200)
+            bufferingVisible = true
+        }
+    }
+    val target = when {
+        state.isBuffering && bufferingVisible -> PlaybackGlyph.Buffering
+        state.playbackIntentActive -> PlaybackGlyph.Pause
+        else -> PlaybackGlyph.Play
+    }
+    // Keep each layer's animation alive so rapid toggles reverse from its current value.
+    // The fixed viewport also prevents the smaller spinner from changing icon geometry.
+    Box(
+        modifier.size(iconSize).clearAndSetSemantics {
+            this.contentDescription = contentDescription
+            stateDescription = when {
+                state.isBuffering -> "正在缓冲，点击暂停"
+                state.isPlaying -> "正在播放"
+                else -> "已暂停"
+            }
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        PlaybackGlyph.entries.forEach { glyph ->
+            val visibility by animateFloatAsState(
+                targetValue = if (target == glyph) 1f else 0f,
+                animationSpec = tween(
+                    durationMillis = if (glyph == PlaybackGlyph.Buffering || state.isBuffering) 120 else 160,
+                    easing = FastOutSlowInEasing,
+                ),
+                label = "playback-glyph-$glyph",
+            )
+            if (visibility > 0f) {
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        alpha = visibility
+                        scaleX = 0.9f + 0.1f * visibility
+                        scaleY = scaleX
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (glyph == PlaybackGlyph.Buffering) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(iconSize * 0.58f),
+                            color = tint,
+                            strokeWidth = 2.5.dp,
+                        )
+                    } else {
+                        Icon(
+                            if (glyph == PlaybackGlyph.Pause) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            null,
+                            Modifier.size(iconSize).offset(x = if (glyph == PlaybackGlyph.Play) 2.dp else 0.dp),
+                            tint = tint,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class PlaybackGlyph { Play, Pause, Buffering }
 
 @Composable
 fun TrackRow(
@@ -217,7 +305,7 @@ fun MiniPlayer(
                 }
                 if (trailingControls != null) trailingControls() else Row {
                     IconButton(onClick = onToggle, modifier = Modifier.size(40.dp)) {
-                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "播放或暂停")
+                        PlaybackToggleIcon(state, iconSize = 24.dp)
                     }
                     IconButton(
                         onClick = onNext,

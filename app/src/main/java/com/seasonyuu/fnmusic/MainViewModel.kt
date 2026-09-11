@@ -523,7 +523,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     }
 
     fun togglePlayback() {
-        if (player.value.isPlaying) graph.player.pause() else graph.player.resume()
+        if (player.value.playbackIntentActive) graph.player.pause() else graph.player.resume()
     }
 
     fun seekTo(positionMs: Long) = graph.player.seekTo(positionMs)

@@ -53,7 +53,7 @@ class PlaybackQueueRecoveryTest {
         started.await()
         assertEquals("Cached title", f.state.current?.track?.title)
         assertEquals(1234L, f.state.positionMs)
-        f.state = f.state.copy(positionMs = 9000, isPlaying = true)
+        f.state = f.state.copy(positionMs = 9000, playbackStatus = PlaybackStatus.Playing)
         f.recovery.persist()
         assertEquals(1, f.rows.size)
         response.complete(f.track.copy(title = "Cloud title"))
@@ -86,7 +86,7 @@ class PlaybackQueueRecoveryTest {
         val f = Fixture()
         f.fetch = {
             f.state = PlayerState(queue = listOf(PlayableTrack(Track(TrackId("two"), "New song"), "url")),
-                currentIndex = 0, positionMs = 777, isPlaying = true, playbackSessionId = 2)
+                currentIndex = 0, positionMs = 777, playbackStatus = PlaybackStatus.Playing, playbackSessionId = 2)
             f.track.copy(title = "Updated")
         }
         f.recovery.recover()

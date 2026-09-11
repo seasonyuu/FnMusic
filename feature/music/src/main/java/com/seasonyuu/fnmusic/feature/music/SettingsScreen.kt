@@ -198,7 +198,7 @@ private fun LiquidGlassPreview() {
                 streamUrl = "",
             )),
             currentIndex = 0,
-            isPlaying = isPlaying,
+            playbackStatus = if (isPlaying) PlaybackStatus.Playing else PlaybackStatus.Paused,
             repeatMode = RepeatMode.All,
         )
     }

@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.seasonyuu.fnmusic.core.designsystem.FnAccent
 import com.seasonyuu.fnmusic.core.designsystem.FnIcons
 import com.seasonyuu.fnmusic.core.designsystem.MiniPlayer
+import com.seasonyuu.fnmusic.core.designsystem.PlaybackToggleIcon
 import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.RepeatMode
 
@@ -82,12 +83,7 @@ internal fun WideMiniPlayer(
                                 onClick = onToggle,
                                 modifier = Modifier.size(48.dp).testTag("wide-mini-toggle")
                             ) {
-                                Icon(
-                                    if (state.isPlaying) Icons.Rounded.Pause
-                                    else Icons.Rounded.PlayArrow,
-                                    "播放或暂停",
-                                    Modifier.size(32.dp)
-                                )
+                                PlaybackToggleIcon(state, iconSize = 32.dp)
                             }
                             IconButton(
                                 onClick = onNext,

@@ -195,6 +195,14 @@ enum class AlbumSort(val wireValue: String?) {
 
 enum class RepeatMode { Off, All, One }
 
+enum class PlaybackStatus {
+    Idle,
+    Buffering,
+    Playing,
+    Paused,
+    Ended,
+}
+
 data class PlayableTrack(
     val track: Track,
     val streamUrl: String,
@@ -210,7 +218,7 @@ data class PlayerState(
     /** Changes only when a different playback list is started or restored. */
     val playbackSessionId: Long = 0,
     val currentIndex: Int = -1,
-    val isPlaying: Boolean = false,
+    val playbackStatus: PlaybackStatus = PlaybackStatus.Idle,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val shuffleEnabled: Boolean = false,
@@ -220,6 +228,15 @@ data class PlayerState(
     /** Media3 timeline indices in playback order, including its actual shuffle order. */
     val playbackOrder: List<Int> = emptyList(),
 ) {
+    val isPlaying: Boolean
+        get() = playbackStatus == PlaybackStatus.Playing
+
+    val isBuffering: Boolean
+        get() = playbackStatus == PlaybackStatus.Buffering
+
+    val playbackIntentActive: Boolean
+        get() = playbackStatus == PlaybackStatus.Playing || playbackStatus == PlaybackStatus.Buffering
+
     val current: PlayableTrack?
         get() = queue.getOrNull(currentIndex)
 

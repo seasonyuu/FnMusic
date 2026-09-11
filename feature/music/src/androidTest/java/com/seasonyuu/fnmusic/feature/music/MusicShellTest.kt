@@ -39,6 +39,7 @@ import androidx.paging.PagingData
 import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
 import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.PlayableTrack
+import com.seasonyuu.fnmusic.core.model.PlaybackStatus
 import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.AlbumId
 import com.seasonyuu.fnmusic.core.model.Artist
@@ -808,7 +809,7 @@ class MusicShellTest {
                 PlayerState(
                     queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
                     currentIndex = 0,
-                    isPlaying = false,
+                    playbackStatus = PlaybackStatus.Paused,
                     durationMs = 180_000
                 ),
         )
@@ -882,12 +883,12 @@ class MusicShellTest {
         )
         compose.onNodeWithText(track.title).performClick()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Playing) }
         compose.mainClock.advanceTimeBy(6_000)
         compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
         compose.onNodeWithTag("player-playback-progress").assertIsDisplayed()
         compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Paused) }
         compose.mainClock.autoAdvance = true
     }
 
@@ -2175,15 +2176,15 @@ class MusicShellTest {
     @Test
     fun playbackCoverActuallyOvershootsBeforeSettling() {
         val track = PlayableTrack(Track(TrackId("bounce"), "回弹测试"), "https://music.invalid/bounce")
-        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, isPlaying = true))
+        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, playbackStatus = PlaybackStatus.Playing))
         setContent(playerStateProvider = { player.value })
         compose.onNodeWithTag("dynamic-mini-player").performClick()
         fun width() = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot.width
         val expanded = width()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Paused) }
         val shrinking = List(60) { compose.mainClock.advanceTimeByFrame(); width() }
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Playing) }
         val growing = List(60) { compose.mainClock.advanceTimeByFrame(); width() }
         compose.mainClock.autoAdvance = true
         org.junit.Assert.assertTrue(
@@ -2201,26 +2202,26 @@ class MusicShellTest {
     @Test
     fun playbackCoverScalesSmoothlyWithoutMovingControlsAndCanReverse() {
         val track = PlayableTrack(Track(TrackId("scale"), "缩放测试"), "https://music.invalid/scale")
-        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, isPlaying = true))
+        val player = mutableStateOf(PlayerState(queue = listOf(track), currentIndex = 0, playbackStatus = PlaybackStatus.Playing))
         setContent(playerStateProvider = { player.value })
         compose.onNodeWithTag("dynamic-mini-player").performClick()
         fun cover() = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
         val expanded = cover()
         val controls = compose.onNodeWithTag("player-transport-controls").fetchSemanticsNode().boundsInRoot
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Paused) }
         compose.mainClock.advanceTimeBy(128)
         val shrinking = cover()
         org.junit.Assert.assertTrue(shrinking.width < expanded.width - 2f)
         org.junit.Assert.assertTrue(shrinking.width > expanded.width * 0.73f + 2f)
         assertEquals(expanded.center.x, shrinking.center.x, 2f)
         assertEquals(expanded.center.y, shrinking.center.y, 2f)
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Playing) }
         compose.mainClock.advanceTimeByFrame()
         org.junit.Assert.assertTrue("反转时不能直接跳到终点", cover().width < expanded.width - 2f)
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(expanded.width, cover().width, 2f)
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = false) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Paused) }
         compose.mainClock.advanceTimeBy(1_000)
         val paused = cover()
         assertEquals(expanded.width * 0.73f, paused.width, 2f)
@@ -2232,7 +2233,7 @@ class MusicShellTest {
         val compact = cover()
         // Playing lyrics intentionally keep a frame clock running.
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { player.value = player.value.copy(isPlaying = true) }
+        compose.runOnIdle { player.value = player.value.copy(playbackStatus = PlaybackStatus.Playing) }
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(compact, cover())
         compose.onNodeWithTag("player-lyrics-entry").performClick()
@@ -2248,7 +2249,7 @@ class MusicShellTest {
             queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
             currentIndex = 0,
             durationMs = 180_000,
-            isPlaying = true,
+            playbackStatus = PlaybackStatus.Playing,
         )
         setContent(playerState = player)
 
@@ -3606,6 +3607,21 @@ class MusicShellTest {
         compose.waitForIdle()
         compose.onNodeWithTag("player-morph-overlay").assertDoesNotExist()
         compose.onNodeWithTag("dynamic-mini-player").assertIsDisplayed()
+    }
+
+    @Test
+    fun bufferingStateShowsProgressFeedbackOnThePlayerPage() {
+        val track = Track(TrackId("buffering"), "缓冲状态测试")
+        setContent(
+            playerState = PlayerState(
+                queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
+                currentIndex = 0,
+                playbackStatus = PlaybackStatus.Buffering,
+            ),
+        )
+
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
     }
 
     private fun setContent(
