@@ -13,6 +13,11 @@ internal class RoamQueue(initial: RoamWindow) {
     val items: List<RoamItem>
         get() = mutableItems
 
+    /** Rehydrates the full server-id window saved alongside a playback queue. */
+    internal constructor(items: List<RoamItem>) : this(RoamWindow()) {
+        mutableItems += items
+    }
+
     fun anchorAt(index: Int): RoamItem? = mutableItems.getOrNull(index)
 
     /**

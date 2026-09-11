@@ -288,6 +288,7 @@ interface PlayerController {
         positionMs: Long,
         shuffleEnabled: Boolean,
         repeatMode: RepeatMode,
+        isRoaming: Boolean = false,
     )
     /** Refreshes matching metadata without changing queue order or playback position. */
     fun updateTracks(tracks: List<PlayableTrack>)

@@ -28,7 +28,7 @@ class PlaybackCacheMigrationTest {
                 old.version = 1
             }
             val db = Room.databaseBuilder(context, FnMusicDatabase::class.java, name)
-                .addMigrations(FnMusicDatabase.MIGRATION_1_2).build()
+                .addMigrations(FnMusicDatabase.MIGRATION_1_2, FnMusicDatabase.MIGRATION_2_3).build()
             try {
                 val row = db.playbackQueue().observe().first().single()
                 assertEquals("saved-song", row.trackGuid)

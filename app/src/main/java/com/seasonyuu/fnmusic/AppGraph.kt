@@ -28,6 +28,7 @@ class AppGraph(context: Context) {
     val catalogCache = CatalogCache(context, network.json)
     val database = Room.databaseBuilder(context, FnMusicDatabase::class.java, "fn_music.db")
         .addMigrations(FnMusicDatabase.MIGRATION_1_2)
+        .addMigrations(FnMusicDatabase.MIGRATION_2_3)
         .build()
     val player = Media3PlayerController(context)
 

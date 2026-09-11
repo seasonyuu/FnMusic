@@ -80,6 +80,14 @@ class PlaybackMetadataRefreshTest {
             withContext(Dispatchers.Main) { controller.resume() }
             withTimeout(10_000) { controller.state.first { it.isPlaying } }
             withContext(Dispatchers.Main) {
+                controller.restore(listOf(original), 0, controller.state.value.positionMs, false, RepeatMode.All)
+            }
+            kotlinx.coroutines.delay(600)
+            assertFalse("恢复播放队列不能继承原来的播放意图", controller.state.value.playbackIntentActive)
+            val restoredSessionId = controller.state.value.playbackSessionId
+            withContext(Dispatchers.Main) { controller.resume() }
+            withTimeout(10_000) { controller.state.first { it.isPlaying } }
+            withContext(Dispatchers.Main) {
                 controller.updateTracks(listOf(original.copy(track = original.track.copy(title = "Live update"))))
             }
             kotlinx.coroutines.delay(600)
@@ -87,7 +95,7 @@ class PlaybackMetadataRefreshTest {
             assertTrue(playing.isPlaying)
             assertTrue(playing.positionMs >= 3456L)
             assertEquals("Live update", playing.current?.track?.title)
-            assertEquals(sessionId, playing.playbackSessionId)
+            assertEquals(restoredSessionId, playing.playbackSessionId)
             assertNull(playing.error)
         } finally {
             withContext(Dispatchers.Main) { controller.clear() }

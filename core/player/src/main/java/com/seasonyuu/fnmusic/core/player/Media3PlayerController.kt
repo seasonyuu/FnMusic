@@ -92,12 +92,21 @@ class Media3PlayerController(context: Context) : PlayerController {
         }
     }
 
+    fun restore(
+        items: List<PlayableTrack>,
+        startIndex: Int,
+        positionMs: Long,
+        shuffleEnabled: Boolean,
+        repeatMode: RepeatMode,
+    ) = restore(items, startIndex, positionMs, shuffleEnabled, repeatMode, isRoaming = false)
+
     override fun restore(
         items: List<PlayableTrack>,
         startIndex: Int,
         positionMs: Long,
         shuffleEnabled: Boolean,
         repeatMode: RepeatMode,
+        isRoaming: Boolean,
     ) {
         if (items.isEmpty()) return
         pendingRemovalOrder = null
@@ -105,21 +114,31 @@ class Media3PlayerController(context: Context) : PlayerController {
         playbackSessionId++
         playbackHistory = emptyList()
         observedCurrent = queue[startIndex.coerceIn(queue.indices)]
-        isRoaming = false
-        publishPendingState(startIndex, positionMs, shuffleEnabled, repeatMode, PlaybackStatus.Paused)
+        this.isRoaming = isRoaming
+        publishPendingState(
+            startIndex,
+            positionMs,
+            if (isRoaming) false else shuffleEnabled,
+            if (isRoaming) RepeatMode.Off else repeatMode,
+            PlaybackStatus.Paused,
+        )
         val requestSession = playbackSessionId
         withController { controller ->
             if (requestSession != playbackSessionId) return@withController
+            // Restoring a queue must never inherit an old Media3 play intent. The
+            // service can outlive the activity, so setMediaItems/prepare would
+            // otherwise resume a session that was playing before this restore.
+            controller.playWhenReady = false
             controller.setMediaItems(queue.map { it.toMediaItem() }, startIndex.coerceIn(queue.indices), positionMs.coerceAtLeast(0))
             pendingTimeline = false
-            controller.shuffleModeEnabled = shuffleEnabled
-            controller.repeatMode = when (repeatMode) {
+            controller.shuffleModeEnabled = if (isRoaming) false else shuffleEnabled
+            controller.repeatMode = when (if (isRoaming) RepeatMode.Off else repeatMode) {
                 RepeatMode.Off -> Player.REPEAT_MODE_OFF
                 RepeatMode.All -> Player.REPEAT_MODE_ALL
                 RepeatMode.One -> Player.REPEAT_MODE_ONE
             }
             controller.prepare()
-            controller.pause()
+            controller.playWhenReady = false
             publishState()
         }
     }

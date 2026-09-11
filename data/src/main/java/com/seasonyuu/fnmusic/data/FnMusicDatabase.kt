@@ -22,6 +22,8 @@ data class PlaybackQueueEntity(
     val shuffleEnabled: Boolean = false,
     val repeatMode: String = "Off",
     val trackJson: String? = null,
+    val isRoaming: Boolean = false,
+    val roamId: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
@@ -43,7 +45,7 @@ interface PlaybackQueueDao {
     }
 }
 
-@Database(entities = [PlaybackQueueEntity::class], version = 2, exportSchema = false)
+@Database(entities = [PlaybackQueueEntity::class], version = 3, exportSchema = false)
 abstract class FnMusicDatabase : RoomDatabase() {
     abstract fun playbackQueue(): PlaybackQueueDao
 
@@ -51,6 +53,13 @@ abstract class FnMusicDatabase : RoomDatabase() {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE playback_queue ADD COLUMN trackJson TEXT")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE playback_queue ADD COLUMN isRoaming INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE playback_queue ADD COLUMN roamId TEXT")
             }
         }
     }

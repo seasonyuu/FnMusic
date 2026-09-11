@@ -19,6 +19,8 @@ class PlaybackQueueRecoveryTest {
         var state = PlayerState()
         var restores = 0
         var updates = 0
+        var restoredRoamIds: List<String?> = emptyList()
+        var roamIds: List<String?> = emptyList()
         var fetch: suspend (TrackId) -> Track = { track }
         var read: suspend () -> List<PlaybackQueueEntity> = { rows }
         val recovery = PlaybackQueueRecovery(
@@ -28,13 +30,18 @@ class PlaybackQueueRecoveryTest {
             state = { state },
             playable = { PlayableTrack(it, "https://example.test/${it.id.value}") },
             fetch = { fetch(it) },
-            restore = { state = it.copy(playbackSessionId = state.playbackSessionId + 1); restores++ },
+            restore = { restored, ids ->
+                state = restored.copy(playbackSessionId = state.playbackSessionId + 1)
+                restoredRoamIds = ids
+                restores++
+            },
             update = { tracks ->
                 updates++
                 state = state.copy(queue = state.queue.map { item ->
                     tracks.firstOrNull { it.id == item.track.id }?.let { item.copy(track = it) } ?: item
                 })
             },
+            roamIdAt = { index -> roamIds.getOrNull(index) },
         )
     }
 
@@ -104,6 +111,22 @@ class PlaybackQueueRecoveryTest {
             assertEquals(1234L, f.state.positionMs)
             assertNotNull(f.rows.single().trackJson)
         }
+    }
+
+    @Test fun `roam snapshot restores mode and server ids`() = runBlocking {
+        val saved = Fixture()
+        assertTrue(saved.recovery.recover())
+        saved.state = saved.state.copy(isRoaming = true)
+        saved.roamIds = listOf("roam-one")
+        saved.recovery.persist()
+
+        assertTrue(saved.rows.single().isRoaming)
+        assertEquals("roam-one", saved.rows.single().roamId)
+
+        val resumed = Fixture().also { it.rows = saved.rows }
+        assertTrue(resumed.recovery.recover())
+        assertTrue(resumed.state.isRoaming)
+        assertEquals(listOf<String?>("roam-one"), resumed.restoredRoamIds)
     }
 
     @Test fun `user playback during disk read wins over saved queue`() = runBlocking {

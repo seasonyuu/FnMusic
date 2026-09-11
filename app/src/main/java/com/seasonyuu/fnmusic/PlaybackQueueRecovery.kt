@@ -20,8 +20,9 @@ internal class PlaybackQueueRecovery(
     private val state: () -> PlayerState,
     private val playable: (Track) -> PlayableTrack,
     private val fetch: suspend (TrackId) -> Track,
-    private val restore: (PlayerState) -> Unit,
+    private val restore: (PlayerState, List<String?>) -> Unit,
     private val update: (List<Track>) -> Unit,
+    private val roamIdAt: (Int) -> String? = { null },
     private val isActive: () -> Boolean = { true },
 ) {
     private val storageMutex = Mutex()
@@ -45,6 +46,7 @@ internal class PlaybackQueueRecovery(
                     ) {
                         val current = saved.indexOfFirst { it.isCurrent }.takeIf { it >= 0 } ?: 0
                         val settings = saved[current]
+                        val isRoaming = saved.all { it.isRoaming && !it.roamId.isNullOrBlank() }
                         restore(PlayerState(
                             queue = saved.map { row ->
                                 val track = row.trackJson?.let { payload ->
@@ -57,7 +59,8 @@ internal class PlaybackQueueRecovery(
                             positionMs = settings.positionMs,
                             shuffleEnabled = settings.shuffleEnabled,
                             repeatMode = runCatching { RepeatMode.valueOf(settings.repeatMode) }.getOrDefault(RepeatMode.Off),
-                        ))
+                            isRoaming = isRoaming,
+                        ), if (isRoaming) saved.map { it.roamId } else emptyList())
                     }
                     localRestored = true
                 }
@@ -104,6 +107,8 @@ internal class PlaybackQueueRecovery(
                 shuffleEnabled = current.shuffleEnabled,
                 repeatMode = current.repeatMode.name,
                 trackJson = json.encodeToString(item.track),
+                isRoaming = current.isRoaming,
+                roamId = if (current.isRoaming) roamIdAt(index) else null,
             )
         })
     }

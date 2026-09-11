@@ -9,6 +9,7 @@ import com.seasonyuu.fnmusic.core.model.PlayerState
 import com.seasonyuu.fnmusic.core.model.SessionState
 import com.seasonyuu.fnmusic.core.model.Track
 import com.seasonyuu.fnmusic.core.model.RepeatMode
+import com.seasonyuu.fnmusic.core.model.RoamItem
 import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.model.AlbumSort
@@ -104,10 +105,27 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         state = { player.value },
         playable = graph::playable,
         fetch = { graph.catalog.trackMetadata(it).track },
-        restore = { saved ->
-            graph.player.restore(saved.queue, saved.currentIndex, saved.positionMs, saved.shuffleEnabled, saved.repeatMode)
+        restore = { saved, roamIds ->
+            if (saved.isRoaming && roamIds.size == saved.queue.size) {
+                roamQueue = RoamQueue(saved.queue.mapIndexed { index, item ->
+                    RoamItem(roamIds[index]!!, item.track)
+                })
+                requestedRoamIds.clear()
+            } else {
+                roamQueue = null
+                requestedRoamIds.clear()
+            }
+            graph.player.restore(
+                saved.queue,
+                saved.currentIndex,
+                saved.positionMs,
+                saved.shuffleEnabled,
+                saved.repeatMode,
+                isRoaming = saved.isRoaming,
+            )
         },
         update = { tracks -> graph.player.updateTracks(tracks.map(graph::playable)) },
+        roamIdAt = { index -> if (player.value.isRoaming) roamQueue?.anchorAt(index)?.roamId else null },
         isActive = { session.value is SessionState.Ready },
     )
     private var roamQueue: RoamQueue? = null
@@ -173,7 +191,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             graph.settings.cacheBytes.collect { bytes -> mutableMusic.value = mutableMusic.value.copy(cacheBytes = bytes) }
         }
         viewModelScope.launch {
-            player.map { Triple(it.queue, it.currentIndex, it.shuffleEnabled to it.repeatMode) }
+            player.map { Triple(it.queue, it.currentIndex, it.shuffleEnabled to it.repeatMode) to it.isRoaming }
                 .distinctUntilChanged()
                 .collect { persistQueueSafely() }
         }
