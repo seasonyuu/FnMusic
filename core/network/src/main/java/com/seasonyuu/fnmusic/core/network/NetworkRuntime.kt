@@ -40,9 +40,25 @@ class BaseUrlProvider {
         require().newBuilder()
             .addPathSegments("api/v1/static/cover")
             .addQueryParameter("coverId", coverId)
-            .addQueryParameter("size", size.toString())
+            // The server currently supports 120px, 160px, and 640px cover
+            // variants. Canonicalize callers to those values so the same
+            // image does not occupy duplicate cache entries for 320/360/800/
+            // 1600px URLs that all return the 640px variant.
+            .addQueryParameter("size", normalizeCoverSize(size).toString())
             .build()
             .toString()
+
+    private fun normalizeCoverSize(size: Int): Int = when {
+        size <= SMALL_COVER_SIZE -> SMALL_COVER_SIZE
+        size <= COMPACT_COVER_SIZE -> COMPACT_COVER_SIZE
+        else -> LARGE_COVER_SIZE
+    }
+
+    private companion object {
+        const val SMALL_COVER_SIZE = 120
+        const val COMPACT_COVER_SIZE = 160
+        const val LARGE_COVER_SIZE = 640
+    }
 }
 
 class MemoryCookieJar : CookieJar {

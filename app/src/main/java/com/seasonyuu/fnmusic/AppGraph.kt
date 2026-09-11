@@ -38,6 +38,6 @@ class AppGraph(context: Context) {
     fun playable(track: Track): PlayableTrack = PlayableTrack(
         track = track,
         streamUrl = network.baseUrlProvider.streamUrl(track.id.value),
-        coverUrl = coverUrl(track.coverId, 800),
+        coverUrl = coverUrl(track.coverId, 640),
     )
 }

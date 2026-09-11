@@ -796,7 +796,7 @@ fun MusicShell(
                         if (containerAnchor != null && coverAnchor != null) {
                             PlayerMorphOverlay(
                                 state = playerState,
-                                highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
+                                highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 640)
                                     ?: playerState.current?.coverUrl,
                                 containerAnchor = containerAnchor,
                                 coverAnchor = coverAnchor,
@@ -825,7 +825,7 @@ fun MusicShell(
                                     PlayerPage.NowPlaying, PlayerPage.Lyrics, PlayerPage.Queue -> NowPlayingLyricsScreen(
                                         state = playerState,
                                         musicState = state,
-                                        highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 1600)
+                                        highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 640)
                                             ?: playerState.current?.coverUrl,
                                         wideLayout = widePlayer,
                                         landscapeLayout = landscapePlayer,
@@ -1536,7 +1536,7 @@ private fun AlbumRow(albums: List<Album>, coverUrl: (String?, Int) -> String?, o
     ) {
         items(albums, key = { it.id.value }) { album ->
             Column(Modifier.width(142.dp).clickable { onAlbum(album) }) {
-                CoverImage(coverUrl(album.coverId, 320), album.name, Modifier.size(142.dp))
+                CoverImage(coverUrl(album.coverId, 640), album.name, Modifier.size(142.dp))
                 Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                 Text(album.artists.joinToString(" / ") { it.name }, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
@@ -1675,7 +1675,7 @@ private fun AlbumGridScreen(
             items(count = albums.itemCount, key = albums.itemKey { it.id.value }) { index ->
                 albums[index]?.let { album ->
                     Column(Modifier.clickable { onAlbum(album) }) {
-                        CoverImage(coverUrl(album.coverId, 360), album.name, Modifier.fillMaxWidth().height(142.dp))
+                        CoverImage(coverUrl(album.coverId, 640), album.name, Modifier.fillMaxWidth().height(142.dp))
                         Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                         Text(album.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary, maxLines = 1, style = MaterialTheme.typography.bodySmall)
                     }
@@ -1725,7 +1725,7 @@ private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String
             items(count = artists.itemCount, key = artists.itemKey { it.id.value }) { index ->
                 artists[index]?.let { artist ->
                     Column(Modifier.clickable { onArtist(artist) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                        CoverImage(coverUrl(artist.coverId, 360), artist.name, Modifier.size(142.dp))
+                        CoverImage(coverUrl(artist.coverId, 640), artist.name, Modifier.size(142.dp))
                         Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
                         Text("${artist.trackCount} 首歌曲", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
                     }
@@ -1792,7 +1792,7 @@ private fun PlaylistCoverImage(
         ?.substringAfterLast('_')
         ?.toIntOrNull()
     if (defaultIndex == null) {
-        CoverImage(coverUrl(coverId, 800), title, modifier)
+        CoverImage(coverUrl(coverId, 640), title, modifier)
         return
     }
     val colors = when (defaultIndex) {
@@ -2075,7 +2075,7 @@ private fun TrackInfoScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        CoverImage(coverUrl(track.coverId, 800), track.title, Modifier.size(232.dp))
+                        CoverImage(coverUrl(track.coverId, 640), track.title, Modifier.size(232.dp))
                         Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary)
                     }
@@ -2260,7 +2260,7 @@ private fun LibraryDetailScreen(
                                 if (managedPlaylist != null) {
                                     PlaylistCoverImage(coverId, coverUrl, title, Modifier.size(232.dp))
                                 } else {
-                                    CoverImage(coverUrl(coverId, 800), title, Modifier.size(232.dp))
+                                    CoverImage(coverUrl(coverId, 640), title, Modifier.size(232.dp))
                                 }
                                 DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay)
                             }
@@ -2273,7 +2273,7 @@ private fun LibraryDetailScreen(
                                 if (managedPlaylist != null) {
                                     PlaylistCoverImage(coverId, coverUrl, title, Modifier.size(264.dp))
                                 } else {
-                                    CoverImage(coverUrl(coverId, 800), title, Modifier.size(264.dp))
+                                    CoverImage(coverUrl(coverId, 640), title, Modifier.size(264.dp))
                                 }
                                 Box(Modifier.weight(1f)) { DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay) }
                             }
@@ -2705,7 +2705,7 @@ private fun PlayerMorphOverlay(
                 )
                 .testTag("player-morph-cover")
                 .then(if (contentCoverProgress < 0.5f) dragModifier else Modifier),
-            requestSizePx = 1600,
+            requestSizePx = 640,
         )
         }
     }
@@ -3185,7 +3185,7 @@ private fun NowPlayingLyricsScreen(
                         scaleY = 1.22f
                     }
                     .blur(64.dp),
-                requestSizePx = 1600,
+                requestSizePx = 640,
             )
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)),
