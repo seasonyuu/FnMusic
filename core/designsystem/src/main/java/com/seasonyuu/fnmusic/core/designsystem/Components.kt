@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.painterResource
 import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
@@ -90,14 +91,13 @@ fun CoverImage(
         val placeholder = painterResource(R.drawable.cover_placeholder)
         val context = LocalContext.current
         val model = remember(url, requestSizePx) {
-            if (requestSizePx != null) {
-                ImageRequest.Builder(context)
-                    .data(url)
-                    .size(requestSizePx, requestSizePx)
-                    .build()
-            } else {
-                url
-            }
+            ImageRequest.Builder(context)
+                .data(url)
+                .apply {
+                    requestSizePx?.let { size(it, it) }
+                }
+                .crossfade(true)
+                .build()
         }
         AsyncImage(
             model = model,
