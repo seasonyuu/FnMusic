@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.SkipNext
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.painterResource
 import coil3.request.ImageRequest
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -86,24 +87,27 @@ fun CoverImage(
     requestSizePx: Int? = null,
 ) {
     Surface(modifier = modifier.clip(RoundedCornerShape(8.dp)), color = FnCard) {
-        if (url == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(FnIcons.Library, contentDescription = contentDescription, tint = FnTextTertiary)
+        val placeholder = painterResource(R.drawable.cover_placeholder)
+        val context = LocalContext.current
+        val model = remember(url, requestSizePx) {
+            if (requestSizePx != null) {
+                ImageRequest.Builder(context)
+                    .data(url)
+                    .size(requestSizePx, requestSizePx)
+                    .build()
+            } else {
+                url
             }
-        } else {
-            val context = LocalContext.current
-            val model = remember(url, requestSizePx) {
-                if (requestSizePx != null) {
-                    ImageRequest.Builder(context)
-                        .data(url)
-                        .size(requestSizePx, requestSizePx)
-                        .build()
-                } else {
-                    url
-                }
-            }
-            AsyncImage(model = model, contentDescription = contentDescription, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
+        AsyncImage(
+            model = model,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            placeholder = placeholder,
+            error = placeholder,
+            fallback = placeholder,
+        )
     }
 }
 
