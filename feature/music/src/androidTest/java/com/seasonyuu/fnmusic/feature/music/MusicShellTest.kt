@@ -1023,8 +1023,8 @@ class MusicShellTest {
         compose.onNodeWithText("专辑").performClick()
         compose.onNodeWithText("测试专辑").performClick()
 
-        compose.onNodeWithText("专辑").assertIsDisplayed()
-        compose.onNodeWithText("曲目").assertIsDisplayed()
+        compose.onNodeWithText("测试专辑").assertIsDisplayed()
+        compose.onNodeWithTag("album-play").assertIsDisplayed()
         compose.onNodeWithText("首页").assertIsDisplayed()
     }
 
@@ -1401,7 +1401,7 @@ class MusicShellTest {
         }
         compose.onNodeWithText("首页").performClick()
 
-        compose.onRoot().performTouchInput {
+        compose.onNodeWithTag("music-page-host").performTouchInput {
             swipe(
                 start = Offset(center.x, center.y * 1.3f),
                 end = Offset(center.x, center.y * 0.5f),
@@ -1424,7 +1424,7 @@ class MusicShellTest {
                 compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isEmpty()
         }
 
-        compose.onRoot().performTouchInput {
+        compose.onNodeWithTag("music-page-host").performTouchInput {
             swipe(
                 start = Offset(center.x, center.y * 1.3f),
                 end = Offset(center.x, center.y * 0.5f),
@@ -1435,7 +1435,7 @@ class MusicShellTest {
             compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()
         }
 
-        compose.onRoot().performTouchInput {
+        compose.onNodeWithTag("music-page-host").performTouchInput {
             swipe(
                 start = Offset(center.x, center.y * 0.5f),
                 end = Offset(center.x, center.y * 1.3f),
@@ -3149,7 +3149,7 @@ class MusicShellTest {
             detailTracks = tracks, detailAlbum = complete))
         compose.onNodeWithContentDescription("更多操作").performClick()
         compose.onNodeWithText("查看专辑").performClick()
-        compose.onNodeWithText("6 首歌曲 · 2022-09-20").assertIsDisplayed()
+        compose.onNodeWithText("2022 年").assertIsDisplayed()
         compose.onNodeWithText("详情接口歌手").assertIsDisplayed()
         val before = compose.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("曲目 6"))
@@ -3397,7 +3397,7 @@ class MusicShellTest {
         compose.runOnIdle { model.value = ready.copy(detailKey = DetailRequestKey("playlist", "unrelated"), detailTracks = listOf(Track(TrackId("wrong"), "错误歌曲"))) }
         compose.onNodeWithText("更多").performClick()
         compose.onNodeWithText("错误歌曲").assertDoesNotExist()
-        compose.onNodeWithText("正在加载详情…").assertIsDisplayed()
+        compose.onNodeWithContentDescription("正在加载曲目").assertIsDisplayed()
         compose.runOnIdle { model.value = ready }
         val after = compose.onNodeWithText("列表歌曲 30").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
         assertEquals(before, after, 3f)
