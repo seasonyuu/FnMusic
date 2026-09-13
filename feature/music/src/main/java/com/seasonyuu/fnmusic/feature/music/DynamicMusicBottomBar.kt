@@ -59,6 +59,7 @@ import com.kyant.shapes.Capsule
 import com.seasonyuu.fnmusic.core.designsystem.CoverImage
 import com.seasonyuu.fnmusic.core.designsystem.DynamicBottomBarGeometryCalculator
 import com.seasonyuu.fnmusic.core.designsystem.FloatRect
+import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnAccent
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
 import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
@@ -89,6 +90,7 @@ internal fun DynamicMusicBottomBar(
     onCoverBoundsChanged: (Rect) -> Unit = {},
     coverModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
+    surfaceColor: Color = FnNavigationSurface,
 ) {
     val current = state.current
     val density = LocalDensity.current
@@ -120,6 +122,7 @@ internal fun DynamicMusicBottomBar(
                     ?: primaryDestinations.indexOf(lastPrimaryDestination),
                 onTabSelected = { onDestinationSelected(primaryDestinations[it]) },
                 backdrop = backdrop,
+                surfaceColor = surfaceColor,
                 tabsCount = primaryDestinations.size,
                 showSelectionIndicator = selectedDestination != MusicDestination.Search,
                 modifier = Modifier
@@ -152,6 +155,7 @@ internal fun DynamicMusicBottomBar(
             LiquidButton(
                 onClick = onExpand,
                 backdrop = backdrop,
+                surfaceColor = surfaceColor,
                 modifier = Modifier
                     .place(geometry.primaryTabs, density)
                     .graphicsLayer {
@@ -174,6 +178,7 @@ internal fun DynamicMusicBottomBar(
         LiquidButton(
             onClick = { onDestinationSelected(MusicDestination.Search) },
             backdrop = backdrop,
+            surfaceColor = surfaceColor,
             modifier = Modifier
                 .place(geometry.search, density)
                 .semantics { selected = selectedDestination == MusicDestination.Search }
@@ -188,7 +193,7 @@ internal fun DynamicMusicBottomBar(
 
         if (current != null) {
             LiquidMiniPlayer(
-                state = state, backdrop = backdrop,
+                state = state, backdrop = backdrop, surfaceColor = surfaceColor,
                 onToggle = onToggle, onNext = onNext, onOpenPlayer = onOpenPlayer,
                 modifier = Modifier.place(geometry.player, density),
                 coverSize = with(density) { geometry.cover.width.toDp() },
@@ -214,6 +219,7 @@ internal fun LiquidMiniPlayer(
     onPlayerBoundsChanged: (Rect) -> Unit = {},
     onCoverBoundsChanged: (Rect) -> Unit = {},
     coverContent: (@Composable (Modifier) -> Unit)? = null,
+    surfaceColor: Color = FnNavigationSurface,
 ) {
     val current = state.current ?: return
     val interaction = rememberLiquidInteraction(consumeDrag = true)
@@ -224,7 +230,7 @@ internal fun LiquidMiniPlayer(
                     if (interaction.isIdle) onPlayerBoundsChanged(it.boundsInRoot())
                 }
                 .graphicsLayer { alpha = 1f - playerMorphProgress.coerceIn(0f, 1f) }
-                .glassCapsule(backdrop, interaction.layerBlock, refractionHeight = 24.dp, refractionAmount = 24.dp)
+                .glassCapsule(backdrop, interaction.layerBlock, surfaceColor = surfaceColor, refractionHeight = 24.dp, refractionAmount = 24.dp)
                 .clip(Capsule())
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -284,11 +290,12 @@ private fun Modifier.glassCapsule(
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
     refractionHeight: androidx.compose.ui.unit.Dp = 6.dp,
     refractionAmount: androidx.compose.ui.unit.Dp = 8.dp,
+    surfaceColor: Color = FnNavigationSurface,
 ): Modifier {
     val glass = com.seasonyuu.fnmusic.core.designsystem.currentLiquidGlassMaterial()
     if (!glass.enabled) return this
         .graphicsLayer { layerBlock?.invoke(this) }
-        .background(glass.surfaceColor, Capsule())
+        .background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule())
     return drawBackdrop(
         backdrop = backdrop,
         shape = { Capsule() },
@@ -301,7 +308,7 @@ private fun Modifier.glassCapsule(
         highlight = { Highlight.Default.copy(alpha = 0.3f) },
         shadow = { Shadow(alpha = 0.24f) },
         innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.26f) },
-        onDrawSurface = { drawRect(glass.surfaceColor) },
+        onDrawSurface = { drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha)) },
     )
 }
 

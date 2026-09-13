@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +39,7 @@ internal fun WideMiniPlayer(
     playerMorphProgress: Float = 0f,
     onPlayerBoundsChanged: (Rect) -> Unit = {},
     onCoverBoundsChanged: (Rect) -> Unit = {},
+    surfaceColor: Color = FnNavigationSurface,
 ) {
     if (state.current == null) return
     Box(
@@ -143,6 +146,7 @@ internal fun WideMiniPlayer(
                 } else null
             MiniPlayer(
                 state = state,
+                surfaceColor = surfaceColor,
                 onToggle = onToggle,
                 onNext = onNext,
                 onOpen = onOpen,

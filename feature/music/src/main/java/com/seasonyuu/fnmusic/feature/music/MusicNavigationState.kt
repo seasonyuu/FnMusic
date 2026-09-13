@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.feature.music
 
 import android.os.Bundle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.Saver
@@ -48,6 +49,22 @@ internal class MusicNavigationState {
     var destination by mutableStateOf(MusicDestination.Home)
         private set
     private var stacks by mutableStateOf(MusicDestination.entries.associateWith { listOf(MusicPageEntry(it)) })
+    // Derived UI appearance stays in memory and is recomputed by pages after process restore.
+    private val appearances = mutableStateMapOf<String, MusicPageAppearance>()
+    internal val entryIds: Set<String> get() = stacks.values.flatten().mapTo(mutableSetOf()) { it.id }
+
+    internal fun appearanceFor(entry: MusicPageEntry): MusicPageAppearance =
+        appearances[entry.id] ?: MusicPageAppearance()
+
+    internal fun reportAppearance(entry: MusicPageEntry, appearance: MusicPageAppearance) {
+        if (entry.id in entryIds) appearances[entry.id] = appearance
+    }
+
+    // Retain outgoing entries until the host finishes drawing their transition.
+    internal fun retainAppearances(visibleEntryIds: Set<String>) {
+        appearances.keys.retainAll(entryIds + visibleEntryIds)
+    }
+
     val current: MusicPageEntry get() = stacks.getValue(destination).last()
     val canPop: Boolean get() = stacks.getValue(destination).size > 1
     val previous: MusicPageEntry? get() = stacks.getValue(destination).dropLast(1).lastOrNull()

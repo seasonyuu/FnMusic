@@ -257,6 +257,7 @@ import com.seasonyuu.fnmusic.core.designsystem.FlowingLightBackground
 import com.seasonyuu.fnmusic.core.designsystem.FlowingLightStyle
 import com.seasonyuu.fnmusic.core.designsystem.FnGradientBackground
 import com.seasonyuu.fnmusic.core.designsystem.FnIcons
+import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnProgressiveSystemBars
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
@@ -450,6 +451,7 @@ fun MusicShell(
         val splitPlayer = widePlayer || landscapePlayer
         val navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
         val pageStateHolder = rememberSaveableStateHolder()
+        var navigationSurface by remember { mutableStateOf(FnNavigationSurface) }
         val destination = navigation.destination
         val detail = navigation.current.detail
         val keyboard = LocalSoftwareKeyboardController.current
@@ -552,7 +554,7 @@ fun MusicShell(
                 actionTrack = track
             },
         ) {
-            FnProgressiveSystemBars(showTopBlur = !playerComposed) {
+            FnProgressiveSystemBars(showTopBlur = !playerComposed && navigation.current.detail !is LibraryDetail.AlbumPage) {
                 Box(Modifier.fillMaxSize()) {
                     BoxWithConstraints(
                         Modifier
@@ -582,8 +584,8 @@ fun MusicShell(
                                 ),
                         ) {
                             if (!compact) {
-                                if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName)
-                                else MusicRail(destination) { navigate(it) }
+                                if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName, navigationSurface)
+                                else MusicRail(destination, { navigate(it) }, navigationSurface)
                             }
                             Scaffold(
                                 containerColor = Color.Transparent,
@@ -602,6 +604,7 @@ fun MusicShell(
                                             ) {
                                                 DynamicMusicBottomBar(
                                                     state = playerState,
+                                                    surfaceColor = navigationSurface,
                                                     selectedDestination = destination,
                                                     expansionProgress = dynamicBottomBarState.navigationExpansionProgress,
                                                     playerExpansionProgress = dynamicBottomBarState.playerExpansionProgress,
@@ -620,6 +623,7 @@ fun MusicShell(
                                     } else {
                                         WideMiniPlayer(
                                             state = playerState,
+                                            surfaceColor = navigationSurface,
                                             onPrevious = onPrevious,
                                             onToggleShuffle = onToggleShuffle,
                                             onCycleRepeatMode = onCycleRepeatMode,
@@ -653,6 +657,7 @@ fun MusicShell(
                                             navigation = navigation,
                                             backEnabled = !playerComposed,
                                             onPop = { popPage() },
+                                            onNavigationSurfaceChanged = { navigationSurface = it },
                                         ) { entry ->
                                             pageStateHolder.SaveableStateProvider(entry.id) {
                                                 val selected = entry.detail
@@ -693,6 +698,16 @@ fun MusicShell(
                                                                     ?: onCreatePlaylist(name, coverId, selected.initialTrackId)
                                                                 popPage()
                                                             },
+                                                        )
+                                                        is LibraryDetail.AlbumPage -> AlbumDetailScreen(
+                                                            album = detailState.detailAlbum?.takeIf { it.id == selected.album.id } ?: selected.album,
+                                                            state = detailState,
+                                                            playerState = playerState,
+                                                            coverUrl = coverUrl,
+                                                            onPlay = onPlay,
+                                                            onMore = LocalTrackAction.current,
+                                                            onBack = { popPage() },
+                                                            onRetry = { onLoadAlbum(selected.album.id) },
                                                         )
                                                         else -> LibraryDetailScreen(
                                                             detail = selected,
@@ -879,6 +894,11 @@ fun MusicShell(
                     actionTrack = null
                     queueActionEntryId = null
                 },
+                    onToggleFavorite = {
+                        onToggleFavorite(track.copy(isFavorite = state.favoriteOverrides[track.id] ?: track.isFavorite))
+                        actionTrack = null
+                    },
+                    favorite = state.favoriteOverrides[track.id] ?: track.isFavorite,
                     onPlayNext = { onPlayNext(track); actionTrack = null },
                     onAddToQueue = { onAddToQueue(track); actionTrack = null },
                     onAddToPlaylist = { playlistPickerTrack = track; actionTrack = null },
@@ -958,12 +978,12 @@ fun MusicShell(
 private enum class PlayerPage { NowPlaying, Lyrics, Queue }
 
 @Composable
-private fun PermanentSidebar(selected: MusicDestination, onSelect: (MusicDestination) -> Unit, title: String) {
+private fun PermanentSidebar(selected: MusicDestination, onSelect: (MusicDestination) -> Unit, title: String, surfaceColor: Color = FnNavigationSurface) {
     Column(
         Modifier
             .width(224.dp)
             .fillMaxHeight()
-            .background(Color(0xE614121B))
+            .background(surfaceColor.copy(alpha = .90f))
             .safeDrawingPadding()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -985,8 +1005,8 @@ private fun PermanentSidebar(selected: MusicDestination, onSelect: (MusicDestina
 }
 
 @Composable
-private fun MusicRail(selected: MusicDestination, onSelect: (MusicDestination) -> Unit) {
-    NavigationRail(containerColor = Color(0xE614121B)) {
+private fun MusicRail(selected: MusicDestination, onSelect: (MusicDestination) -> Unit, surfaceColor: Color = FnNavigationSurface) {
+    NavigationRail(containerColor = surfaceColor.copy(alpha = .90f)) {
         MusicDestination.entries.forEach { item ->
             NavigationRailItem(
                 selected = selected == item,
@@ -1995,6 +2015,8 @@ private fun TrackActionSheet(
     track: Track,
     coverUrl: String?,
     showTrackHeader: Boolean,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -2027,6 +2049,8 @@ private fun TrackActionSheet(
                         }
                     }
                 }
+                ActionSheetRow(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    if (favorite) "取消收藏" else "收藏", onToggleFavorite)
                 ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放", onPlayNext)
                 ActionSheetRow(Icons.AutoMirrored.Rounded.QueueMusic, "加入待播队列", onAddToQueue)
                 ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "添加到歌单", onAddToPlaylist)

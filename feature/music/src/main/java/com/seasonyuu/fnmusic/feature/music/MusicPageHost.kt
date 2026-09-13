@@ -2,6 +2,7 @@ package com.seasonyuu.fnmusic.feature.music
 
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Animatable
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.rememberTransition
@@ -13,6 +14,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -30,6 +35,7 @@ internal fun MusicPageHost(
     navigation: MusicNavigationState,
     backEnabled: Boolean,
     onPop: () -> Unit,
+    onNavigationSurfaceChanged: (Color) -> Unit = {},
     content: @Composable (MusicPageEntry) -> Unit,
 ) {
     val current = navigation.current
@@ -38,6 +44,24 @@ internal fun MusicPageHost(
     var preview by remember { mutableStateOf<MusicPageEntry?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     var predicting by remember { mutableStateOf(false) }
+    val surfaceTarget = navigation.appearanceFor(current).navigationSurfaceColor
+    val previewSurface = preview?.let { navigation.appearanceFor(it).navigationSurfaceColor }
+    val surfaceAnimation = remember { Animatable(surfaceTarget) }
+    // Artwork can finish loading while the seekable route transition is idle. Give color
+    // its own animation clock, and seek it explicitly with predictive-back progress.
+    LaunchedEffect(current.id, surfaceTarget, predicting, progress, previewSurface) {
+        if (predicting && previewSurface != null) {
+            surfaceAnimation.snapTo(lerp(surfaceTarget, previewSurface, progress))
+        } else {
+            surfaceAnimation.animateTo(surfaceTarget, tween(250))
+        }
+    }
+    // Observe frames in composition; a read inside SideEffect alone is not observed.
+    val navigationSurface = surfaceAnimation.value
+    SideEffect { onNavigationSurfaceChanged(navigationSurface) }
+    LaunchedEffect(navigation.entryIds, transitionState.currentState.id, transitionState.targetState.id) {
+        navigation.retainAppearances(setOf(transitionState.currentState.id, transitionState.targetState.id))
+    }
 
     PredictiveBackHandler(enabled = backEnabled && navigation.canPop) { events ->
         val origin = navigation.current
@@ -93,5 +117,12 @@ internal fun MusicPageHost(
                     .apply { targetContentZIndex = targetState.depth.toFloat() }
             }
         },
-    ) { entry -> content(entry) }
+    ) { entry ->
+        val report = remember(navigation, entry.id) {
+            { appearance: MusicPageAppearance -> navigation.reportAppearance(entry, appearance) }
+        }
+        CompositionLocalProvider(LocalMusicPageAppearanceReporter provides report) {
+            content(entry)
+        }
+    }
 }
