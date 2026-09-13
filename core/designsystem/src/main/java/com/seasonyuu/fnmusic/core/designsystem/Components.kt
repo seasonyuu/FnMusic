@@ -232,6 +232,7 @@ fun MiniPlayer(
     playerMorphProgress: Float = 0f,
     onPlayerBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onCoverBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    surfaceColor: Color = FnNavigationSurface,
 ) {
     val current = state.current ?: return
     val backdrop = LocalFnBackdrop.current
@@ -267,11 +268,11 @@ fun MiniPlayer(
                                 InnerShadow(radius = 6.dp, alpha = 0.3f)
                             },
                             onDrawSurface = {
-                                drawRect(glass.surfaceColor)
+                                drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                             },
                         )
                     } else {
-                        Modifier.graphicsLayer(interaction.layerBlock).background(if (glass.enabled) Color(0xE624202E) else glass.surfaceColor, Capsule())
+                        Modifier.graphicsLayer(interaction.layerBlock).background(surfaceColor.copy(alpha = if (glass.enabled) .90f else glass.surfaceAlpha), Capsule())
                     },
                 )
                 .clip(Capsule())

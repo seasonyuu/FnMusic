@@ -49,6 +49,7 @@ fun LiquidBottomTabs(
     tabsCount: Int,
     modifier: Modifier = Modifier,
     showSelectionIndicator: Boolean = true,
+    surfaceColor: Color = FnNavigationSurface,
     content: @Composable RowScope.() -> Unit,
 ) {
     if (tabsCount == 0) return
@@ -105,7 +106,7 @@ fun LiquidBottomTabs(
                     val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
                     scaleX = scale
                     scaleY = scale
-                }.background(glass.surfaceColor, Capsule()).height(64.dp).fillMaxWidth())
+                }.background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule()).height(64.dp).fillMaxWidth())
             }
             Row(
                 Modifier
@@ -125,7 +126,7 @@ fun LiquidBottomTabs(
                                     scaleX = scale
                                     scaleY = scale
                                 },
-                                onDrawSurface = { drawRect(glass.surfaceColor) },
+                                onDrawSurface = { drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha)) },
                             )
                         } else {
                             Modifier.graphicsLayer {
@@ -163,7 +164,7 @@ fun LiquidBottomTabs(
                                 Highlight.Default.copy(alpha = dragAnimation.pressProgress)
                             },
                             onDrawSurface = {
-                                drawRect(glass.surfaceColor)
+                                drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                             },
                         )
                         .height(56.dp)
@@ -223,7 +224,7 @@ fun LiquidBottomTabs(
                             scaleX /= 1f - (velocity * .75f).coerceIn(-.2f, .2f)
                             scaleY *= 1f - (velocity * .25f).coerceIn(-.2f, .2f)
                         }.clip(Capsule()).drawBehind {
-                            drawRect(glass.surfaceColor)
+                            drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                             drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
                             drawRect(FnAccent.copy(alpha = .08f * dragAnimation.pressProgress))
                         }

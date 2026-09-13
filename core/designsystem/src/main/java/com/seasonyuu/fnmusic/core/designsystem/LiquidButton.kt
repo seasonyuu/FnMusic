@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,7 +33,8 @@ fun LiquidButton(
     modifier: Modifier = Modifier,
     isInteractive: Boolean = true,
     tint: Color = Color.Unspecified,
-    surfaceColor: Color = Color(0xFF14121B),
+    surfaceColor: Color = FnNavigationSurface,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
     val interaction = rememberLiquidInteraction()
@@ -77,7 +79,7 @@ fun LiquidButton(
                     Modifier
                 },
             )
-            .padding(horizontal = 16.dp),
+            .padding(contentPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

@@ -7,6 +7,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+// Opaque base tint; glass components apply the user-selected material opacity.
+val FnNavigationSurface = Color(0xFF14121B)
+
 val FnAccent = Color(0xFFF62C55)
 val FnBackgroundTop = Color(0xFF2D293A)
 val FnBackgroundBottom = Color(0xFF14121B)

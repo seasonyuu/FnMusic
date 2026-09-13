@@ -60,10 +60,11 @@ fun FnProgressiveSystemBars(
 }
 
 @Composable
-private fun ProgressiveBarBlur(
+fun ProgressiveBarBlur(
     backdrop: Backdrop,
     top: Boolean,
     modifier: Modifier,
+    tint: Color = if (top) FnBackgroundTop else FnBackgroundBottom,
 ) {
     val density = LocalDensity.current
     val inset = with(density) {
@@ -71,9 +72,9 @@ private fun ProgressiveBarBlur(
         else WindowInsets.navigationBars.getBottom(this).toDp()
     }
     val fallbackGradient = if (top) {
-        Brush.verticalGradient(listOf(FnBackgroundTop.copy(alpha = 0.94f), Color.Transparent))
+        Brush.verticalGradient(listOf(tint.copy(alpha = 0.94f), Color.Transparent))
     } else {
-        Brush.verticalGradient(listOf(Color.Transparent, FnBackgroundBottom.copy(alpha = 0.94f)))
+        Brush.verticalGradient(listOf(Color.Transparent, tint.copy(alpha = 0.94f)))
     }
     val supportsProgressiveBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val transitionHeight = if (top) 32.dp else 72.dp
@@ -97,7 +98,7 @@ private fun ProgressiveBarBlur(
                                 "content",
                             ) {
                                 setFloatUniform("size", size.width, size.height)
-                                setColorUniform("tint", if (top) FnBackgroundTop else FnBackgroundBottom)
+                                setColorUniform("tint", tint)
                                 setFloatUniform("tintIntensity", 0.32f)
                             }
                         },
