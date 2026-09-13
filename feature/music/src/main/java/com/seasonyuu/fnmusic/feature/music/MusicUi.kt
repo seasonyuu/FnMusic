@@ -95,6 +95,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -260,6 +261,7 @@ import com.seasonyuu.fnmusic.core.designsystem.FnIcons
 import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnProgressiveSystemBars
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
+import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
 import com.seasonyuu.fnmusic.core.designsystem.LocalFnBackdrop
 import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
@@ -1559,12 +1561,37 @@ private fun AlbumRow(albums: List<Album>, coverUrl: (String?, Int) -> String?, o
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(albums, key = { it.id.value }) { album ->
-            Column(Modifier.width(142.dp).clickable { onAlbum(album) }) {
-                CoverImage(coverUrl(album.coverId, 640), album.name, Modifier.size(142.dp))
-                Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                Text(album.artists.joinToString(" / ") { it.name }, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            }
+            AlbumCard(album, coverUrl, { onAlbum(album) }, Modifier.width(142.dp))
         }
+    }
+}
+
+/** The parent chooses the card width; artwork always keeps its square album format. */
+@Composable
+private fun AlbumCard(
+    album: Album,
+    coverUrl: (String?, Int) -> String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.clickable(onClick = onClick)) {
+        CoverImage(
+            coverUrl(album.coverId, 640), album.name,
+            Modifier.fillMaxWidth().aspectRatio(1f),
+        )
+        Text(
+            album.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            album.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
+            color = FnTextSecondary,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1679,41 +1706,65 @@ private fun AlbumGridScreen(
     onBack: () -> Unit,
     onAlbum: (Album) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .padding(top = 12.dp),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { PageTitle("专辑", onBack, "${albums.itemCount} 张已加载") }
-            AlbumSortMenu(sort, onSort)
-        }
+    val backdrop = rememberLayerBackdrop()
+    Box(Modifier.fillMaxSize()) {
+        // Capture only the scrolling content so glass controls never sample themselves.
         LazyVerticalGrid(
-            modifier = Modifier.testTag("album-grid"),
+            modifier = Modifier.fillMaxSize()
+                .layerBackdrop(backdrop)
+                .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom)))
+                .testTag("album-grid"),
             columns = GridCells.Adaptive(142.dp),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, bottom = 20.dp),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 72.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item(key = "album-grid-heading", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "专辑",
+                    fontSize = 34.sp,
+                    lineHeight = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("album-grid-heading"),
+                )
+            }
             items(count = albums.itemCount, key = albums.itemKey { it.id.value }) { index ->
                 albums[index]?.let { album ->
-                    Column(Modifier.clickable { onAlbum(album) }) {
-                        CoverImage(coverUrl(album.coverId, 640), album.name, Modifier.fillMaxWidth().height(142.dp))
-                        Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                        Text(album.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary, maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                    }
+                    AlbumCard(album, coverUrl, { onAlbum(album) }, Modifier.fillMaxWidth())
                 }
             }
+        }
+        Row(
+            Modifier.fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp)
+                .testTag("album-grid-app-bar"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            LiquidButton(
+                onClick = onBack,
+                backdrop = backdrop,
+                modifier = Modifier.size(48.dp),
+                contentPadding = PaddingValues(0.dp),
+            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
+            AlbumSortMenu(sort, onSort, backdrop)
         }
     }
 }
 
 @Composable
-private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit) {
+private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit, backdrop: com.kyant.backdrop.Backdrop) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "专辑排序") }
+        LiquidButton(
+            onClick = { expanded = true },
+            backdrop = backdrop,
+            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "专辑排序" },
+        ) {
+            Icon(Icons.AutoMirrored.Rounded.Sort, null)
+            Text("排序", style = MaterialTheme.typography.labelLarge)
+        }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf(
                 AlbumSort.RecentlyUpdated to "最近更新",
