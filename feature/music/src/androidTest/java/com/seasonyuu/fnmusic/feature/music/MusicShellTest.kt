@@ -2642,7 +2642,13 @@ class MusicShellTest {
 
         compose.onNodeWithTag("player-playback-progress", useUnmergedTree = true)
             .performTouchInput {
-                click(Offset(center.x * 1.64f, center.y))
+                // Playback progress uses drag-to-seek semantics. Start well before the
+                // midpoint so the same gesture reliably moves from 40s past the 150s check.
+                swipe(
+                    start = Offset(width * 0.2f, centerY),
+                    end = Offset(width * 0.85f, centerY),
+                    durationMillis = 400,
+                )
             }
 
         compose.waitUntil(timeoutMillis = 4_000) {
