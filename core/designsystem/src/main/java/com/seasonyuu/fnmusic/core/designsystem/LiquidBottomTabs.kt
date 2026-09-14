@@ -53,6 +53,7 @@ fun LiquidBottomTabs(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (tabsCount == 0) return
+    val accent = FnAccent
     val glass = currentLiquidGlassMaterial()
     val scope = rememberCoroutineScope()
     val tabsBackdrop = rememberLayerBackdrop()
@@ -170,7 +171,7 @@ fun LiquidBottomTabs(
                         .height(56.dp)
                         .fillMaxWidth()
                         .padding(horizontal = 4.dp)
-                        .graphicsLayer(colorFilter = ColorFilter.tint(FnAccent)),
+                        .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
                     verticalAlignment = Alignment.CenterVertically,
                     content = content,
                 )
@@ -213,7 +214,7 @@ fun LiquidBottomTabs(
                             },
                             onDrawSurface = {
                                 drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
-                                drawRect(FnAccent.copy(alpha = .08f * dragAnimation.pressProgress))
+                                drawRect(accent.copy(alpha = .08f * dragAnimation.pressProgress))
                             },
                         )
                     } else {
@@ -226,7 +227,7 @@ fun LiquidBottomTabs(
                         }.clip(Capsule()).drawBehind {
                             drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                             drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
-                            drawRect(FnAccent.copy(alpha = .08f * dragAnimation.pressProgress))
+                            drawRect(accent.copy(alpha = .08f * dragAnimation.pressProgress))
                         }
                     },
                 )

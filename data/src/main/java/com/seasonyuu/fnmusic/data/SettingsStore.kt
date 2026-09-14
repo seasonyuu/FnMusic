@@ -26,6 +26,13 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         context.applicationContext.preferencesDataStoreFile("settings")
     })
 
+    val themeColor: Flow<com.seasonyuu.fnmusic.core.model.ThemeColorPreference> = dataStore.data.map {
+        com.seasonyuu.fnmusic.core.model.ThemeColorPreference.fromId(it[stringPreferencesKey("theme_color")])
+    }
+    suspend fun setThemeColor(value: com.seasonyuu.fnmusic.core.model.ThemeColorPreference) {
+        dataStore.edit { it[stringPreferencesKey("theme_color")] = value.id }
+    }
+
     val appearance: Flow<AppearancePreference> = dataStore.data.map { values ->
         AppearancePreference.entries.firstOrNull { it.name == values[APPEARANCE] } ?: AppearancePreference.Dark
     }

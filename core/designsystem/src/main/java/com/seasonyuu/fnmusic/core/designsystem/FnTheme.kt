@@ -4,8 +4,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
-val FnAccent = Color(0xFFF62C55)
+val LocalFnAccent = staticCompositionLocalOf { Color(0xFFF62C55) }
+val FnAccent: Color @Composable @ReadOnlyComposable get() = LocalFnAccent.current
 
 data class FnPalette(
     val navigation: Color, val top: Color, val bottom: Color, val surface: Color,
@@ -36,13 +38,17 @@ val FnTextTertiary: Color @Composable @ReadOnlyComposable get() = LocalFnPalette
 
 @Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-fun FnMusicTheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
+fun FnMusicTheme(darkTheme: Boolean = true, accent: Color = FnAccent, content: @Composable () -> Unit) {
     val palette = if (darkTheme) FnDarkPalette else FnLightPalette
     val base = if (darkTheme) darkColorScheme() else lightColorScheme()
-    CompositionLocalProvider(LocalFnPalette provides palette) {
+    CompositionLocalProvider(LocalFnPalette provides palette, LocalFnAccent provides accent) {
         MaterialTheme(
             colorScheme = base.copy(
-                primary = FnAccent, onPrimary = Color.White,
+                primary = accent, onPrimary = if (accent.luminance() > .5f) Color.Black else Color.White,
+                primaryContainer = accent.copy(alpha = .14f), onPrimaryContainer = accent,
+                secondary = accent, tertiary = accent,
+                secondaryContainer = accent.copy(alpha = .14f), onSecondaryContainer = accent,
+                tertiaryContainer = accent.copy(alpha = .14f), onTertiaryContainer = accent,
                 background = palette.surface, onBackground = palette.primary,
                 surface = palette.surface, onSurface = palette.primary,
                 surfaceVariant = palette.card, onSurfaceVariant = palette.secondary,

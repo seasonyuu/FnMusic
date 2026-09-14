@@ -84,12 +84,7 @@ internal fun SettingsScreen(
                 add(SettingsEntry("外观", onAppearance))
                 add(SettingsEntry("音质偏好", onQuality))
                 add(SettingsEntry("自动缓存歌曲", onCache))
-                add(SettingsEntry("Liquid Glass", onLiquidGlass, when {
-                    !state.liquidGlassEnabled -> "已关闭"
-                    state.liquidGlassBlur < LiquidGlassBlur.Default -> "更透明"
-                    state.liquidGlassBlur > LiquidGlassBlur.Default -> "色调更深"
-                    else -> "默认"
-                }))
+
             })
         }
         if (state.user?.role == "admin") {
@@ -277,14 +272,15 @@ private fun SettingsCard(modifier: Modifier = Modifier, content: @Composable Col
 }
 
 
-private data class SettingsEntry(
+internal data class SettingsEntry(
     val title: String,
-    val onClick: () -> Unit,
+    val onClick: (() -> Unit)?,
     val value: String? = null,
+    val description: (@Composable () -> Unit)? = null,
 )
 
 @Composable
-private fun SettingsNavigationGroup(entries: List<SettingsEntry>) {
+internal fun SettingsNavigationGroup(entries: List<SettingsEntry>) {
     Card(colors = settingsCardColors(), modifier = Modifier.fillMaxWidth()) {
         entries.forEachIndexed { index, entry ->
             if (index > 0) {
@@ -295,7 +291,7 @@ private fun SettingsNavigationGroup(entries: List<SettingsEntry>) {
             }
             Row(
                 modifier = Modifier.fillMaxWidth()
-                    .clickable(role = Role.Button, onClick = entry.onClick)
+                    .then(entry.onClick?.let { Modifier.clickable(role = Role.Button, onClick = it) } ?: Modifier)
                     .heightIn(min = 56.dp)
                     .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -309,7 +305,10 @@ private fun SettingsNavigationGroup(entries: List<SettingsEntry>) {
                         modifier = Modifier.padding(start = 12.dp, end = 4.dp),
                     )
                 }
-                Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
+                if (entry.onClick != null) Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
+            }
+            entry.description?.let { description ->
+                Box(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 12.dp)) { description() }
             }
         }
     }

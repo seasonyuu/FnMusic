@@ -110,6 +110,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         mutableMusic.value = MusicUiState(
             streamingQuality = previous.streamingQuality,
             appearance = previous.appearance,
+            themeColor = previous.themeColor,
             cachePreference = previous.cachePreference,
             cacheUsage = previous.cacheUsage,
             cacheBytes = previous.cacheBytes,
@@ -168,6 +169,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             }
         }
         viewModelScope.launch { graph.settings.streamingQuality.collect { value -> mutableMusic.value = mutableMusic.value.copy(streamingQuality = value) } }
+        viewModelScope.launch { graph.settings.themeColor.collect { value -> mutableMusic.value = mutableMusic.value.copy(themeColor = value) } }
         viewModelScope.launch { graph.settings.appearance.collect { value -> mutableMusic.value = mutableMusic.value.copy(appearance = value) } }
         viewModelScope.launch { PlayerDependencies.usage.collect { usage -> mutableMusic.value = mutableMusic.value.copy(cacheUsage = usage) } }
         viewModelScope.launch { graph.session.reconnect() }
@@ -612,6 +614,16 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     suspend fun setCachePreference(value: PlaybackCachePreference) = graph.settings.setPlaybackCache(value)
     suspend fun clearCache() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { PlayerDependencies.clearCache() }
+
+    suspend fun setThemeColor(value: com.seasonyuu.fnmusic.core.model.ThemeColorPreference) {
+        val previous = mutableMusic.value.themeColor
+        mutableMusic.value = mutableMusic.value.copy(themeColor = value)
+        try { graph.settings.setThemeColor(value) }
+        catch (failure: Exception) {
+            mutableMusic.value = mutableMusic.value.copy(themeColor = previous)
+            throw failure
+        }
+    }
 
     suspend fun setAppearance(value: com.seasonyuu.fnmusic.core.model.AppearancePreference) = graph.settings.setAppearance(value)
 

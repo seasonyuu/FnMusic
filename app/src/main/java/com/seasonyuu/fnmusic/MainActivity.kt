@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
-            FnMusicTheme(darkTheme = dark) {
+            FnMusicTheme(darkTheme = dark, accent = androidx.compose.ui.graphics.Color(music.themeColor.argb)) {
                 val session by viewModel.session.collectAsState()
                 val player by viewModel.player.collectAsState()
                 if (session is SessionState.Ready) {
@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
                         administration = viewModel.administration,
                         onStreamingQualityChange = viewModel::setStreamingQuality,
                         onAppearanceChange = viewModel::setAppearance,
+                        onThemeColorChange = viewModel::setThemeColor,
                         onCachePreferenceChange = viewModel::setCachePreference,
                         onClearCache = viewModel::clearCache,
                         openPlayerRequested = openPlayerRequested,

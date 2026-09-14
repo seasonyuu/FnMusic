@@ -345,6 +345,7 @@ data class MusicUiState(
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
     val user: MusicUser? = null,
+    val themeColor: com.seasonyuu.fnmusic.core.model.ThemeColorPreference = com.seasonyuu.fnmusic.core.model.ThemeColorPreference.Default,
     val appearance: AppearancePreference = AppearancePreference.Dark,
     val profileError: String? = null,
     val lyrics: List<LyricLine> = emptyList(),
@@ -441,6 +442,7 @@ fun MusicShell(
     administration: com.seasonyuu.fnmusic.core.model.MusicAdministration? = null,
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
     onClearCache: suspend () -> Unit = {},
+    onThemeColorChange: suspend (com.seasonyuu.fnmusic.core.model.ThemeColorPreference) -> Unit = {},
     onAppearanceChange: suspend (AppearancePreference) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
     onChangePassword: (suspend (String) -> Unit)? = null,
@@ -788,7 +790,10 @@ fun MusicShell(
                                                         }
                                                         MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
                                                         MusicPage.Cache -> CacheSettingsScreen(state.cachePreference, state.cacheUsage, onCachePreferenceChange, onClearCache, ::popPage)
-                                                        MusicPage.Appearance -> AppearanceSettingsScreen(state.appearance, onAppearanceChange, ::popPage)
+                                                        MusicPage.Appearance -> AppearanceSettingsScreen(state,
+                                                            onAppearanceChange, onThemeColorChange, { openPage(MusicPage.LiquidGlass) }, ::popPage)
+                                                        MusicPage.ThemeColor -> { LaunchedEffect(entry.id) { popPage() } }
+                                                        MusicPage.DisplayMode -> { LaunchedEffect(entry.id) { popPage() } }
                                                         MusicPage.Password -> PasswordSettingsScreen(state.user?.name.orEmpty(), onChangePassword, ::popPage)
                                                         MusicPage.Root -> Unit
                                                     }

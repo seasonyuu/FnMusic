@@ -50,6 +50,7 @@ fun LiquidToggle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val accent = FnAccent
     val glass = currentLiquidGlassMaterial()
     val backdrop = LocalFnBackdrop.current
     val trackBackdrop = rememberLayerBackdrop()
@@ -105,7 +106,7 @@ fun LiquidToggle(
                 Modifier.matchParentSize()
                     .then(if (glass.enabled) Modifier.layerBackdrop(trackBackdrop) else Modifier)
                     .clip(Capsule()).drawBehind {
-                        drawRect(lerp(Color(0xFF787880).copy(alpha = 0.36f), FnAccent, motion.value))
+                        drawRect(lerp(Color(0xFF787880).copy(alpha = 0.36f), accent, motion.value))
                     },
             )
             val transform: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {

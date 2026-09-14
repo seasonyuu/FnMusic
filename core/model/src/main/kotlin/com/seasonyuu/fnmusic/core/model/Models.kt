@@ -339,3 +339,15 @@ sealed class MusicError(message: String, cause: Throwable? = null) : RuntimeExce
     class Business(val code: Int, message: String) : MusicError(message)
     class UnsafeConnection(message: String) : MusicError(message)
 }
+
+/** Ordered accent catalog from the official Music Web design tokens. */
+enum class ThemeColorPreference(val id: String, val argb: Long, val label: String) {
+    Default("red", 0xFFF62C55, "红色"),
+    Pink("pink", 0xFFF05672, "粉色"),
+    Purple("purple", 0xFFC934E1, "紫色"),
+    Blue("blue", 0xFF1B73FB, "蓝色"),
+    Green("green", 0xFF6BAB45, "绿色");
+    companion object {
+        fun fromId(id: String?) = entries.firstOrNull { it.id == id } ?: Default
+    }
+}

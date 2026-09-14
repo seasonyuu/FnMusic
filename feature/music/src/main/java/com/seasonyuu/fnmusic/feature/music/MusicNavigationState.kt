@@ -15,7 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, Cache, Quality, AdminLibraries, AdminUsers, AdminServer }
+internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, DisplayMode, ThemeColor, Cache, Quality, AdminLibraries, AdminUsers, AdminServer }
 
 /** Resource identity travels with data so an outgoing page cannot render another page's response. */
 data class DetailRequestKey(val type: String, val id: String)
@@ -103,7 +103,12 @@ internal class MusicNavigationState {
                 destination = MusicDestination.valueOf(requireNotNull(bundle.getString("destination")))
                 stacks = MusicDestination.entries.associateWith { tab ->
                     @Suppress("DEPRECATION")
-                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).mapIndexed { depth, saved -> saved.toEntry(tab).copy(depth = depth) }.also { entries ->
+                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).mapIndexed { depth, saved -> saved.toEntry(tab).copy(depth = depth) }.flatMapIndexed { index, entry ->
+                        if (entry.page == MusicPage.LiquidGlass && index > 0 &&
+                            savedPagesNeedAppearance(bundle, tab, index)) {
+                            listOf(MusicPageEntry(tab, MusicPage.Appearance), entry)
+                        } else listOf(entry)
+                    }.filterNot { it.page == MusicPage.ThemeColor || it.page == MusicPage.DisplayMode }.mapIndexed { depth, entry -> entry.copy(depth = depth) }.also { entries ->
                         require(entries.isNotEmpty() && entries.first().page == MusicPage.Root && entries.first().detail == null)
                     }
                 }
@@ -144,3 +149,7 @@ private fun Bundle.toEntry(tab: MusicDestination): MusicPageEntry {
     }
     return MusicPageEntry(tab, MusicPage.valueOf(requireNotNull(getString("page"))), detail, requireNotNull(getString("id")))
 }
+
+@Suppress("DEPRECATION")
+private fun savedPagesNeedAppearance(bundle: Bundle, tab: MusicDestination, index: Int): Boolean =
+    bundle.getParcelableArrayList<Bundle>(tab.name)?.getOrNull(index - 1)?.getString("page") != MusicPage.Appearance.name
