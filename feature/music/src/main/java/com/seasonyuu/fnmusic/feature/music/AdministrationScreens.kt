@@ -16,9 +16,14 @@ import kotlinx.coroutines.launch
 
 @Composable
 private fun AdminPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp)), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PageTitle(title, onBack)
-        content()
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+        Box(Modifier.padding(horizontal = 20.dp)) { PageTitle(title, onBack) }
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
+                .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content,
+        )
     }
 }
 

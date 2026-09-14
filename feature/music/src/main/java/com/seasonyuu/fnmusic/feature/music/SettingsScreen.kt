@@ -48,16 +48,20 @@ internal fun SettingsScreen(
     onAdminServer: (() -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { onRefreshProfile() }
-    LazyColumn(
-        modifier = Modifier.testTag("settings-page"),
-        contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+    Column(
+        modifier = Modifier.fillMaxSize().testTag("settings-page")
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
     ) {
-        item {
+        Box(Modifier.padding(horizontal = 20.dp)) {
             if (onBack != null) PageTitle("设置", onBack)
-            else Text("我的", style = MaterialTheme.typography.headlineLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            else PageTitle("我的")
         }
-        item {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+          item {
             SettingsCard(modifier = Modifier.testTag("profile-identity")) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(Modifier.size(56.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
@@ -73,7 +77,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
-        }
+          }
         state.profileError?.let { message -> item {
             Text(message, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = onRefreshProfile) { Text("重试") }
@@ -103,6 +107,7 @@ internal fun SettingsScreen(
         item {
             SettingsNavigationGroup(listOf(SettingsEntry("退出音乐登录", onLogout)))
         }
+        }
     }
 }
 
@@ -121,13 +126,16 @@ internal fun LiquidGlassSettingsScreen(
         LocalLiquidGlassEnabled provides enabled,
         LocalContentColor provides FnTextPrimary,
     ) {
-        LazyColumn(
-            modifier = Modifier.testTag("liquid-glass-page"),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
         ) {
-            item { PageTitle("Liquid Glass", onBack) }
-            item {
+            Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("Liquid Glass", onBack) }
+            LazyColumn(
+                modifier = Modifier.weight(1f).testTag("liquid-glass-page"),
+                contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+              item {
                 SettingsCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("启用 Liquid Glass", modifier = Modifier.weight(1f))
@@ -144,7 +152,7 @@ internal fun LiquidGlassSettingsScreen(
                         }
                     }
                 }
-            }
+              }
             item { LiquidGlassPreview() }
             item {
                 SettingsCard(modifier = Modifier.alpha(if (enabled) 1f else 0.38f)) {
@@ -181,6 +189,7 @@ internal fun LiquidGlassSettingsScreen(
                     Text(saveError, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("liquid-glass-save-error"))
                     TextButton(onClick = onSave) { Text("重试保存") }
                 }
+            }
             }
         }
     }

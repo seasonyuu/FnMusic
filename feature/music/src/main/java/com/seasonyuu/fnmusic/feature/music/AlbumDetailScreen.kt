@@ -118,6 +118,7 @@ internal fun AlbumDetailScreen(
     PageNavigationAppearance(surfaceColor = lerp(tone, Color.Black, .16f))
     val background by animateColorAsState(tone, tween(250), label = "album-tone")
     val backdrop = rememberLayerBackdrop()
+    val appBarBackdrop = rememberLayerBackdrop()
     val safe = WindowInsets.safeDrawing.asPaddingValues()
     val top = safe.calculateTopPadding()
     val hiddenEdgePx = with(LocalDensity.current) { (top + 8.dp).toPx() }
@@ -143,96 +144,98 @@ internal fun AlbumDetailScreen(
         val compact = maxWidth < 600.dp
         val coverSize = minOf(maxWidth * .70f, 320.dp)
         val horizontal = if (compact) 20.dp else 48.dp
-        LazyColumn(
-            state = if (tracks.isEmpty()) placeholderListState else listState,
-            modifier = Modifier.fillMaxSize().layerBackdrop(backdrop)
-                .background(Brush.verticalGradient(listOf(background, lerp(background, Color.Black, .16f))))
-                .testTag("library-detail-list"),
-            contentPadding = edgeToEdgeContentPadding(top = 76.dp, bottom = 36.dp),
-        ) {
-            item(key = "header") {
-                if (compact) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = horizontal), horizontalAlignment = Alignment.CenterHorizontally) {
-                        cover(Modifier.size(coverSize))
-                        Spacer(Modifier.height(20.dp))
-                        AlbumHeading(album, tracks, onPlay)
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = horizontal, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                        cover(Modifier.size(264.dp))
-                        Box(Modifier.weight(1f)) { AlbumHeading(album, tracks, onPlay) }
-                    }
-                }
-                Spacer(Modifier.height(24.dp))
-                HorizontalDivider(Modifier.padding(horizontal = horizontal), color = Color.White.copy(alpha = .18f))
-            }
-            when {
-                state.detailLoading && tracks.isEmpty() -> item(key = "loading") {
-                    Column(Modifier.padding(horizontal = horizontal).semantics { contentDescription = "正在加载曲目" }) {
-                        repeat(6) {
-                            Box(Modifier.fillMaxWidth().height(56.dp).padding(vertical = 18.dp)
-                                .clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = .10f)))
+        Box(Modifier.fillMaxSize().layerBackdrop(appBarBackdrop)) {
+            LazyColumn(
+                state = if (tracks.isEmpty()) placeholderListState else listState,
+                modifier = Modifier.fillMaxSize().layerBackdrop(backdrop)
+                    .background(Brush.verticalGradient(listOf(background, lerp(background, Color.Black, .16f))))
+                    .testTag("library-detail-list"),
+                contentPadding = edgeToEdgeContentPadding(top = 76.dp, bottom = 36.dp),
+            ) {
+                item(key = "header") {
+                    if (compact) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = horizontal), horizontalAlignment = Alignment.CenterHorizontally) {
+                            cover(Modifier.size(coverSize))
+                            Spacer(Modifier.height(20.dp))
+                            AlbumHeading(album, tracks, onPlay)
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = horizontal, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                            cover(Modifier.size(264.dp))
+                            Box(Modifier.weight(1f)) { AlbumHeading(album, tracks, onPlay) }
                         }
                     }
+                    Spacer(Modifier.height(24.dp))
+                    HorizontalDivider(Modifier.padding(horizontal = horizontal), color = Color.White.copy(alpha = .18f))
                 }
-                state.detailError != null -> item(key = "error") {
-                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.detailError, color = Color.White)
-                        TextButton(onClick = onRetry) { Text("重试", color = Color.White) }
-                    }
-                }
-                tracks.isEmpty() -> item(key = "empty") {
-                    Text("暂无曲目", Modifier.fillMaxWidth().padding(24.dp), color = Color.White.copy(alpha = .8f), textAlign = TextAlign.Center)
-                }
-            }
-            val multiDisc = tracks.mapNotNull { it.discNo?.takeIf { disc -> disc > 0 } }.distinct().size > 1
-            tracks.forEachIndexed { index, track ->
-                if (multiDisc && (index == 0 || track.discNo != tracks[index - 1].discNo)) {
-                    item(key = "disc-$index") {
-                        Text(track.discNo?.let { "光盘 $it" } ?: "其他曲目", Modifier.padding(horizontal = horizontal, vertical = 16.dp), color = Color.White.copy(alpha = .8f))
-                    }
-                }
-                item(key = "track-$index-${track.id.value}") {
-                    // Suppress actions once the row is entirely under the top system-bar mask.
-                    val enabled by remember(listState, track.id, index, hiddenEdgePx) {
-                        derivedStateOf {
-                            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "track-$index-${track.id.value}" }
-                            info == null || info.offset + info.size + listState.layoutInfo.beforeContentPadding > hiddenEdgePx
+                when {
+                    state.detailLoading && tracks.isEmpty() -> item(key = "loading") {
+                        Column(Modifier.padding(horizontal = horizontal).semantics { contentDescription = "正在加载曲目" }) {
+                            repeat(6) {
+                                Box(Modifier.fillMaxWidth().height(56.dp).padding(vertical = 18.dp)
+                                    .clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = .10f)))
+                            }
                         }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = horizontal).heightIn(min = 56.dp)
-                            .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("album-track-$index"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(Modifier.width(30.dp), contentAlignment = Alignment.CenterStart) {
-                            if (playerState.current?.track?.id == track.id) AlbumPlayingIndicator(playerState.isPlaying)
-                            else Text(albumTrackNumber(track, index), color = Color.White.copy(alpha = .75f), fontSize = 15.sp)
-                        }
-                        Text(track.title, Modifier.weight(1f).padding(vertical = 14.dp), color = Color.White, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        IconButton(onClick = { onMore(track) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Rounded.MoreHoriz, "${track.title}更多操作", tint = Color.White.copy(alpha = .8f))
+                    state.detailError != null -> item(key = "error") {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(state.detailError, color = Color.White)
+                            TextButton(onClick = onRetry) { Text("重试", color = Color.White) }
                         }
                     }
-                    HorizontalDivider(Modifier.padding(start = horizontal + 30.dp, end = horizontal), color = Color.White.copy(alpha = .15f))
+                    tracks.isEmpty() -> item(key = "empty") {
+                        Text("暂无曲目", Modifier.fillMaxWidth().padding(24.dp), color = Color.White.copy(alpha = .8f), textAlign = TextAlign.Center)
+                    }
+                }
+                val multiDisc = tracks.mapNotNull { it.discNo?.takeIf { disc -> disc > 0 } }.distinct().size > 1
+                tracks.forEachIndexed { index, track ->
+                    if (multiDisc && (index == 0 || track.discNo != tracks[index - 1].discNo)) {
+                        item(key = "disc-$index") {
+                            Text(track.discNo?.let { "光盘 $it" } ?: "其他曲目", Modifier.padding(horizontal = horizontal, vertical = 16.dp), color = Color.White.copy(alpha = .8f))
+                        }
+                    }
+                    item(key = "track-$index-${track.id.value}") {
+                        // Suppress actions once the row is entirely under the top system-bar mask.
+                        val enabled by remember(listState, track.id, index, hiddenEdgePx) {
+                            derivedStateOf {
+                                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "track-$index-${track.id.value}" }
+                                info == null || info.offset + info.size + listState.layoutInfo.beforeContentPadding > hiddenEdgePx
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = horizontal).heightIn(min = 56.dp)
+                                .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("album-track-$index"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.width(30.dp), contentAlignment = Alignment.CenterStart) {
+                                if (playerState.current?.track?.id == track.id) AlbumPlayingIndicator(playerState.isPlaying)
+                                else Text(albumTrackNumber(track, index), color = Color.White.copy(alpha = .75f), fontSize = 15.sp)
+                            }
+                            Text(track.title, Modifier.weight(1f).padding(vertical = 14.dp), color = Color.White, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            IconButton(onClick = { onMore(track) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Rounded.MoreHoriz, "${track.title}更多操作", tint = Color.White.copy(alpha = .8f))
+                            }
+                        }
+                        HorizontalDivider(Modifier.padding(start = horizontal + 30.dp, end = horizontal), color = Color.White.copy(alpha = .15f))
+                    }
+                }
+                if (tracks.isNotEmpty()) item(key = "footer") {
+                    Column(Modifier.padding(horizontal = horizontal, vertical = 24.dp).testTag("album-footer"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(listOfNotNull("${tracks.size} 首歌", albumDurationLabel(tracks)).joinToString("，"), color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
+                        album.releaseDate?.takeIf { it.isNotBlank() }?.let { Text(it, color = Color.White.copy(alpha = .75f), fontSize = 13.sp) }
+                    }
                 }
             }
-            if (tracks.isNotEmpty()) item(key = "footer") {
-                Column(Modifier.padding(horizontal = horizontal, vertical = 24.dp).testTag("album-footer"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(listOfNotNull("${tracks.size} 首歌", albumDurationLabel(tracks)).joinToString("，"), color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
-                    album.releaseDate?.takeIf { it.isNotBlank() }?.let { Text(it, color = Color.White.copy(alpha = .75f), fontSize = 13.sp) }
-                }
-            }
+            ProgressiveBarBlur(backdrop, top = true, modifier = Modifier.align(Alignment.TopCenter), tint = background)
         }
-        ProgressiveBarBlur(backdrop, top = true, modifier = Modifier.align(Alignment.TopCenter), tint = background)
-        LiquidButton(
-            onClick = onBack,
-            backdrop = backdrop,
-            surfaceColor = background,
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier.padding(start = horizontal, top = top + 8.dp).size(48.dp)
-                .testTag("detail-app-bar"),
-        ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Color.White) }
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalAppBarBackdrop provides appBarBackdrop,
+            androidx.compose.material3.LocalContentColor provides Color.White,
+        ) {
+            MusicAppBar(null, onBack = onBack,
+                modifier = Modifier.padding(start = horizontal, end = horizontal, top = top + 8.dp)
+                    .testTag("detail-app-bar"))
+        }
     }
 }
 

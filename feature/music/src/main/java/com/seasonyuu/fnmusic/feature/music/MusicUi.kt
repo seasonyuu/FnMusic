@@ -1,10 +1,10 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.material3.pulltorefresh.*
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.text.style.TextAlign
 import com.seasonyuu.fnmusic.core.model.TrackMetadataEdit
 import com.seasonyuu.fnmusic.core.model.TrackTagOptions
@@ -556,7 +556,9 @@ fun MusicShell(
                 throw cancelled
             }
         }
+        val appBarBackdrop = rememberLayerBackdrop()
         CompositionLocalProvider(
+            LocalAppBarBackdrop provides appBarBackdrop,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassEnabled provides state.liquidGlassEnabled,
             LocalContentColor provides FnTextPrimary,
@@ -565,8 +567,13 @@ fun MusicShell(
                 actionTrack = track
             },
         ) {
-            FnProgressiveSystemBars(showTopBlur = !playerComposed && navigation.current.detail !is LibraryDetail.AlbumPage) {
+            val collectionPage = navigation.current.page in setOf(
+                MusicPage.Tracks, MusicPage.Recent, MusicPage.Favorites,
+                MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
+            ) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
+            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.detail !is LibraryDetail.AlbumPage) {
                 Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.matchParentSize().layerBackdrop(appBarBackdrop).background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))))
                     BoxWithConstraints(
                         Modifier
                             .fillMaxSize()
@@ -743,7 +750,7 @@ fun MusicShell(
                                                             LaunchedEffect(catalogEditVersion) { if (catalogEditVersion > 0) items.refresh() }
                                                             PagingTrackScreen(
                                                                 "全部歌曲", items, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                                                sort = sort, totalCount = state.trackTotal, showServerTotal = true,
+                                                                sort = sort, totalCount = state.trackTotal, showServerTotal = true, pullRefreshEnabled = true,
                                                                 onSort = { sort = it }, onPlayAll = { onPlayAllTracks(sort) }, onBack = ::popPage,
                                                             )
                                                         }
@@ -1056,8 +1063,16 @@ private fun HomeScreen(
     // Keep the vertical page rhythm inset, but let horizontal carousels own the
     // full-width viewport so cards can slide under the screen edge instead of
     // being clipped at the page's 20dp content margin.
-    LazyColumn(contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item {
+    Column(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+    ) {
+        MusicAppBar("首页", modifier = Modifier.padding(horizontal = 20.dp))
+        LazyColumn(
+            Modifier.weight(1f),
+            contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+          item {
             LazyRow(
                 modifier = Modifier.testTag("首页快捷入口"),
                 contentPadding = PaddingValues(horizontal = 20.dp),
@@ -1068,7 +1083,7 @@ private fun HomeScreen(
                 item { FlowFeatureCard("最近播放", FlowingLightStyle.Recent, FnIcons.Recent, onRecent) }
                 item { FlowFeatureCard("最近添加", FlowingLightStyle.RecentlyAdded, FnIcons.Library, onRecentlyAdded) }
             }
-        }
+          }
         item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("最近添加", onRecentlyAdded) } }
         item {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -1096,6 +1111,7 @@ private fun HomeScreen(
             HomeSectionContent(state, CatalogSection.Playlists, state.playlists.isNotEmpty(), onRefresh) {
                 PlaylistRow(state.playlists, coverUrl, onPlaylist)
             }
+        }
         }
     }
 }
@@ -1331,26 +1347,29 @@ private fun TrackListScreen(
     onToggleFavorite: (Track) -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
-    LazyColumn(contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    Text("${tracks.size} 首歌曲", color = FnTextSecondary)
+    val listState = rememberLazyListState()
+    CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }) { heading, top ->
+        LazyColumn(
+            Modifier.fillMaxSize(), state = listState,
+            contentPadding = edgeToEdgeContentPadding(top = top, bottom = 20.dp, includeTopInset = false),
+        ) {
+            item(key = "collection-header") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    CollectionHeading(title, "${tracks.size} 首歌曲", heading)
+                    Spacer(Modifier.height(20.dp))
+                    CollectionPlayButton(tracks.isNotEmpty()) { onPlay(tracks, 0) }
                 }
-                FilledIconButton(onClick = { if (tracks.isNotEmpty()) onPlay(tracks, 0) }) { Icon(Icons.Rounded.PlayArrow, "播放全部") }
             }
+            items(tracks, key = { it.id.value }) { track ->
+                FavoriteTrackRow(track, state, coverUrl, { onPlay(tracks, tracks.indexOf(track)) }, onToggleFavorite)
+            }
+            if (tracks.isEmpty()) item { EmptyPane("这里还没有歌曲") }
         }
-        items(tracks, key = { it.id.value }) { track ->
-            FavoriteTrackRow(track, state, coverUrl, { onPlay(tracks, tracks.indexOf(track)) }, onToggleFavorite)
-        }
-        if (tracks.isEmpty()) item { EmptyPane("这里还没有歌曲") }
     }
 }
 
 @Composable
-private fun PagingTrackScreen(
+internal fun PagingTrackScreen(
     title: String,
     tracks: LazyPagingItems<Track>,
     state: MusicUiState,
@@ -1361,67 +1380,102 @@ private fun PagingTrackScreen(
     sort: TrackSort? = null,
     totalCount: Int? = null,
     showServerTotal: Boolean = false,
+    pullRefreshEnabled: Boolean = false,
     onSort: ((TrackSort) -> Unit)? = null,
     onPlayAll: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
-    // A header-only loading frame would clamp a restored scroll position to zero.
-    if (tracks.itemCount == 0 && tracks.loadState.refresh is LoadState.Loading &&
-        (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
-    ) {
-        Column(Modifier.padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp))) {
-            if (onBack != null) PageTitle(title, onBack)
-            else Text(title, style = MaterialTheme.typography.headlineLarge)
-            EmptyPane("正在加载歌曲…")
+    val pullState = rememberPullToRefreshState()
+    var requestedRefresh by remember { mutableStateOf(false) }
+    var sawLoading by remember { mutableStateOf(false) }
+    val refresh = tracks.loadState.refresh
+    LaunchedEffect(refresh, requestedRefresh) {
+        if (requestedRefresh) {
+            if (refresh is LoadState.Loading) sawLoading = true
+            else if (sawLoading) { requestedRefresh = false; sawLoading = false }
         }
-        return
     }
-    LazyColumn(state = listState, contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        when {
+    CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }, actions = {
+        if (sort != null && onSort != null) TrackSortMenu(sort, onSort)
+        if (!pullRefreshEnabled) {
+            var expanded by remember { mutableStateOf(false) }
+            Box {
+                AppBarButton({ expanded = true }) { Icon(Icons.Rounded.MoreVert, "更多") }
+                DropdownMenu(expanded, { expanded = false }) {
+                    DropdownMenuItem(text = { Text("刷新") }, onClick = {
+                        expanded = false; tracks.refresh(); onRefresh()
+                    })
+                }
+            }
+        }
+    }) { heading, top ->
+        PullToRefreshBox(
+            isRefreshing = requestedRefresh && refresh is LoadState.Loading,
+            onRefresh = {
+                if (!requestedRefresh && refresh !is LoadState.Loading) {
+                    requestedRefresh = true; sawLoading = false; tracks.refresh()
+                }
+            },
+            state = pullState, enabled = pullRefreshEnabled,
+            indicator = {
+                if (pullRefreshEnabled) PullToRefreshDefaults.Indicator(
+                    state = pullState, isRefreshing = requestedRefresh && refresh is LoadState.Loading,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = top),
+                )
+            },
+        ) {
+            // Do not clamp an entry's restored position while its paging source reconnects.
+            if (tracks.itemCount == 0 && refresh is LoadState.Loading &&
+                (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyPane("正在加载歌曲…") }
+            } else LazyColumn(
+                Modifier.fillMaxSize(), state = listState,
+                contentPadding = edgeToEdgeContentPadding(top = top, bottom = 20.dp, includeTopInset = false),
+            ) {
+                item(key = "collection-header") {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        CollectionHeading(title, when {
                             totalCount != null -> "共 $totalCount 首歌曲"
                             showServerTotal && state.loading -> "正在获取曲目总数…"
                             showServerTotal -> "${tracks.itemCount} 首歌曲"
                             else -> "${tracks.itemCount} 首已加载歌曲"
-                        },
-                        color = FnTextSecondary,
-                    )
+                        }, heading)
+                        Spacer(Modifier.height(20.dp))
+                        CollectionPlayButton(tracks.itemCount > 0) {
+                            if (onPlayAll != null) onPlayAll()
+                            else tracks.itemSnapshotList.items.takeIf(List<Track>::isNotEmpty)?.let { onPlay(it, 0) }
+                        }
+                    }
                 }
-                IconButton(onClick = { tracks.refresh(); onRefresh() }) { Icon(Icons.Rounded.Refresh, "刷新") }
-                if (sort != null && onSort != null) TrackSortMenu(sort, onSort)
-                FilledIconButton(
-                    onClick = {
-                        if (onPlayAll != null) onPlayAll()
-                        else tracks.itemSnapshotList.items.takeIf(List<Track>::isNotEmpty)?.let { onPlay(it, 0) }
-                    },
-                    enabled = tracks.itemCount > 0,
-                ) { Icon(Icons.Rounded.PlayArrow, "播放全部") }
+                if (refresh is LoadState.Error && tracks.itemCount > 0) item {
+                    PagingErrorPane("刷新失败，请重试") {
+                        requestedRefresh = true
+                        sawLoading = false
+                        tracks.retry()
+                    }
+                }
+                items(count = tracks.itemCount, key = tracks.itemKey { it.id.value }) { index ->
+                    tracks[index]?.let { track ->
+                        FavoriteTrackRow(track, state, coverUrl, {
+                            val loaded = tracks.itemSnapshotList.items
+                            val actualIndex = loaded.indexOfFirst { it.id == track.id }
+                            if (actualIndex >= 0) onPlay(loaded, actualIndex)
+                        }, onToggleFavorite)
+                    }
+                }
+                when (val append = tracks.loadState.append) {
+                    is LoadState.Loading -> item { EmptyPane("正在加载更多…") }
+                    is LoadState.Error -> item { PagingErrorPane("加载更多失败：${append.error.message ?: "未知错误"}") { tracks.retry() } }
+                    else -> Unit
+                }
+                when (val refresh = tracks.loadState.refresh) {
+                    is LoadState.Loading -> if (tracks.itemCount == 0) item { EmptyPane("正在加载曲库…") }
+                    is LoadState.Error -> if (tracks.itemCount == 0) item { PagingErrorPane(refresh.error.message ?: "加载失败") { tracks.retry() } }
+                    else -> if (tracks.itemCount == 0) item { EmptyPane("这里还没有歌曲") }
+                }
             }
-        }
-        items(count = tracks.itemCount, key = tracks.itemKey { it.id.value }) { index ->
-            tracks[index]?.let { track ->
-                FavoriteTrackRow(track, state, coverUrl, {
-                    val loaded = tracks.itemSnapshotList.items
-                    val actualIndex = loaded.indexOfFirst { it.id == track.id }
-                    if (actualIndex >= 0) onPlay(loaded, actualIndex)
-                }, onToggleFavorite)
-            }
-        }
-        when (val append = tracks.loadState.append) {
-            is LoadState.Loading -> item { EmptyPane("正在加载更多…") }
-            is LoadState.Error -> item { PagingErrorPane("加载更多失败：${append.error.message ?: "未知错误"}") { tracks.retry() } }
-            else -> Unit
-        }
-        when (val refresh = tracks.loadState.refresh) {
-            is LoadState.Loading -> if (tracks.itemCount == 0) item { EmptyPane("正在加载曲库…") }
-            is LoadState.Error -> if (tracks.itemCount == 0) item { PagingErrorPane(refresh.error.message ?: "加载失败") { tracks.retry() } }
-            else -> if (tracks.itemCount == 0) item { EmptyPane("这里还没有歌曲") }
         }
     }
 }
@@ -1452,7 +1506,7 @@ private fun FavoriteTrackRow(
 private fun TrackSortMenu(selected: TrackSort, onSelect: (TrackSort) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "排序") }
+        AppBarButton(onClick = { expanded = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "排序") }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf(
                 TrackSort.RecentlyAdded to "最新添加",
@@ -1489,7 +1543,7 @@ private fun SearchScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .padding(top = 20.dp),
     ) {
-        Text("搜索", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp))
+        MusicAppBar("搜索", modifier = Modifier.padding(horizontal = 20.dp))
         OutlinedTextField(
             value = state.searchQuery,
             onValueChange = onSearch,
@@ -1662,18 +1716,22 @@ private fun PlaylistRow(
 
 @Composable
 internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit) {
-    LazyColumn(
-        modifier = Modifier.testTag("library-menu"),
-        contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Column(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
     ) {
-        item { Text("音乐库", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold) }
-        item { LibraryEntry(FnIcons.Library, "全部歌曲", "浏览音乐库中的歌曲") { onNavigate(MusicPage.Tracks) } }
-        item { LibraryEntry(FnIcons.Artist, "全部歌手", "按歌手浏览") { onNavigate(MusicPage.Artists) } }
-        item { LibraryEntry(Icons.Rounded.Album, "全部专辑", "按专辑浏览") { onNavigate(MusicPage.Albums) } }
-        item { LibraryEntry(Icons.AutoMirrored.Rounded.QueueMusic, "歌单", "浏览和管理歌单") { onNavigate(MusicPage.Playlists) } }
-        item { LibraryEntry(FnIcons.Favorite, "收藏", "喜欢的歌曲") { onNavigate(MusicPage.Favorites) } }
-        item { LibraryEntry(Icons.Rounded.History, "最近播放", "回顾听过的歌曲") { onNavigate(MusicPage.Recent) } }
+        PageTitle("音乐库", onBack = null, subtitle = null)
+        LazyColumn(
+            modifier = Modifier.weight(1f).testTag("library-menu"),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item { LibraryEntry(FnIcons.Library, "全部歌曲", "浏览音乐库中的歌曲") { onNavigate(MusicPage.Tracks) } }
+            item { LibraryEntry(FnIcons.Artist, "全部歌手", "按歌手浏览") { onNavigate(MusicPage.Artists) } }
+            item { LibraryEntry(Icons.Rounded.Album, "全部专辑", "按专辑浏览") { onNavigate(MusicPage.Albums) } }
+            item { LibraryEntry(Icons.AutoMirrored.Rounded.QueueMusic, "歌单", "浏览和管理歌单") { onNavigate(MusicPage.Playlists) } }
+            item { LibraryEntry(FnIcons.Favorite, "收藏", "喜欢的歌曲") { onNavigate(MusicPage.Favorites) } }
+            item { LibraryEntry(Icons.Rounded.History, "最近播放", "回顾听过的歌曲") { onNavigate(MusicPage.Recent) } }
+        }
     }
 }
 
@@ -1704,32 +1762,23 @@ private fun DetailPageFrame(
     Column(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
     ) {
-        TopAppBar(
-            title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
-            },
-            actions = actions,
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = FnBackgroundTop,
-                titleContentColor = FnTextPrimary,
-                navigationIconContentColor = FnTextPrimary,
-                actionIconContentColor = FnTextPrimary,
-            ),
-            modifier = Modifier.testTag("detail-app-bar"),
-        )
+        MusicAppBar(title, onBack = onBack, actions = actions,
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(horizontal = 20.dp).testTag("detail-app-bar"))
         Box(Modifier.fillMaxWidth().weight(1f)) { content() }
     }
 }
 
 @Composable
-internal fun PageTitle(title: String, onBack: () -> Unit, subtitle: String? = null) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
-        Column {
-            Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-            if (subtitle != null) Text(subtitle, color = FnTextSecondary)
-        }
+internal fun PageTitle(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    subtitle: String? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Column {
+        MusicAppBar(title, onBack = onBack, actions = actions)
+        if (subtitle != null) Text(subtitle, color = FnTextSecondary, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -1742,9 +1791,10 @@ private fun AlbumGridScreen(
     onBack: () -> Unit,
     onAlbum: (Album) -> Unit,
 ) {
-    val backdrop = rememberLayerBackdrop()
     val gridState = rememberLazyGridState()
-    Box(Modifier.fillMaxSize()) {
+    CollectionPage("专辑", onBack, { gridState.firstVisibleItemIndex > 0 }, actions = {
+        AlbumSortMenu(sort, onSort)
+    }) { heading, top ->
         // Capture only the scrolling content so glass controls never sample themselves.
         if (albums.itemCount == 0 && albums.loadState.refresh is LoadState.Loading &&
             (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0)
@@ -1753,22 +1803,15 @@ private fun AlbumGridScreen(
         } else LazyVerticalGrid(
             state = gridState,
             modifier = Modifier.fillMaxSize()
-                .layerBackdrop(backdrop)
                 .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom)))
                 .testTag("album-grid"),
             columns = GridCells.Adaptive(142.dp),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 72.dp, bottom = 20.dp),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = top, bottom = 20.dp, includeTopInset = false),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            item(key = "album-grid-heading", span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    "专辑",
-                    fontSize = 34.sp,
-                    lineHeight = 40.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("album-grid-heading"),
-                )
+            item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
+                Column { CollectionHeading("专辑", "${albums.itemCount} 张已加载", heading) }
             }
             items(count = albums.itemCount, key = albums.itemKey { it.id.value }) { index ->
                 albums[index]?.let { album ->
@@ -1776,36 +1819,15 @@ private fun AlbumGridScreen(
                 }
             }
         }
-        Row(
-            Modifier.fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp)
-                .testTag("album-grid-app-bar"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            LiquidButton(
-                onClick = onBack,
-                backdrop = backdrop,
-                modifier = Modifier.size(48.dp),
-                contentPadding = PaddingValues(0.dp),
-            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
-            AlbumSortMenu(sort, onSort, backdrop)
-        }
     }
 }
 
 @Composable
-private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit, backdrop: com.kyant.backdrop.Backdrop) {
+private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        LiquidButton(
-            onClick = { expanded = true },
-            backdrop = backdrop,
-            modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "专辑排序" },
-        ) {
-            Icon(Icons.AutoMirrored.Rounded.Sort, null)
-            Text("排序", style = MaterialTheme.typography.labelLarge)
+        AppBarButton(onClick = { expanded = true }) {
+            Icon(Icons.AutoMirrored.Rounded.Sort, "专辑排序")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf(
@@ -1826,19 +1848,22 @@ private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit, ba
 
 @Composable
 private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String?, Int) -> String?, onBack: () -> Unit, onArtist: (Artist) -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .padding(top = 12.dp),
-    ) {
-        Box(Modifier.padding(horizontal = 8.dp)) { PageTitle("歌手", onBack, "${artists.itemCount} 位已加载") }
-        LazyVerticalGrid(
+    val gridState = rememberLazyGridState()
+    CollectionPage("歌手", onBack, { gridState.firstVisibleItemIndex > 0 }) { heading, top ->
+        if (artists.itemCount == 0 && artists.loadState.refresh is LoadState.Loading &&
+            (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0)
+        ) {
+            Box(Modifier.padding(top = top)) { EmptyPane("正在加载歌手…") }
+        } else LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(142.dp),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, bottom = 20.dp),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = top, bottom = 20.dp, includeTopInset = false),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
+                Column { CollectionHeading("歌手", "${artists.itemCount} 位已加载", heading) }
+            }
             items(count = artists.itemCount, key = artists.itemKey { it.id.value }) { index ->
                 artists[index]?.let { artist ->
                     Column(Modifier.clickable { onArtist(artist) }, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1861,31 +1886,26 @@ private fun PlaylistGridScreen(
     onCreate: () -> Unit,
     onPlaylist: (Playlist) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .padding(top = 12.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f)) { PageTitle("歌单", onBack, "${playlists.size} 个") }
-            FilledIconButton(onClick = onCreate, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Rounded.Add, "新建歌单")
-            }
-        }
-        message?.let {
-            Text(it, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
-        }
+    val gridState = rememberLazyGridState()
+    CollectionPage("歌单", onBack, { gridState.firstVisibleItemIndex > 0 }) { heading, top ->
         LazyVerticalGrid(
             modifier = Modifier.testTag("playlist-grid"),
+            state = gridState,
             columns = GridCells.Adaptive(142.dp),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, bottom = 20.dp),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = top, bottom = 20.dp, includeTopInset = false),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    CollectionHeading("歌单", "${playlists.size} 个", heading)
+                    OutlinedButton(onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(Icons.Rounded.Add, "新建歌单")
+                        Text("新建歌单")
+                    }
+                    message?.let { Text(it, color = FnTextSecondary) }
+                }
+            }
             items(playlists, key = { it.id.value }) { playlist ->
                 Column(Modifier.clickable { onPlaylist(playlist) }) {
                     PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.fillMaxWidth().height(142.dp))
@@ -2192,7 +2212,7 @@ private fun TrackInfoScreen(
             onSaved = { savedMetadata = it; editing = false }, onDismiss = { editing = false })
     }
     DetailPageFrame("歌曲信息", onBack, actions = {
-        if (onSave != null) TextButton(onClick = { editing = true }, enabled = !state.detailLoading && metadata != null && state.detailError == null) { Text("编辑") }
+        if (onSave != null) AppBarButton(onClick = { editing = true }, enabled = !state.detailLoading && metadata != null && state.detailError == null) { Text("编辑") }
     }) {
         if (state.detailLoading) {
             EmptyPane("正在加载详情…")
@@ -2364,12 +2384,21 @@ private fun LibraryDetailScreen(
             restore = { ids -> ids.map(::TrackId).toSet() },
         ),
     ) { mutableStateOf(emptySet<TrackId>()) }
-    val pageTitle = when (detail) {
-        is LibraryDetail.AlbumPage -> "专辑"
-        is LibraryDetail.ArtistPage -> "歌手"
-        else -> "歌单"
-    }
-    DetailPageFrame(pageTitle, onBack) {
+    CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }, actions = {
+        managedPlaylist?.let { playlist ->
+            var expanded by remember { mutableStateOf(false) }
+            Box {
+                AppBarButton({ expanded = true }) { Icon(Icons.Rounded.MoreVert, "更多") }
+                DropdownMenu(expanded, { expanded = false }) {
+                    DropdownMenuItem(text = { Text("编辑") }, onClick = { expanded = false; onEditPlaylist(playlist) })
+                    DropdownMenuItem(text = { Text("清理失效") }, enabled = !state.playlistBusy,
+                        onClick = { expanded = false; onPurgePlaylist(playlist) })
+                    DropdownMenuItem(text = { Text("删除", color = MaterialTheme.colorScheme.error) }, enabled = !state.playlistBusy,
+                        onClick = { expanded = false; onDeletePlaylist(playlist) })
+                }
+            }
+        }
+    }) { heading, top ->
         if (state.detailLoading) {
             EmptyPane("正在加载详情…")
         } else {
@@ -2382,7 +2411,7 @@ private fun LibraryDetailScreen(
                 LazyColumn(
                     Modifier.fillMaxSize().testTag("library-detail-list"),
                     state = listState,
-                    contentPadding = edgeToEdgeContentPadding(top = 12.dp, bottom = 36.dp, includeTopInset = false),
+                    contentPadding = edgeToEdgeContentPadding(top = top, bottom = 36.dp, includeTopInset = false),
                 ) {
                     item {
                         if (compact) {
@@ -2396,7 +2425,7 @@ private fun LibraryDetailScreen(
                                 } else {
                                     CoverImage(coverUrl(coverId, 640), title, Modifier.size(232.dp))
                                 }
-                                DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay)
+                                DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay, heading)
                             }
                         } else {
                             Row(
@@ -2409,7 +2438,7 @@ private fun LibraryDetailScreen(
                                 } else {
                                     CoverImage(coverUrl(coverId, 640), title, Modifier.size(264.dp))
                                 }
-                                Box(Modifier.weight(1f)) { DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay) }
+                                Box(Modifier.weight(1f)) { DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay, heading) }
                             }
                         }
                     }
@@ -2450,24 +2479,7 @@ private fun LibraryDetailScreen(
                                         Text("移除 ${selectedTrackIds.size} 首")
                                     }
                                 }
-                                item {
-                                    OutlinedButton(onClick = { onEditPlaylist(playlist) }, modifier = Modifier.height(48.dp)) {
-                                        Icon(Icons.Rounded.Edit, null, Modifier.padding(end = 6.dp))
-                                        Text("编辑")
-                                    }
-                                }
-                                item {
-                                    OutlinedButton(onClick = { onPurgePlaylist(playlist) }, modifier = Modifier.height(48.dp)) {
-                                        Icon(Icons.Rounded.DeleteSweep, null, Modifier.padding(end = 6.dp))
-                                        Text("清理失效")
-                                    }
-                                }
-                                item {
-                                    OutlinedButton(onClick = { onDeletePlaylist(playlist) }, modifier = Modifier.height(48.dp)) {
-                                        Icon(Icons.Rounded.Delete, null, Modifier.padding(end = 6.dp), tint = MaterialTheme.colorScheme.error)
-                                        Text("删除", color = MaterialTheme.colorScheme.error)
-                                    }
-                                }
+
                             }
                         }
                         state.playlistMessage?.let { message ->
@@ -2528,16 +2540,14 @@ private fun DetailHeading(
     metadata: String,
     tracks: List<Track>,
     onPlay: (List<Track>, Int) -> Unit,
+    headingModifier: Modifier = Modifier,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(title, modifier = headingModifier, fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
         Text(subtitle, style = MaterialTheme.typography.titleMedium, color = FnTextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(metadata, color = FnTextSecondary)
         Spacer(Modifier.height(6.dp))
-        Button(onClick = { if (tracks.isNotEmpty()) onPlay(tracks, 0) }, enabled = tracks.isNotEmpty()) {
-            Icon(Icons.Rounded.PlayArrow, null, Modifier.padding(end = 6.dp))
-            Text("播放全部")
-        }
+        CollectionPlayButton(tracks.isNotEmpty()) { onPlay(tracks, 0) }
     }
 }
 
@@ -4398,7 +4408,7 @@ private fun NowPlayingScreen(
                             .background(FnTextSecondary.copy(alpha = 0.55f), RoundedCornerShape(3.dp)),
                     )
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                        AppBarButton(onClick = onDismiss) {
                             Icon(Icons.Rounded.KeyboardArrowDown, "收起播放器")
                         }
                         Text("正在播放", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -4614,7 +4624,7 @@ private fun LyricsScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            AppBarButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回播放界面")
             }
             Column(Modifier.weight(1f)) {
@@ -4622,7 +4632,7 @@ private fun LyricsScreen(
                 Text(current.track.title, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!followCurrent && activeIndex >= 0) {
-                TextButton(onClick = { followCurrent = true }) { Text("回到当前") }
+                AppBarButton(onClick = { followCurrent = true }) { Text("回到当前") }
             }
         }
         if (lyrics.isEmpty()) {

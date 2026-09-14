@@ -28,8 +28,9 @@ internal fun CacheSettingsScreen(value: PlaybackCachePreference, usage: Pair<Lon
             finally { busy = false }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp)), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        PageTitle("自动缓存歌曲", onBack)
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+        Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("自动缓存歌曲", onBack) }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("自动缓存播放中的歌曲", Modifier.weight(1f))
             Switch(value.enabled, { perform { onChange(value.copy(enabled = it)) } }, enabled = !busy)
@@ -50,7 +51,8 @@ internal fun CacheSettingsScreen(value: PlaybackCachePreference, usage: Pair<Lon
         Text("已缓存 ${usage.second} 首 · ${usage.first / (1024 * 1024)} MiB")
         Text("修改上限立即生效，优先清理较久未使用的歌曲。播放中的歌曲可能重新缓存。")
         OutlinedButton(onClick = { confirm = true }, enabled = !busy) { Text("清除已缓存歌曲") }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("清除已缓存歌曲？") }, text = { Text("清除当前账户的临时缓存，当前播放继续。") }, confirmButton = { TextButton(onClick = { confirm = false; perform(onClear) }) { Text("清除") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
 }

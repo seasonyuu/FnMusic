@@ -26,13 +26,13 @@ internal fun PasswordSettingsScreen(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp))
-            .testTag("password-settings-page"),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        PageTitle("修改密码", onBack)
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).testTag("password-settings-page")) {
+        Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("修改密码", onBack) }
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
+                .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
         Text(username, style = MaterialTheme.typography.titleLarge)
         Text("请输入你的新密码。修改成功后需要重新登录。")
         OutlinedTextField(
@@ -71,5 +71,6 @@ internal fun PasswordSettingsScreen(
                 }
             },
         ) { Text(if (saving) "正在保存…" else "保存修改") }
+    }
     }
 }
