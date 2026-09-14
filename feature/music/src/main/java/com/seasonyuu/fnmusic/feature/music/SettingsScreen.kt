@@ -1,5 +1,6 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +21,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -35,65 +37,71 @@ internal fun SettingsScreen(
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
     onLiquidGlass: () -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    onPassword: (() -> Unit)? = null,
+    onRefreshProfile: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+    onCache: () -> Unit = {},
+    onQuality: () -> Unit = {},
+    onAdminLibraries: (() -> Unit)? = null,
+    onAdminUsers: (() -> Unit)? = null,
+    onAdminServer: (() -> Unit)? = null,
 ) {
+    LaunchedEffect(Unit) { onRefreshProfile() }
     LazyColumn(
         modifier = Modifier.testTag("settings-page"),
         contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item { PageTitle("设置", onBack) }
         item {
-            SettingsSection("外观") {
-                Card(onClick = onLiquidGlass, colors = settingsCardColors(), modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Liquid Glass", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text(
-                            when {
-                                !state.liquidGlassEnabled -> "已关闭"
-                                state.liquidGlassBlur < LiquidGlassBlur.Default -> "更透明"
-                                state.liquidGlassBlur > LiquidGlassBlur.Default -> "色调更深"
-                                else -> "默认"
-                            },
-                            color = FnTextSecondary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(start = 12.dp, end = 4.dp),
-                        )
-                        Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
-                    }
-                }
-            }
+            if (onBack != null) PageTitle("设置", onBack)
+            else Text("我的", style = MaterialTheme.typography.headlineLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
         }
         item {
-            SettingsSection("存储") {
-                SettingsCard {
-                    Text("临时播放缓存", style = MaterialTheme.typography.titleMedium)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(128L, 512L, 1_024L, 2_048L).forEach { mib ->
-                            val bytes = mib * 1024L * 1024L
-                            FilterChip(
-                                selected = state.cacheBytes == bytes,
-                                onClick = { onCacheSizeChange(bytes) },
-                                label = { Text(if (mib >= 1_024) "${mib / 1_024} GiB" else "$mib MiB") },
-                            )
+            SettingsCard(modifier = Modifier.testTag("profile-identity")) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                        Text(state.user?.name?.take(1)?.uppercase() ?: "♪", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(state.user?.name?.takeIf { it.isNotBlank() } ?: "音乐账户", style = MaterialTheme.typography.titleLarge)
+                        Text(state.serverName, color = FnTextSecondary)
+                        when (state.user?.role) {
+                            "admin" -> Text("管理员", color = FnTextSecondary)
+                            "member" -> Text("普通用户", color = FnTextSecondary)
                         }
                     }
-                    Text("缓存上限在下次启动时生效，不会创建永久下载。", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
+        state.profileError?.let { message -> item {
+            Text(message, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onRefreshProfile) { Text("重试") }
+        } }
         item {
-            SettingsSection("账户与服务器") {
-                SettingsCard {
-                    Text("当前服务器", style = MaterialTheme.typography.titleMedium)
-                    Text(state.serverName, color = FnTextSecondary)
-                }
+            SettingsNavigationGroup(buildList {
+                onPassword?.let { add(SettingsEntry("修改密码", it)) }
+                add(SettingsEntry("外观", onAppearance))
+                add(SettingsEntry("音质偏好", onQuality))
+                add(SettingsEntry("自动缓存歌曲", onCache))
+                add(SettingsEntry("Liquid Glass", onLiquidGlass, when {
+                    !state.liquidGlassEnabled -> "已关闭"
+                    state.liquidGlassBlur < LiquidGlassBlur.Default -> "更透明"
+                    state.liquidGlassBlur > LiquidGlassBlur.Default -> "色调更深"
+                    else -> "默认"
+                }))
+            })
+        }
+        if (state.user?.role == "admin") {
+            val administration = buildList {
+                onAdminLibraries?.let { add(SettingsEntry("音乐库管理", it)) }
+                onAdminUsers?.let { add(SettingsEntry("用户管理", it)) }
+                onAdminServer?.let { add(SettingsEntry("服务器设置", it)) }
             }
+            if (administration.isNotEmpty()) item { SettingsNavigationGroup(administration) }
         }
         item {
-            OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
-                Text("退出并清除凭据")
-            }
+            SettingsNavigationGroup(listOf(SettingsEntry("退出音乐登录", onLogout)))
         }
     }
 }
@@ -257,16 +265,47 @@ private fun PreviewBand(
 private fun settingsCardColors() = CardDefaults.cardColors(containerColor = FnCard, contentColor = FnTextPrimary)
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 4.dp))
-        content()
-    }
-}
-
-@Composable
 private fun SettingsCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(colors = settingsCardColors(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
+
+private data class SettingsEntry(
+    val title: String,
+    val onClick: () -> Unit,
+    val value: String? = null,
+)
+
+@Composable
+private fun SettingsNavigationGroup(entries: List<SettingsEntry>) {
+    Card(colors = settingsCardColors(), modifier = Modifier.fillMaxWidth()) {
+        entries.forEachIndexed { index, entry ->
+            if (index > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                    color = FnTextSecondary.copy(alpha = 0.12f),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .clickable(role = Role.Button, onClick = entry.onClick)
+                    .heightIn(min = 56.dp)
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(entry.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                entry.value?.let {
+                    Text(
+                        it,
+                        color = FnTextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 12.dp, end = 4.dp),
+                    )
+                }
+                Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
+            }
+        }
     }
 }

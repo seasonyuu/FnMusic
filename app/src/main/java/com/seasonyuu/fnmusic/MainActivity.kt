@@ -31,17 +31,28 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent {
-            FnMusicTheme {
-                val viewModel: MainViewModel = hiltViewModel()
+            val viewModel: MainViewModel = hiltViewModel()
+            val music by viewModel.music.collectAsState()
+            val dark = when (music.appearance) {
+                com.seasonyuu.fnmusic.core.model.AppearancePreference.Dark -> true
+                com.seasonyuu.fnmusic.core.model.AppearancePreference.Light -> false
+                com.seasonyuu.fnmusic.core.model.AppearancePreference.System -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            androidx.compose.runtime.SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+            FnMusicTheme(darkTheme = dark) {
                 val session by viewModel.session.collectAsState()
-                val music by viewModel.music.collectAsState()
                 val player by viewModel.player.collectAsState()
                 if (session is SessionState.Ready) {
                     MusicShell(
                         state = music,
                         playerState = player,
-                        pagedTracks = viewModel.pagedTracks,
-                        pagedAlbums = viewModel.pagedAlbums,
+                        pagedTracks = viewModel::pagedTracks,
+                        pagedAlbums = viewModel::pagedAlbums,
                         pagedArtists = viewModel.pagedArtists,
                         pagedFavorites = viewModel.pagedFavorites,
                         pagedSearch = viewModel.pagedSearch,
@@ -49,8 +60,6 @@ class MainActivity : ComponentActivity() {
                         onRefresh = viewModel::refresh,
                         onSearch = viewModel::search,
                         onSearchType = viewModel::selectSearchType,
-                        onTrackSort = viewModel::selectTrackSort,
-                        onAlbumSort = viewModel::selectAlbumSort,
                         onRoam = viewModel::roam,
                         onPlayAllTracks = viewModel::playAllTracks,
                         onPlayAllFavorites = viewModel::playAllFavorites,
@@ -86,6 +95,13 @@ class MainActivity : ComponentActivity() {
                         onLiquidGlassEnabledChange = viewModel::setLiquidGlassEnabled,
                         onLiquidGlassBlurSave = viewModel::saveLiquidGlassBlur,
                         onLogout = viewModel::logout,
+                        onChangePassword = viewModel::changePassword,
+                        onRefreshProfile = viewModel::refreshProfile,
+                        administration = viewModel.administration,
+                        onStreamingQualityChange = viewModel::setStreamingQuality,
+                        onAppearanceChange = viewModel::setAppearance,
+                        onCachePreferenceChange = viewModel::setCachePreference,
+                        onClearCache = viewModel::clearCache,
                         openPlayerRequested = openPlayerRequested,
                         onPlayerOpenRequestConsumed = { openPlayerRequested = false },
                     )

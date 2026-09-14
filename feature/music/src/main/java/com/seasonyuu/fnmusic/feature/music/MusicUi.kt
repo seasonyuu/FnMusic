@@ -9,6 +9,7 @@ import androidx.compose.ui.text.style.TextAlign
 import com.seasonyuu.fnmusic.core.model.TrackMetadataEdit
 import com.seasonyuu.fnmusic.core.model.TrackTagOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.graphics.luminance
 import android.content.Context
 import android.database.ContentObserver
 import android.media.AudioManager
@@ -93,6 +94,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -270,6 +272,10 @@ import com.seasonyuu.fnmusic.core.designsystem.PlaybackToggleIcon
 import com.seasonyuu.fnmusic.core.designsystem.rememberDynamicBottomBarState
 import com.seasonyuu.fnmusic.core.designsystem.R
 import com.seasonyuu.fnmusic.core.designsystem.TrackRow
+import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
+import com.seasonyuu.fnmusic.core.model.AppearancePreference
+import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
+import com.seasonyuu.fnmusic.core.model.MusicUser
 import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.Artist
 import com.seasonyuu.fnmusic.core.model.PlayerState
@@ -306,10 +312,9 @@ import kotlin.math.roundToInt
 
 enum class MusicDestination(val label: String, val icon: ImageVector) {
     Home("首页", FnIcons.Home),
-    Library("曲库", FnIcons.Library),
+    Library("音乐库", FnIcons.Library),
     Search("搜索", FnIcons.Search),
-    Favorites("收藏", FnIcons.Favorite),
-    More("更多", FnIcons.More),
+    Profile("我的", Icons.Rounded.Person),
 }
 
 internal val PlayerPageAlphaKey = SemanticsPropertyKey<Float>("PlayerPageAlpha")
@@ -337,14 +342,18 @@ data class MusicUiState(
     val searchQuery: String = "",
     val searchSuggestions: SearchSuggestions = SearchSuggestions(),
     val searchType: SearchType = SearchType.Track,
-    val trackSort: TrackSort = TrackSort.RecentlyAdded,
-    val albumSort: AlbumSort = AlbumSort.RecentlyUpdated,
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
+    val user: MusicUser? = null,
+    val appearance: AppearancePreference = AppearancePreference.Dark,
+    val profileError: String? = null,
     val lyrics: List<LyricLine> = emptyList(),
     val liquidGlassEnabled: Boolean = true,
     val liquidGlassBlur: Float = com.seasonyuu.fnmusic.core.model.LiquidGlassBlur.Default,
     val liquidGlassSaveError: String? = null,
+    val streamingQuality: com.seasonyuu.fnmusic.core.model.StreamingQualityPreference = com.seasonyuu.fnmusic.core.model.StreamingQualityPreference(),
+    val cachePreference: PlaybackCachePreference = PlaybackCachePreference(),
+    val cacheUsage: Pair<Long, Int> = 0L to 0,
     val cacheBytes: Long = 512L * 1024L * 1024L,
     val detailKey: DetailRequestKey? = null,
     val detailCache: Map<DetailRequestKey, MusicDetailSnapshot> = emptyMap(),
@@ -389,8 +398,8 @@ internal fun edgeToEdgeContentPadding(
 fun MusicShell(
     state: MusicUiState,
     playerState: PlayerState,
-    pagedTracks: Flow<PagingData<Track>>,
-    pagedAlbums: Flow<PagingData<Album>>,
+    pagedTracks: (TrackSort) -> Flow<PagingData<Track>>,
+    pagedAlbums: (AlbumSort) -> Flow<PagingData<Album>>,
     pagedArtists: Flow<PagingData<Artist>>,
     pagedFavorites: Flow<PagingData<Track>>,
     pagedSearch: Flow<PagingData<SearchItem>>,
@@ -398,10 +407,8 @@ fun MusicShell(
     onRefresh: () -> Unit,
     onSearch: (String) -> Unit,
     onSearchType: (SearchType) -> Unit,
-    onTrackSort: (TrackSort) -> Unit,
-    onAlbumSort: (AlbumSort) -> Unit,
     onRoam: () -> Unit,
-    onPlayAllTracks: () -> Unit,
+    onPlayAllTracks: (TrackSort) -> Unit,
     onPlayAllFavorites: () -> Unit,
     onLoadAlbum: (AlbumId) -> Unit,
     onLoadArtist: (ArtistId) -> Unit,
@@ -430,6 +437,13 @@ fun MusicShell(
     onCycleRepeatMode: () -> Unit,
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
+    onStreamingQualityChange: suspend (com.seasonyuu.fnmusic.core.model.StreamingQualityPreference) -> Unit = {},
+    administration: com.seasonyuu.fnmusic.core.model.MusicAdministration? = null,
+    onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
+    onClearCache: suspend () -> Unit = {},
+    onAppearanceChange: suspend (AppearancePreference) -> Unit = {},
+    onRefreshProfile: () -> Unit = {},
+    onChangePassword: (suspend (String) -> Unit)? = null,
     onLiquidGlassEnabledChange: (Boolean) -> Unit = {},
     onLiquidGlassBlurChange: (Float) -> Unit = {},
     onLiquidGlassBlurSave: () -> Unit = {},
@@ -453,14 +467,13 @@ fun MusicShell(
         val splitPlayer = widePlayer || landscapePlayer
         val navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
         val pageStateHolder = rememberSaveableStateHolder()
-        var navigationSurface by remember { mutableStateOf(FnNavigationSurface) }
+        val defaultNavigationSurface = FnNavigationSurface
+        var navigationSurface by remember(defaultNavigationSurface) { mutableStateOf(defaultNavigationSurface) }
         val destination = navigation.destination
         val detail = navigation.current.detail
         val keyboard = LocalSoftwareKeyboardController.current
         fun popPage() { navigation.pop()?.let { pageStateHolder.removeState(it.id) } }
-        fun openMore(page: MorePage) {
-            if (page == MorePage.Menu) popPage() else navigation.push(morePage = page)
-        }
+        fun openPage(page: MusicPage) { navigation.push(page = page) }
         var playerOpen by rememberSaveable { mutableStateOf(false) }
         val immersivePlayer = landscapePlayer && playerOpen && playerState.current != null
         PlayerImmersiveMode(enabled = managePlayerSystemBars && immersivePlayer)
@@ -469,6 +482,7 @@ fun MusicShell(
             navigation.push(detail = page)
         }
         var playerComposed by rememberSaveable { mutableStateOf(false) }
+        if (managePlayerSystemBars) MusicSystemBarAppearance(!playerComposed && navigation.current.detail !is LibraryDetail.AlbumPage && FnBackgroundTop.luminance() > .5f)
         var playerPage by rememberSaveable { mutableStateOf(PlayerPage.NowPlaying) }
         LaunchedEffect(widePlayer, playerComposed) {
             if (widePlayer && playerComposed && playerPage == PlayerPage.NowPlaying) {
@@ -484,8 +498,7 @@ fun MusicShell(
         var playlistPickerTrack by remember { mutableStateOf<Track?>(null) }
         var deletePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
         var purgePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
-        val trackItems = pagedTracks.collectAsLazyPagingItems()
-        val albumItems = pagedAlbums.collectAsLazyPagingItems()
+        var catalogEditVersion by remember { mutableStateOf(0) }
         val artistItems = pagedArtists.collectAsLazyPagingItems()
         val favoriteItems = pagedFavorites.collectAsLazyPagingItems()
         val searchItems = pagedSearch.collectAsLazyPagingItems()
@@ -493,13 +506,9 @@ fun MusicShell(
         LaunchedEffect(state.error) {
             state.error?.let { snackbarHostState.showSnackbar(it) }
         }
-        fun navigate(target: MusicDestination, page: MorePage? = null, resetToRoot: Boolean = false) {
+        fun navigate(target: MusicDestination) {
             keyboard?.hide()
             navigation.select(target)
-            if (page != null || resetToRoot) {
-                navigation.resetCurrent().forEach { pageStateHolder.removeState(it.id) }
-                if (page != null && page != MorePage.Menu) navigation.push(morePage = page)
-            }
         }
         fun openPlayerPage(page: PlayerPage) {
             if (playerState.current != null && miniPlayerBounds != null && miniCoverBounds != null) {
@@ -586,8 +595,10 @@ fun MusicShell(
                                 ),
                         ) {
                             if (!compact) {
+                                FnMusicTheme(darkTheme = navigationSurface.luminance() < .5f) {
                                 if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName, navigationSurface)
                                 else MusicRail(destination, { navigate(it) }, navigationSurface)
+                                }
                             }
                             Scaffold(
                                 containerColor = Color.Transparent,
@@ -595,6 +606,7 @@ fun MusicShell(
                                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                                 snackbarHost = { SnackbarHost(snackbarHostState) },
                                 bottomBar = {
+                                    FnMusicTheme(darkTheme = navigationSurface.luminance() < .5f) {
                                     if (compact) {
                                         val backdrop = LocalFnBackdrop.current
                                         if (backdrop != null) {
@@ -640,6 +652,7 @@ fun MusicShell(
                                             onCoverBoundsChanged = { miniCoverBounds = it },
                                         )
                                     }
+                                    }
                                 },
                             ) { padding ->
                                 val sceneBackdrop = LocalFnBackdrop.current
@@ -664,7 +677,6 @@ fun MusicShell(
                                             pageStateHolder.SaveableStateProvider(entry.id) {
                                                 val selected = entry.detail
                                                 val detailState = state.forDetail(selected?.requestKey)
-                                                val morePage = entry.morePage
                                                 if (selected != null) {
                                                     when (selected) {
                                                         is LibraryDetail.TrackPage -> TrackInfoScreen(
@@ -672,8 +684,7 @@ fun MusicShell(
                                                             onSave = onSaveTrackMetadata?.let { save ->
                                                                 { track, edit ->
                                                                     save(track, edit).also {
-                                                                        trackItems.refresh()
-                                                                        albumItems.refresh()
+                                                                        catalogEditVersion++
                                                                         artistItems.refresh()
                                                                         favoriteItems.refresh()
                                                                         searchItems.refresh()
@@ -724,83 +735,87 @@ fun MusicShell(
                                                             onBack = { popPage() },
                                                         )
                                                     }
+                                                } else if (entry.page != MusicPage.Root) {
+                                                    when (entry.page) {
+                                                        MusicPage.Tracks -> {
+                                                            var sort by rememberSaveable { mutableStateOf(TrackSort.RecentlyAdded) }
+                                                            val items = remember(entry.id, sort) { pagedTracks(sort) }.collectAsLazyPagingItems()
+                                                            LaunchedEffect(catalogEditVersion) { if (catalogEditVersion > 0) items.refresh() }
+                                                            PagingTrackScreen(
+                                                                "全部歌曲", items, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
+                                                                sort = sort, totalCount = state.trackTotal, showServerTotal = true,
+                                                                onSort = { sort = it }, onPlayAll = { onPlayAllTracks(sort) }, onBack = ::popPage,
+                                                            )
+                                                        }
+                                                        MusicPage.Favorites -> PagingTrackScreen(
+                                                            "收藏", favoriteItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
+                                                            onPlayAll = onPlayAllFavorites, onBack = ::popPage,
+                                                        )
+                                                        MusicPage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, ::popPage)
+                                                        MusicPage.Albums -> {
+                                                            var sort by rememberSaveable { mutableStateOf(AlbumSort.RecentlyUpdated) }
+                                                            val items = remember(entry.id, sort) { pagedAlbums(sort) }.collectAsLazyPagingItems()
+                                                            LaunchedEffect(catalogEditVersion) { if (catalogEditVersion > 0) items.refresh() }
+                                                            AlbumGridScreen(items, coverUrl, sort, { sort = it }, ::popPage) {
+                                                                pushDetail(LibraryDetail.AlbumPage(it))
+                                                            }
+                                                        }
+                                                        MusicPage.Artists -> ArtistGridScreen(artistItems, coverUrl, ::popPage) { pushDetail(LibraryDetail.ArtistPage(it)) }
+                                                        MusicPage.Playlists -> PlaylistGridScreen(
+                                                            state.playlists, state.playlistMessage, coverUrl, ::popPage,
+                                                            { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
+                                                        ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
+                                                        MusicPage.LiquidGlass -> LiquidGlassSettingsScreen(
+                                                            multiplier = state.liquidGlassBlur, saveError = state.liquidGlassSaveError,
+                                                            onValueChange = onLiquidGlassBlurChange, enabled = state.liquidGlassEnabled,
+                                                            onEnabledChange = onLiquidGlassEnabledChange, onSave = onLiquidGlassBlurSave, onBack = ::popPage,
+                                                        )
+                                                        MusicPage.AdminLibraries, MusicPage.AdminUsers, MusicPage.AdminServer -> {
+                                                            if (state.user?.role != "admin" || administration == null) {
+                                                                LaunchedEffect(entry.id) { popPage() }
+                                                            } else when (entry.page) {
+                                                                MusicPage.AdminLibraries -> LibraryAdministrationScreen(administration, ::popPage)
+                                                                MusicPage.AdminUsers -> UserAdministrationScreen(administration, state.user.id, ::popPage)
+                                                                else -> ServerAdministrationScreen(administration, ::popPage)
+                                                            }
+                                                        }
+                                                        MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
+                                                        MusicPage.Cache -> CacheSettingsScreen(state.cachePreference, state.cacheUsage, onCachePreferenceChange, onClearCache, ::popPage)
+                                                        MusicPage.Appearance -> AppearanceSettingsScreen(state.appearance, onAppearanceChange, ::popPage)
+                                                        MusicPage.Password -> PasswordSettingsScreen(state.user?.name.orEmpty(), onChangePassword, ::popPage)
+                                                        MusicPage.Root -> Unit
+                                                    }
                                                 } else {
                                                     when (entry.destination) {
                                                         MusicDestination.Home -> HomeScreen(
-                                                            state,
-                                                            coverUrl,
-                                                            onPlay,
-                                                            onToggleFavorite,
-                                                            onRoam,
-                                                            { navigate(MusicDestination.Favorites, resetToRoot = true) },
-                                                            { navigate(MusicDestination.More, MorePage.Recent) },
-                                                            {
-                                                                onTrackSort(TrackSort.RecentlyAdded)
-                                                                navigate(MusicDestination.Library, resetToRoot = true)
-                                                            },
-                                                            { navigate(MusicDestination.More, MorePage.Albums) },
-                                                            { navigate(MusicDestination.More, MorePage.Playlists) },
+                                                            state, coverUrl, onPlay, onToggleFavorite, onRoam,
+                                                            { openPage(MusicPage.Favorites) },
+                                                            { openPage(MusicPage.Recent) },
+                                                            { openPage(MusicPage.Tracks) },
+                                                            { openPage(MusicPage.Albums) },
+                                                            { openPage(MusicPage.Playlists) },
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
-                                                            { pushDetail(LibraryDetail.PlaylistPage(it)) },
-                                                            onRefresh,
+                                                            { pushDetail(LibraryDetail.PlaylistPage(it)) }, onRefresh,
                                                         )
-                                                        MusicDestination.Library -> PagingTrackScreen(
-                                                            "音乐库", trackItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                                            sort = state.trackSort,
-                                                            totalCount = state.trackTotal,
-                                                            showServerTotal = true,
-                                                            onSort = onTrackSort,
-                                                            onPlayAll = onPlayAllTracks,
-                                                        )
+                                                        MusicDestination.Library -> LibraryMenu(::openPage)
                                                         MusicDestination.Search -> SearchScreen(
-                                                            state,
-                                                            searchItems,
-                                                            coverUrl,
-                                                            onSearch,
-                                                            onSearchType,
-                                                            onPlay,
-                                                            onToggleFavorite,
+                                                            state, searchItems, coverUrl, onSearch, onSearchType, onPlay, onToggleFavorite,
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
                                                             { pushDetail(LibraryDetail.ArtistPage(it)) },
                                                             { pushDetail(LibraryDetail.PlaylistPage(it)) },
                                                         )
-                                                        MusicDestination.Favorites -> PagingTrackScreen(
-                                                            "收藏", favoriteItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                                            onPlayAll = onPlayAllFavorites,
+                                                        MusicDestination.Profile -> SettingsScreen(
+                                                            state, onCacheSizeChange, onLogout,
+                                                            onLiquidGlass = { openPage(MusicPage.LiquidGlass) },
+                                                            onPassword = onChangePassword?.let { { openPage(MusicPage.Password) } },
+                                                            onRefreshProfile = onRefreshProfile,
+                                                            onAppearance = { openPage(MusicPage.Appearance) },
+                                                            onCache = { openPage(MusicPage.Cache) },
+                                                            onQuality = { openPage(MusicPage.Quality) },
+                                                            onAdminLibraries = administration?.let { { openPage(MusicPage.AdminLibraries) } },
+                                                            onAdminUsers = administration?.let { { openPage(MusicPage.AdminUsers) } },
+                                                            onAdminServer = administration?.let { { openPage(MusicPage.AdminServer) } },
                                                         )
-                                                        MusicDestination.More -> when (morePage) {
-                                                            MorePage.Menu -> MoreMenu(state) { openMore(it) }
-                                                            MorePage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, { openMore(MorePage.Menu) })
-                                                            MorePage.Albums -> AlbumGridScreen(
-                                                                albumItems,
-                                                                coverUrl,
-                                                                state.albumSort,
-                                                                onAlbumSort,
-                                                                { openMore(MorePage.Menu) },
-                                                            ) { pushDetail(LibraryDetail.AlbumPage(it)) }
-                                                            MorePage.Artists -> ArtistGridScreen(artistItems, coverUrl, { openMore(MorePage.Menu) }) { pushDetail(LibraryDetail.ArtistPage(it)) }
-                                                            MorePage.Playlists -> PlaylistGridScreen(
-                                                                state.playlists,
-                                                                state.playlistMessage,
-                                                                coverUrl,
-                                                                { openMore(MorePage.Menu) },
-                                                                { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
-                                                            ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
-                                                            MorePage.Settings -> SettingsScreen(
-                                                                state, onCacheSizeChange, onLogout,
-                                                                onLiquidGlass = { openMore(MorePage.LiquidGlass) },
-                                                                onBack = ::popPage,
-                                                            )
-                                                            MorePage.LiquidGlass -> LiquidGlassSettingsScreen(
-                                                                multiplier = state.liquidGlassBlur,
-                                                                saveError = state.liquidGlassSaveError,
-                                                                onValueChange = onLiquidGlassBlurChange,
-                                                                enabled = state.liquidGlassEnabled,
-                                                                onEnabledChange = onLiquidGlassEnabledChange,
-                                                                onSave = onLiquidGlassBlurSave,
-                                                                onBack = ::popPage,
-                                                            )
-                                                        }
                                                     }
                                                 }
                                             }
@@ -811,6 +826,7 @@ fun MusicShell(
                         }
                     }
                     if (playerComposed) {
+                        FnMusicTheme(darkTheme = true) {
                         val containerAnchor = miniPlayerBounds
                         val coverAnchor = miniCoverBounds
                         if (containerAnchor != null && coverAnchor != null) {
@@ -883,6 +899,7 @@ fun MusicShell(
                                     )
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -1052,7 +1069,7 @@ private fun HomeScreen(
                 item { FlowFeatureCard("最近添加", FlowingLightStyle.RecentlyAdded, FnIcons.Library, onRecentlyAdded) }
             }
         }
-        item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("最近添加") } }
+        item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("最近添加", onRecentlyAdded) } }
         item {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val cardWidth = if (maxWidth < 420.dp) maxWidth - 48.dp else 340.dp
@@ -1346,10 +1363,24 @@ private fun PagingTrackScreen(
     showServerTotal: Boolean = false,
     onSort: ((TrackSort) -> Unit)? = null,
     onPlayAll: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
-    LazyColumn(contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp)) {
+    val listState = rememberLazyListState()
+    // A header-only loading frame would clamp a restored scroll position to zero.
+    if (tracks.itemCount == 0 && tracks.loadState.refresh is LoadState.Loading &&
+        (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
+    ) {
+        Column(Modifier.padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp))) {
+            if (onBack != null) PageTitle(title, onBack)
+            else Text(title, style = MaterialTheme.typography.headlineLarge)
+            EmptyPane("正在加载歌曲…")
+        }
+        return
+    }
+    LazyColumn(state = listState, contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回") }
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                     Text(
@@ -1630,19 +1661,24 @@ private fun PlaylistRow(
 }
 
 @Composable
-private fun MoreMenu(state: MusicUiState, onNavigate: (MorePage) -> Unit) {
-    LazyColumn(contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Text("更多", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold) }
-        item { MoreEntry(Icons.Rounded.History, "最近播放", "${state.recent.size} 首") { onNavigate(MorePage.Recent) } }
-        item { MoreEntry(Icons.Rounded.Album, "专辑", "${state.albums.size} 张") { onNavigate(MorePage.Albums) } }
-        item { MoreEntry(FnIcons.Artist, "歌手", "${state.artists.size} 位") { onNavigate(MorePage.Artists) } }
-        item { MoreEntry(Icons.AutoMirrored.Rounded.QueueMusic, "歌单", "${state.playlists.size} 个") { onNavigate(MorePage.Playlists) } }
-        item { MoreEntry(Icons.Rounded.Settings, "设置", state.serverName) { onNavigate(MorePage.Settings) } }
+internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit) {
+    LazyColumn(
+        modifier = Modifier.testTag("library-menu"),
+        contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item { Text("音乐库", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold) }
+        item { LibraryEntry(FnIcons.Library, "全部歌曲", "浏览音乐库中的歌曲") { onNavigate(MusicPage.Tracks) } }
+        item { LibraryEntry(FnIcons.Artist, "全部歌手", "按歌手浏览") { onNavigate(MusicPage.Artists) } }
+        item { LibraryEntry(Icons.Rounded.Album, "全部专辑", "按专辑浏览") { onNavigate(MusicPage.Albums) } }
+        item { LibraryEntry(Icons.AutoMirrored.Rounded.QueueMusic, "歌单", "浏览和管理歌单") { onNavigate(MusicPage.Playlists) } }
+        item { LibraryEntry(FnIcons.Favorite, "收藏", "喜欢的歌曲") { onNavigate(MusicPage.Favorites) } }
+        item { LibraryEntry(Icons.Rounded.History, "最近播放", "回顾听过的歌曲") { onNavigate(MusicPage.Recent) } }
     }
 }
 
 @Composable
-private fun MoreEntry(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun LibraryEntry(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = FnCard, contentColor = FnTextPrimary),
@@ -1707,9 +1743,15 @@ private fun AlbumGridScreen(
     onAlbum: (Album) -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
+    val gridState = rememberLazyGridState()
     Box(Modifier.fillMaxSize()) {
         // Capture only the scrolling content so glass controls never sample themselves.
-        LazyVerticalGrid(
+        if (albums.itemCount == 0 && albums.loadState.refresh is LoadState.Loading &&
+            (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0)
+        ) {
+            Box(Modifier.padding(top = 80.dp)) { EmptyPane("正在加载专辑…") }
+        } else LazyVerticalGrid(
+            state = gridState,
             modifier = Modifier.fillMaxSize()
                 .layerBackdrop(backdrop)
                 .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom)))
@@ -2003,7 +2045,7 @@ private fun PlaylistPickerSheet(
     CompositionLocalProvider(LocalRippleConfiguration provides null) {
         ModalBottomSheet(
             onDismissRequest = onDismiss,
-            containerColor = Color(0xFF24202E),
+            containerColor = com.seasonyuu.fnmusic.core.designsystem.FnSurface,
             contentColor = FnTextPrimary,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
@@ -2082,7 +2124,7 @@ private fun TrackActionSheet(
     CompositionLocalProvider(LocalRippleConfiguration provides null) {
         ModalBottomSheet(
             onDismissRequest = onDismiss,
-            containerColor = Color(0xFF24202E),
+            containerColor = com.seasonyuu.fnmusic.core.designsystem.FnSurface,
             contentColor = FnTextPrimary,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
@@ -5277,7 +5319,7 @@ internal fun PlaybackProgress(
     }
     Box(Modifier.fillMaxWidth()) {
         Text(
-            playbackQualityLabel(state.current?.track?.audioSpec),
+            playbackQualityLabel(state.playbackAudioSpec ?: state.current?.track?.audioSpec),
             modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 52.dp).testTag("player-quality"),
             color = FnTextSecondary, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center,
         )

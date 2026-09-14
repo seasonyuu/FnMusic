@@ -10,7 +10,7 @@ import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 /** Opaque base color only. Navigation keeps glass opacity and interaction styling consistent. */
 @Immutable
 internal data class MusicPageAppearance(
-    val navigationSurfaceColor: Color = FnNavigationSurface,
+    val navigationSurfaceColor: Color = Color.Unspecified,
 )
 
 internal val LocalMusicPageAppearanceReporter =

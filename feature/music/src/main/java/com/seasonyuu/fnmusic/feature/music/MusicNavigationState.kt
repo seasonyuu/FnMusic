@@ -15,7 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-internal enum class MorePage { Menu, Recent, Albums, Artists, Playlists, Settings, LiquidGlass }
+internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, Cache, Quality, AdminLibraries, AdminUsers, AdminServer }
 
 /** Resource identity travels with data so an outgoing page cannot render another page's response. */
 data class DetailRequestKey(val type: String, val id: String)
@@ -39,7 +39,7 @@ internal val LibraryDetail.requestKey: DetailRequestKey?
 
 internal data class MusicPageEntry(
     val destination: MusicDestination,
-    val morePage: MorePage = MorePage.Menu,
+    val page: MusicPage = MusicPage.Root,
     val detail: LibraryDetail? = null,
     val id: String = UUID.randomUUID().toString(),
     val depth: Int = 0,
@@ -70,8 +70,8 @@ internal class MusicNavigationState {
     val previous: MusicPageEntry? get() = stacks.getValue(destination).dropLast(1).lastOrNull()
 
     fun select(target: MusicDestination) { destination = target }
-    fun push(detail: LibraryDetail? = null, morePage: MorePage = MorePage.Menu) {
-        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, morePage, detail, depth = stacks.getValue(destination).size)))
+    fun push(detail: LibraryDetail? = null, page: MusicPage = MusicPage.Root) {
+        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, page, detail, depth = stacks.getValue(destination).size)))
     }
     fun pop(): MusicPageEntry? {
         if (!canPop) return null
@@ -88,25 +88,33 @@ internal class MusicNavigationState {
     companion object {
         val Saver = Saver<MusicNavigationState, Bundle>(
             save = { nav -> Bundle().apply {
+                putInt("version", 2)
                 putString("destination", nav.destination.name)
                 nav.stacks.forEach { (tab, entries) ->
                     putParcelableArrayList(tab.name, ArrayList(entries.map { it.toBundle() }))
                 }
             } },
-            restore = { bundle -> MusicNavigationState().apply {
+            restore = { bundle -> restoreNavigation(bundle) },
+        )
+
+        internal fun restoreNavigation(bundle: Bundle): MusicNavigationState = runCatching {
+            require(bundle.getInt("version") == 2)
+            MusicNavigationState().apply {
                 destination = MusicDestination.valueOf(requireNotNull(bundle.getString("destination")))
                 stacks = MusicDestination.entries.associateWith { tab ->
                     @Suppress("DEPRECATION")
-                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).mapIndexed { depth, saved -> saved.toEntry(tab).copy(depth = depth) }
+                    requireNotNull(bundle.getParcelableArrayList<Bundle>(tab.name)).mapIndexed { depth, saved -> saved.toEntry(tab).copy(depth = depth) }.also { entries ->
+                        require(entries.isNotEmpty() && entries.first().page == MusicPage.Root && entries.first().detail == null)
+                    }
                 }
-            } },
-        )
+            }
+        }.getOrElse { MusicNavigationState() }
     }
 }
 
 private fun MusicPageEntry.toBundle() = Bundle().apply {
     putString("id", id)
-    putString("more", morePage.name)
+    putString("page", page.name)
     val type: String
     val payload: String?
     when (val page = detail) {
@@ -134,5 +142,5 @@ private fun Bundle.toEntry(tab: MusicDestination): MusicPageEntry {
         "editor" -> LibraryDetail.PlaylistEditorPage(payload?.let { Json.decodeFromString<Playlist>(it) }, getString("initialTrack")?.let(::TrackId))
         else -> null
     }
-    return MusicPageEntry(tab, MorePage.valueOf(requireNotNull(getString("more"))), detail, requireNotNull(getString("id")))
+    return MusicPageEntry(tab, MusicPage.valueOf(requireNotNull(getString("page"))), detail, requireNotNull(getString("id")))
 }

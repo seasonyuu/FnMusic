@@ -6,7 +6,6 @@ import com.seasonyuu.fnmusic.core.model.ConnectionProfile
 import com.seasonyuu.fnmusic.core.model.Endpoint
 import com.seasonyuu.fnmusic.core.model.Playlist
 import com.seasonyuu.fnmusic.core.model.Track
-import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.feature.music.MusicUiState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -102,6 +101,5 @@ fun CatalogCacheSnapshot.toMusicState(previous: MusicUiState = MusicUiState()): 
     playlists = playlists,
     trackTotal = trackTotal,
     serverName = serverName,
-    trackSort = TrackSort.RecentlyAdded,
     error = null,
 )

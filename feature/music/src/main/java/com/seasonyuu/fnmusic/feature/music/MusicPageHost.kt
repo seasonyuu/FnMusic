@@ -17,6 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
+import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,8 +46,9 @@ internal fun MusicPageHost(
     var preview by remember { mutableStateOf<MusicPageEntry?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     var predicting by remember { mutableStateOf(false) }
-    val surfaceTarget = navigation.appearanceFor(current).navigationSurfaceColor
-    val previewSurface = preview?.let { navigation.appearanceFor(it).navigationSurfaceColor }
+    val defaultSurface = FnNavigationSurface
+    val surfaceTarget = navigation.appearanceFor(current).navigationSurfaceColor.takeOrElse { defaultSurface }
+    val previewSurface = preview?.let { navigation.appearanceFor(it).navigationSurfaceColor.takeOrElse { defaultSurface } }
     val surfaceAnimation = remember { Animatable(surfaceTarget) }
     // Artwork can finish loading while the seekable route transition is idle. Give color
     // its own animation clock, and seek it explicitly with predictive-back progress.

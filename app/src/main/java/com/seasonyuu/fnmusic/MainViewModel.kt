@@ -1,5 +1,8 @@
 package com.seasonyuu.fnmusic
 
+import kotlinx.coroutines.async
+import com.seasonyuu.fnmusic.core.player.PlayerDependencies
+import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -12,6 +15,7 @@ import com.seasonyuu.fnmusic.core.model.RepeatMode
 import com.seasonyuu.fnmusic.core.model.RoamItem
 import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackSort
+import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.AlbumSort
 import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.AlbumId
@@ -27,6 +31,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -54,12 +59,26 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     val player: StateFlow<PlayerState> = graph.player.state
     private val mutableMusic = kotlinx.coroutines.flow.MutableStateFlow(MusicUiState())
     val music: StateFlow<MusicUiState> = mutableMusic
-    private val trackSort = MutableStateFlow(TrackSort.RecentlyAdded)
-    private val albumSort = MutableStateFlow(AlbumSort.RecentlyUpdated)
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val pagedTracks = trackSort.flatMapLatest(graph.catalog::tracks).cachedIn(viewModelScope)
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val pagedAlbums = albumSort.flatMapLatest(graph.catalog::albums).cachedIn(viewModelScope)
+    val administration: com.seasonyuu.fnmusic.core.model.MusicAdministration = ProfileAdministration(
+        viewModelScope, graph.administration,
+        canManage = { session.value is SessionState.Ready && mutableMusic.value.user?.role == "admin" },
+        currentUserId = { mutableMusic.value.user?.id },
+        onForbidden = {
+            mutableMusic.value = mutableMusic.value.copy(user = mutableMusic.value.user?.copy(role = null))
+            refreshProfile()
+        },
+        onOwnNameChanged = graph.session::updateUsername,
+        onOwnPasswordChanged = { username -> viewModelScope.async {
+            graph.session.finishPasswordChange(username)
+            clearDetailCache(); resetCatalog(); exitRoamMode(); graph.player.clear()
+            graph.catalogCache.clear(); queueRecovery.clear()
+        }.await() },
+        onServerChanged = { name -> graph.session.updateServerName(name); mutableMusic.value = mutableMusic.value.copy(serverName = name) },
+    )
+    private val trackPages = mutableMapOf<TrackSort, Flow<PagingData<Track>>>()
+    private val albumPages = mutableMapOf<AlbumSort, Flow<PagingData<Album>>>()
+    fun pagedTracks(sort: TrackSort) = trackPages.getOrPut(sort) { graph.catalog.tracks(sort).cachedIn(viewModelScope) }
+    fun pagedAlbums(sort: AlbumSort) = albumPages.getOrPut(sort) { graph.catalog.albums(sort).cachedIn(viewModelScope) }
     val pagedArtists = graph.catalog.artists().cachedIn(viewModelScope)
     val pagedFavorites = graph.catalog.favorites().cachedIn(viewModelScope)
     private val pagedSearchRequest = MutableStateFlow("" to SearchType.Track)
@@ -88,6 +107,10 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         refreshJob?.cancel()
         val previous = mutableMusic.value
         mutableMusic.value = MusicUiState(
+            streamingQuality = previous.streamingQuality,
+            appearance = previous.appearance,
+            cachePreference = previous.cachePreference,
+            cacheUsage = previous.cacheUsage,
             cacheBytes = previous.cacheBytes,
             liquidGlassBlur = previous.liquidGlassBlur,
             liquidGlassEnabled = previous.liquidGlassEnabled,
@@ -143,6 +166,9 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                 )
             }
         }
+        viewModelScope.launch { graph.settings.streamingQuality.collect { value -> mutableMusic.value = mutableMusic.value.copy(streamingQuality = value) } }
+        viewModelScope.launch { graph.settings.appearance.collect { value -> mutableMusic.value = mutableMusic.value.copy(appearance = value) } }
+        viewModelScope.launch { PlayerDependencies.usage.collect { usage -> mutableMusic.value = mutableMusic.value.copy(cacheUsage = usage) } }
         viewModelScope.launch { graph.session.reconnect() }
         viewModelScope.launch {
             session.collectLatest { value ->
@@ -157,7 +183,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                     graph.catalogCache.load(value.profile)?.let { cached ->
                         mutableMusic.value = cached.toMusicState(mutableMusic.value)
                     }
-                    mutableMusic.value = mutableMusic.value.copy(serverName = value.serverName ?: "飞牛音乐")
+                    mutableMusic.value = mutableMusic.value.copy(serverName = value.serverName ?: "飞牛音乐", user = value.user)
                     refresh()
                 }
             }
@@ -188,7 +214,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
             }
         }
         viewModelScope.launch {
-            graph.settings.cacheBytes.collect { bytes -> mutableMusic.value = mutableMusic.value.copy(cacheBytes = bytes) }
+            graph.settings.playbackCache.collect { value -> mutableMusic.value = mutableMusic.value.copy(cacheBytes = value.bytes, cachePreference = value) }
         }
         viewModelScope.launch {
             player.map { Triple(it.queue, it.currentIndex, it.shuffleEnabled to it.repeatMode) to it.isRoaming }
@@ -271,19 +297,9 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         }
     }
 
-    fun selectTrackSort(sort: TrackSort) {
-        trackSort.value = sort
-        mutableMusic.value = mutableMusic.value.copy(trackSort = sort)
-    }
-
-    fun selectAlbumSort(sort: AlbumSort) {
-        albumSort.value = sort
-        mutableMusic.value = mutableMusic.value.copy(albumSort = sort)
-    }
-
-    fun playAllTracks() {
+    fun playAllTracks(sort: TrackSort) {
         viewModelScope.launch {
-            runCatching { graph.catalog.allTracks(trackSort.value) }
+            runCatching { graph.catalog.allTracks(sort) }
                 .onSuccess { if (it.isNotEmpty()) play(it, 0) }
                 .onFailure { mutableMusic.value = mutableMusic.value.copy(error = "加载完整曲库失败") }
         }
@@ -591,11 +607,43 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         )
     }
 
+    suspend fun setStreamingQuality(value: com.seasonyuu.fnmusic.core.model.StreamingQualityPreference) = graph.settings.setStreamingQuality(value)
+
+    suspend fun setCachePreference(value: PlaybackCachePreference) = graph.settings.setPlaybackCache(value)
+    suspend fun clearCache() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { PlayerDependencies.clearCache() }
+
+    suspend fun setAppearance(value: com.seasonyuu.fnmusic.core.model.AppearancePreference) = graph.settings.setAppearance(value)
+
     fun setCacheSize(bytes: Long) {
         viewModelScope.launch { graph.settings.setCacheBytes(bytes) }
     }
 
     fun coverUrl(coverId: String?, size: Int): String? = graph.coverUrl(coverId, size)
+
+    fun refreshProfile() {
+        val active = session.value as? SessionState.Ready ?: return
+        viewModelScope.launch {
+            mutableMusic.value = mutableMusic.value.copy(profileError = null)
+            try {
+                val user = graph.session.currentUser()
+                if (session.value == active) mutableMusic.value = mutableMusic.value.copy(user = user)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.value == active) mutableMusic.value = mutableMusic.value.copy(profileError = "无法更新账户信息")
+            }
+        }
+    }
+
+    suspend fun changePassword(password: String) = viewModelScope.async {
+        graph.session.changePassword(password.toCharArray())
+        clearDetailCache()
+        resetCatalog()
+        exitRoamMode()
+        graph.player.clear()
+        graph.catalogCache.clear()
+        queueRecovery.clear()
+    }.await()
 
     fun logout() {
         clearDetailCache()
