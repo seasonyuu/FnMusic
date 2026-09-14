@@ -843,3 +843,32 @@ Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录�
 5. 会话续期、故障恢复和不同媒体格式尚未完成 Android 实测。
 
 实现时应把本文当作当前版本的兼容层输入，并以验证脚本作为回归检查。服务端升级后先运行只读验证，再决定是否发布客户端更新。
+
+
+### 账户密码修改（2026-09-13 客户端源码核实）
+
+从当前音乐 Web 客户端的 API 定义和调用链核实：`POST /api/v1/user/passwd-change`，JSON 请求为 `{"password":"<新密码的 SHA-256 十六进制摘要>"}`。成功依据响应 `code == 0`，`data` 可以为 null。对应的是当前音乐用户；管理其他用户使用不同的用户编辑接口。现有账户未用于改密测试；写入行为通过 MockWebServer 和临时测试用户验证，临时用户已删除。
+
+Android 客户端对此请求关闭连接自动重试、重定向与会话恢复重放。成功后删除活动凭据和记住的旧密码，保留连接地址与用户名，返回登录页。密码输入不参与页面快照保存。角色字符串 `admin` / `member` 由官方客户端枚举确认；未知角色不能赋予管理员权限。
+
+
+### “我的”管理接口与音质（2026-09-13）
+
+管理读取接口已在当前服务上验证，写入协议来自官方 Web 客户端，并用 MockWebServer 验证请求和失败处理：
+
+| 功能 | 接口 | 关键字段 |
+| --- | --- | --- |
+| 音乐文件夹 | GET `/api/v1/shared-library/list` | `list`: guid、name、path、metadataPreference、autoDownloadLyric、contentLastChangedAt |
+| 添加／编辑文件夹 | POST `/api/v1/shared-library/create`、`/edit` | path、metadataPreference（cloud_preferred / local_only）、autoDownloadLyric；编辑带 guid |
+| 移除／扫描文件夹 | POST `/api/v1/shared-library/delete`、`/scan` | guid；移除的是曲库配置，不是文件删除接口 |
+| 扫描任务 | GET `/api/v1/task/list` | type、name、total、successCount、failCount、done、canceled、ext.libraryGUID |
+| 用户列表 | GET `/api/v1/user/list` | list、sharedLibraryAccess.mode / sharedLibraries |
+| 添加／编辑用户 | POST `/api/v1/user/create`、`/edit` | username、password（SHA-256）、sharedLibraryAccess；编辑带 guid，留空密码不发送 |
+| 默认权限 | GET / POST `/api/v1/settings/user` | defaultSharedLibraryAccess |
+| 服务器名称 | GET / POST `/api/v1/settings/server` | name、lang；更名保留当前 lang |
+
+权限写入格式为 `{mode, guids}`：all 包含将来新增的文件夹；partial 仅包含选定 guid；none 不授权。all / none 发送空 guids。未知权限值不允许静默提升权限。管理写请求关闭自动重试与会话恢复重放；403 刷新角色并离开管理页。现有用户、服务器名称和库配置未用于写入验收。另用临时、无曲库权限的用户实测创建、管理员修改密码、使用新密码登录和自行改密；管理员会话保持有效，临时用户已删除。
+
+标准音质使用 POST `/api/v1/track/transcode`，请求 `{guid, output:{codec:"opus",bitrate:128,channel:2}}`；状态 ready / success 后加载 `/api/v1/track/hls/{guid}/preset.m3u8`。当前服务器已实测生成 Opus、48 kHz、双声道的 fMP4/HLS，样本码率约 126.5 kbps，AVD 使用系统 Opus 解码器持续播放超过一分钟。AAC 参数在当前服务返回 errno 8192，不作为实现方案。测试转码会话已退出。
+
+播放期间每 10 秒 POST `/api/v1/track/transcode/heartbeat`（guid、timestamp 秒数），切换后 POST `/api/v1/track/transcode/quit`（guid）。HLS 清单不缓存；音频片段按服务器、账户和歌曲隔离缓存。原始音质继续使用已有 stream 接口。Wi-Fi 和移动网络偏好独立保存，升级均保持原始音质。

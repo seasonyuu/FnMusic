@@ -29,7 +29,8 @@ Current version `0.1.0`, early development stage — APIs and build setup may ch
 
 - After authentication, enter the home screen immediately. Cached sections remain visible while independent catalog requests refresh in parallel; uncached sections show skeletons with local retry on failure.
 
-- Home, library, search, favorites, recently played, albums, artists, and playlists.
+- Home, music library, and profile navigation with a separate search entry. The music library groups all tracks, artists, albums, playlists, favorites, and recently played.
+- Home collection shortcuts return to their source page. Each navigation tab preserves its own browsing stack, with page-local list sorting and scroll positions.
 
 **Playback**
 
@@ -129,3 +130,10 @@ To distribute the app publicly, re-verify the licensing of fnOS branding, logo, 
 ## License
 
 No open-source license has been chosen yet. The code is provided for personal learning and use only.
+
+
+### Profile and playback preferences
+
+The Profile tab shows the current Music user, role, and server. It provides password changes, light/dark/system appearance, independent Liquid Glass controls, Wi-Fi/mobile streaming quality, and automatic playback cache settings. Password changes clear the old session and remembered password while retaining the server and username.
+
+Administrators can manage music folders, submit scans and view their status, create/edit users and folder permissions, configure new-user access, and rename the Music server. These controls are hidden until the administrator role is confirmed. Original streaming remains the upgrade default; standard quality uses server-side Opus 128 kbps transcoding. Temporary cache capacity and track limits take effect without restarting and do not create permanent downloads.
