@@ -25,8 +25,42 @@ class MusicNavigationStateTest {
         compose.runOnIdle {
             assertEquals(MusicPage.LiquidGlass, navigation.current.page)
             navigation.pop()
+            assertEquals(MusicPage.Appearance, navigation.current.page)
+            navigation.pop()
             assertEquals(MusicPage.Root, navigation.current.page)
             assertEquals(MusicDestination.Profile, navigation.destination)
+        }
+    }
+
+    @Test fun appearanceChildrenRestoreWithoutDuplicatingParent() {
+        val restoration = StateRestorationTester(compose)
+        lateinit var navigation: MusicNavigationState
+        restoration.setContent {
+            navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
+        }
+        listOf(MusicPage.DisplayMode, MusicPage.ThemeColor, MusicPage.LiquidGlass).forEach { page ->
+            compose.runOnIdle {
+                navigation.select(MusicDestination.Profile)
+                navigation.resetCurrent()
+                navigation.push(page = MusicPage.Appearance)
+                navigation.push(page = page)
+                navigation.select(MusicDestination.Search)
+            }
+            restoration.emulateSavedInstanceStateRestore()
+            compose.runOnIdle {
+                navigation.select(MusicDestination.Profile)
+                if (page == MusicPage.ThemeColor || page == MusicPage.DisplayMode) {
+                    assertEquals(MusicPage.Appearance, navigation.current.page)
+                    assertEquals(1, navigation.current.depth)
+                    return@runOnIdle
+                }
+                assertEquals(page, navigation.current.page)
+                assertEquals(2, navigation.current.depth)
+                navigation.pop()
+                assertEquals(MusicPage.Appearance, navigation.current.page)
+                navigation.pop()
+                assertFalse(navigation.canPop)
+            }
         }
     }
 

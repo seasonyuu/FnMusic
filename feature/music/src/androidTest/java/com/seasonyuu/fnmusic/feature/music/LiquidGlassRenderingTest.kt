@@ -43,9 +43,9 @@ class LiquidGlassRenderingTest {
         }
         val pixels = compose.onNodeWithTag("selected-color", useUnmergedTree = true).captureToImage().toPixelMap()
         val center = pixels[pixels.width / 2, pixels.height / 2]
-        assertEquals(FnAccent.red, center.red, 0.01f)
-        assertEquals(FnAccent.green, center.green, 0.01f)
-        assertEquals(FnAccent.blue, center.blue, 0.01f)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).red, center.red, 0.01f)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).green, center.green, 0.01f)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).blue, center.blue, 0.01f)
     }
 
     @Test fun selectedTabTextUsesAccentWithGlassDisabled() {
@@ -64,7 +64,7 @@ class LiquidGlassRenderingTest {
         val layouts = mutableListOf<TextLayoutResult>()
         compose.onNodeWithText("我的", useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-        assertEquals(FnAccent, layouts.single().layoutInput.style.color)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55), layouts.single().layoutInput.style.color)
     }
 
     @Test fun enabledToggleThumbRemainsVerticallyCenteredAfterSwitching() {

@@ -164,14 +164,14 @@ class LiquidGlassSettingsScreenTest {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                     Box(Modifier.width(320.dp)) {
-                        SettingsScreen(MusicUiState(), {}, { loggedOut = true }, { opened = true }, {}, onCache = { cacheOpened = true })
+                        SettingsScreen(MusicUiState(), {}, { loggedOut = true }, {}, {}, onAppearance = { opened = true }, onCache = { cacheOpened = true })
                     }
                 }
             }
         }
         compose.onAllNodes(hasText("%", substring = true)).assertCountEquals(0)
         compose.onNodeWithText("模糊程度", substring = true).assertDoesNotExist()
-        compose.onNodeWithText("Liquid Glass").performScrollTo().performClick()
+        compose.onNodeWithText("外观").performScrollTo().performClick()
         compose.onNodeWithText("自动缓存歌曲").performScrollTo().performClick()
         compose.onNodeWithText("退出音乐登录").performScrollTo().performClick()
         compose.runOnIdle {
@@ -205,7 +205,7 @@ class LiquidGlassSettingsScreenTest {
     }
 
     @Test fun settingsSummaryShowsDisabled() {
-        compose.setContent { FnMusicTheme { SettingsScreen(MusicUiState(liquidGlassEnabled = false), {}, {}, {}, {}) } }
+        compose.setContent { FnMusicTheme { AppearanceSettingsScreen(MusicUiState(liquidGlassEnabled = false), {}, {}, {}, {}) } }
         compose.onNodeWithText("已关闭").assertIsDisplayed()
     }
 
