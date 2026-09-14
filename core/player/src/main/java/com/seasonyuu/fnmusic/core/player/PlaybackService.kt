@@ -40,13 +40,21 @@ class PlaybackService : MediaSessionService() {
             },
         )
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(PlayerDependencies.dataSourceFactory()))
+            .setMediaSourceFactory(QualityMediaSourceFactory())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true,
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
+        scope.launch {
+            while (true) {
+                delay(10_000)
+                try { PlayerDependencies.maintainTranscode(player.currentMediaItem?.mediaId, player.currentPosition / 1000) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Retry heartbeats on the next interval. */ }
+            }
+        }
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 val id = player.currentMediaItem?.mediaId.orEmpty()

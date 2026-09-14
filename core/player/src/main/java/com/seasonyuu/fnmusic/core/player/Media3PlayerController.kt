@@ -58,7 +58,9 @@ class Media3PlayerController(context: Context) : PlayerController {
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = publishState()
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-            mutableState.value = mutableState.value.copy(error = "播放失败，请检查网络后重试")
+            val qualityError = generateSequence<Throwable>(error) { it.cause }.mapNotNull { it.message }
+                .firstOrNull { it.startsWith("服务器无法提供标准音质") }
+            mutableState.value = mutableState.value.copy(error = qualityError ?: "播放失败，请检查网络后重试")
         }
     }
 
@@ -317,6 +319,18 @@ class Media3PlayerController(context: Context) : PlayerController {
         isRoaming = enabled
         publishState()
     }
+    private var qualityRevision = 0L
+    fun refreshPendingQuality() = withController { controller ->
+        qualityRevision++
+        for (index in 0 until controller.mediaItemCount) {
+            if (index == controller.currentMediaItemIndex) continue
+            val item = controller.getMediaItemAt(index)
+            val uri = item.localConfiguration?.uri ?: continue
+            // A fragment changes MediaSource identity without adding any server query parameter.
+            controller.replaceMediaItem(index, item.buildUpon().setUri(uri.buildUpon().fragment("quality-$qualityRevision").build()).build())
+        }
+    }
+
     override fun setShuffle(enabled: Boolean) = withController {
         pendingRemovalOrder = null
         it.shuffleModeEnabled = enabled
@@ -360,7 +374,17 @@ class Media3PlayerController(context: Context) : PlayerController {
             playbackHistory = updatedPlaybackHistory(playbackHistory, observedCurrent, current)
             observedCurrent = current
         }
+        val selectedAudio = controller.currentTracks.groups.asSequence()
+            .filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+            .flatMap { group -> (0 until group.length).asSequence().filter { group.isTrackSelected(it) }.map { group.getTrackFormat(it) } }
+            .firstOrNull()
+        val streamedAudio = selectedAudio?.takeIf { it.sampleMimeType == "audio/opus" }?.let { format ->
+            com.seasonyuu.fnmusic.core.model.AudioSpec(format = "OPUS", codec = "opus",
+                sampleRate = format.sampleRate.takeIf { it > 0 }, channel = format.channelCount.takeIf { it > 0 },
+                bitrate = format.averageBitrate.takeIf { it > 0 }?.toLong())
+        }
         mutableState.value = PlayerState(
+            playbackAudioSpec = streamedAudio,
             queue = queue,
             playbackHistory = playbackHistory,
             playbackSessionId = playbackSessionId,
