@@ -81,7 +81,7 @@ private fun coverTone(bitmap: Bitmap): Color {
             buckets[key]++
         }
         val key = buckets.indices.maxBy { buckets[it] }
-        if (buckets[key] == 0) return FnBackgroundTop
+        if (buckets[key] == 0) return Color(0xFF2D293A)
         val hsv = FloatArray(3)
         android.graphics.Color.RGBToHSV((key shr 8) * 17, ((key shr 4) and 15) * 17, (key and 15) * 17, hsv)
         hsv[1] = (hsv[1] * .65f).coerceAtMost(.65f)
@@ -106,7 +106,7 @@ internal fun AlbumDetailScreen(
 ) {
     val url = coverUrl(album.coverId, 640)
     var coverBitmap by remember(url) { mutableStateOf<Bitmap?>(null) }
-    var tone by remember(url) { mutableStateOf(albumColors[url] ?: FnBackgroundTop) }
+    var tone by remember(url) { mutableStateOf(albumColors[url] ?: Color(0xFF2D293A)) }
     LaunchedEffect(url, coverBitmap) {
         val bitmap = coverBitmap ?: return@LaunchedEffect
         if (url != null && albumColors[url] == null) {

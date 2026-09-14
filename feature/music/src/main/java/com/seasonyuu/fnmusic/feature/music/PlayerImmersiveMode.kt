@@ -37,3 +37,18 @@ private tailrec fun Context.playerActivity(): Activity? =
         is ContextWrapper -> baseContext.playerActivity()
         else -> null
     }
+
+
+@Composable
+internal fun MusicSystemBarAppearance(darkIcons: Boolean) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    androidx.compose.runtime.SideEffect {
+        context.playerActivity()?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = darkIcons
+                isAppearanceLightNavigationBars = darkIcons
+            }
+        }
+    }
+}

@@ -303,6 +303,7 @@ internal fun PlayerSlider(
             },
         thumb = { Spacer(Modifier.size(0.dp)) },
         track = { state ->
+            val ink = FnTextPrimary
             Canvas(Modifier.fillMaxWidth().height(20.dp)) {
                 val range = valueRange.endInclusive - valueRange.start
                 val fraction = if (range > 0f) {
@@ -322,7 +323,7 @@ internal fun PlayerSlider(
                 val radius = CornerRadius(height / 2f)
                 val alpha = if (enabled) 1f else 0.38f
                 drawRoundRect(
-                    FnTextPrimary.copy(alpha = (0.24f + 0.06f * expansion) * alpha),
+                    ink.copy(alpha = (0.24f + 0.06f * expansion) * alpha),
                     topLeft = Offset(left, top), size = trackSize, cornerRadius = radius,
                 )
                 // Clip a full capsule to keep the inner boundary flat, including near zero.
@@ -332,7 +333,7 @@ internal fun PlayerSlider(
                         right = left + if (rtl) width else width * fraction,
                     ) {
                         drawRoundRect(
-                            FnTextPrimary.copy(alpha = (0.55f + 0.45f * expansion) * alpha),
+                            ink.copy(alpha = (0.55f + 0.45f * expansion) * alpha),
                             topLeft = Offset(left, top), size = trackSize, cornerRadius = radius,
                         )
                     }
