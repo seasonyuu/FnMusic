@@ -32,6 +32,7 @@ fun LiquidButton(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     isInteractive: Boolean = true,
+    enabled: Boolean = true,
     tint: Color = Color.Unspecified,
     surfaceColor: Color = FnNavigationSurface,
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
@@ -69,11 +70,12 @@ fun LiquidButton(
             .clickable(
                 interactionSource = null,
                 indication = if (isInteractive) null else LocalIndication.current,
+                enabled = enabled,
                 role = Role.Button,
                 onClick = onClick,
             )
             .then(
-                if (isInteractive) {
+                if (isInteractive && enabled) {
                     interaction.modifier
                 } else {
                     Modifier

@@ -65,6 +65,7 @@ fun ProgressiveBarBlur(
     top: Boolean,
     modifier: Modifier,
     tint: Color = if (top) FnBackgroundTop else FnBackgroundBottom,
+    extraHeight: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val density = LocalDensity.current
     val inset = with(density) {
@@ -82,7 +83,7 @@ fun ProgressiveBarBlur(
     Box(
         modifier
             .fillMaxWidth()
-            .height(inset + transitionHeight)
+            .height(inset + transitionHeight + extraHeight)
             .clearAndSetSemantics {}
             .testTag(if (top) "top-system-bar-blur" else "bottom-system-bar-blur")
             .then(
@@ -100,6 +101,7 @@ fun ProgressiveBarBlur(
                                 setFloatUniform("size", size.width, size.height)
                                 setColorUniform("tint", tint)
                                 setFloatUniform("tintIntensity", 0.32f)
+                                setFloatUniform("fadeStart", if (extraHeight > 0.dp) (inset + extraHeight).toPx() else size.height * .22f)
                             }
                         },
                     )
@@ -116,9 +118,10 @@ private fun progressiveMaskShader(top: Boolean): String =
         uniform float2 size;
         layout(color) uniform half4 tint;
         uniform float tintIntensity;
+        uniform float fadeStart;
 
         half4 main(float2 coord) {
-            half strength = ${if (top) "half(1.0 - smoothstep(size.y * 0.22, size.y, coord.y))" else "half(smoothstep(0.0, size.y * 0.78, coord.y))"};
+            half strength = ${if (top) "half(1.0 - smoothstep(fadeStart, size.y, coord.y))" else "half(smoothstep(0.0, size.y * 0.78, coord.y))"};
             half4 glass = mix(content.eval(coord), tint, half(tintIntensity));
             return mix(half4(0.0), glass, strength);
         }
