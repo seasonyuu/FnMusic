@@ -1,5 +1,11 @@
 package com.seasonyuu.fnmusic.data
 
+import com.seasonyuu.fnmusic.core.model.AppearancePreference
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.seasonyuu.fnmusic.core.model.StreamingQuality
+import com.seasonyuu.fnmusic.core.model.StreamingQualityPreference
+import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
+import androidx.datastore.preferences.core.intPreferencesKey
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import com.seasonyuu.fnmusic.core.model.LiquidGlassPreference
@@ -19,6 +25,11 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     constructor(context: Context) : this(PreferenceDataStoreFactory.create {
         context.applicationContext.preferencesDataStoreFile("settings")
     })
+
+    val appearance: Flow<AppearancePreference> = dataStore.data.map { values ->
+        AppearancePreference.entries.firstOrNull { it.name == values[APPEARANCE] } ?: AppearancePreference.Dark
+    }
+    suspend fun setAppearance(value: AppearancePreference) { dataStore.edit { it[APPEARANCE] = value.name } }
 
     val liquidGlass: Flow<LiquidGlassPreference> = dataStore.data.map { values ->
         LiquidGlassPreference(
@@ -43,6 +54,26 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         dataStore.edit { it[LIQUID_GLASS_BLUR] = LiquidGlassBlur.normalize(value) }
     }
 
+    val streamingQuality: Flow<StreamingQualityPreference> = dataStore.data.map { values ->
+        fun quality(key: Preferences.Key<String>) = StreamingQuality.entries.firstOrNull { it.name == values[key] } ?: StreamingQuality.Original
+        StreamingQualityPreference(quality(QUALITY_WIFI), quality(QUALITY_MOBILE))
+    }
+    suspend fun setStreamingQuality(value: StreamingQualityPreference) {
+        dataStore.edit { it[QUALITY_WIFI] = value.wifi.name; it[QUALITY_MOBILE] = value.mobile.name }
+    }
+
+    val playbackCache: Flow<PlaybackCachePreference> = dataStore.data.map { values ->
+        PlaybackCachePreference(values[CACHE_ENABLED] ?: true,
+            values[CACHE_BYTES]?.takeIf(ALLOWED_CACHE_BYTES::contains) ?: DEFAULT_CACHE_BYTES,
+            values[CACHE_TRACKS]?.takeIf { it in ALLOWED_CACHE_TRACKS } ?: 0)
+    }
+    suspend fun setPlaybackCache(value: PlaybackCachePreference) {
+        require(value.bytes in ALLOWED_CACHE_BYTES && value.tracks in ALLOWED_CACHE_TRACKS)
+        dataStore.edit {
+            it[CACHE_ENABLED] = value.enabled; it[CACHE_BYTES] = value.bytes; it[CACHE_TRACKS] = value.tracks
+        }
+    }
+
     val cacheBytes: Flow<Long> = dataStore.data.map { values ->
         values[CACHE_BYTES]?.takeIf(ALLOWED_CACHE_BYTES::contains) ?: DEFAULT_CACHE_BYTES
     }
@@ -55,8 +86,14 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     }
 
     companion object {
+        val ALLOWED_CACHE_TRACKS = setOf(0, 100, 500, 1000)
+        private val CACHE_ENABLED = booleanPreferencesKey("media_cache_enabled")
+        private val CACHE_TRACKS = intPreferencesKey("media_cache_tracks")
         val ALLOWED_CACHE_BYTES = setOf(128L, 512L, 1_024L, 2_048L).map { it * 1024L * 1024L }.toSet()
         const val DEFAULT_CACHE_BYTES = 512L * 1024L * 1024L
+        private val QUALITY_WIFI = stringPreferencesKey("streaming_quality_wifi")
+        private val QUALITY_MOBILE = stringPreferencesKey("streaming_quality_mobile")
+        private val APPEARANCE = stringPreferencesKey("appearance")
         private val LIQUID_GLASS_ENABLED = booleanPreferencesKey("liquid_glass_enabled")
         private val LIQUID_GLASS_BLUR = floatPreferencesKey("liquid_glass_blur")
         private val CACHE_BYTES = longPreferencesKey("media_cache_bytes")
