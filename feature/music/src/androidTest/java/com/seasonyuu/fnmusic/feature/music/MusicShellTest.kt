@@ -1030,7 +1030,7 @@ class MusicShellTest {
 
         compose.onNodeWithText("测试专辑").assertIsDisplayed()
         compose.onNodeWithTag("album-play").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
     }
 
     @Test
@@ -1049,7 +1049,7 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("收起播放器").assertDoesNotExist()
         compose.onNodeWithTag("player-drag-handle").assertIsDisplayed()
         compose.onNodeWithTag("top-system-bar-blur").assertDoesNotExist()
-        compose.onNodeWithText("首页").assertDoesNotExist()
+        compose.onNodeWithContentDescription("首页").assertDoesNotExist()
     }
 
     @Test
@@ -1143,7 +1143,7 @@ class MusicShellTest {
         }
 
         compose.onNodeWithText("测试曲目").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
     }
 
     @Test
@@ -1166,7 +1166,7 @@ class MusicShellTest {
             )
         }
         compose.onNodeWithTag("player-morph-overlay").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertDoesNotExist()
+        compose.onNodeWithContentDescription("首页").assertDoesNotExist()
     }
 
     @Test
@@ -1193,7 +1193,7 @@ class MusicShellTest {
             compose.onAllNodesWithTag("player-morph-overlay").fetchSemanticsNodes().isEmpty()
         }
 
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
     }
 
     @Test
@@ -1219,7 +1219,7 @@ class MusicShellTest {
             compose.onAllNodesWithTag("player-morph-overlay").fetchSemanticsNodes().isEmpty()
         }
 
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
     }
 
     @Test
@@ -1404,7 +1404,7 @@ class MusicShellTest {
             compose.onNodeWithTag("liquid-bottom-tabs-indicator")
                 .fetchSemanticsNode().boundsInRoot.center.x > initialIndicatorCenter + 100f
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
 
         compose.onNodeWithTag("music-page-host").performTouchInput {
             swipe(
@@ -2313,7 +2313,7 @@ class MusicShellTest {
         compose.onNodeWithTag("lyrics-list").assertIsDisplayed()
         compose.onNodeWithText("第一句").assertIsDisplayed()
         compose.onNodeWithText("第三句").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertDoesNotExist()
+        compose.onNodeWithContentDescription("首页").assertDoesNotExist()
     }
 
     @Test
@@ -3193,7 +3193,7 @@ class MusicShellTest {
         compose.onNodeWithText("音频").assertIsDisplayed()
         compose.onNodeWithText("48.0 kHz").assertIsDisplayed()
         compose.onNodeWithText("24 bit").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
         captureQueueScreenshot("track-audio-information")
     }
 
@@ -3253,7 +3253,7 @@ class MusicShellTest {
         compose.onNodeWithText("新建歌单").assertIsDisplayed()
         compose.onNodeWithText("歌单名称").assertIsDisplayed()
         compose.onNodeWithText("保存歌单").assertIsDisplayed()
-        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithContentDescription("首页").assertIsDisplayed()
     }
 
     @Test
@@ -3331,7 +3331,7 @@ class MusicShellTest {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
         compose.onNodeWithText("我的").performClick()
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithTag("album-play").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithText("歌曲信息").assertIsDisplayed()
@@ -3346,7 +3346,7 @@ class MusicShellTest {
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithContentDescription("新建歌单").performClick()
         compose.onNodeWithText("歌单名称").performTextInput("保留草稿")
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("保留草稿").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
@@ -3378,7 +3378,7 @@ class MusicShellTest {
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithContentDescription("新建歌单").performClick()
         compose.onNodeWithText("歌单名称").performTextInput("旋转后草稿")
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("旋转后草稿").assertIsDisplayed()
@@ -3399,7 +3399,7 @@ class MusicShellTest {
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.runOnIdle { model.value = ready.copy(detailKey = DetailRequestKey("playlist", "unrelated"), detailTracks = listOf(Track(TrackId("wrong"), "错误歌曲"))) }
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("错误歌曲").assertDoesNotExist()
@@ -3525,7 +3525,7 @@ class MusicShellTest {
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
@@ -3559,7 +3559,7 @@ class MusicShellTest {
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("音乐库").performClick()
         val after = compose.onNodeWithText(item).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
         assertEquals(before, after, 3f)
@@ -3582,7 +3582,7 @@ class MusicShellTest {
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.runOnIdle { model.value = ready.forDetail(DetailRequestKey("playlist", "other")) }
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("正在加载详情…").assertDoesNotExist()
@@ -3637,7 +3637,7 @@ class MusicShellTest {
         setContent()
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("收藏 快捷入口").performClick()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("随机漫游").assertIsDisplayed()
@@ -3660,7 +3660,7 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("排序").performClick()
         compose.onNodeWithText("歌曲名 Z–A").performClick()
         compose.runOnIdle { assertEquals(TrackSort.TitleDescending, requestedSort) }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("查看最近添加").performClick()
         compose.runOnIdle { assertEquals(TrackSort.RecentlyAdded, requestedSort) }
         compose.onNodeWithContentDescription("音乐库").performClick()
@@ -3686,7 +3686,7 @@ class MusicShellTest {
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("首页").performClick()
         compose.onNodeWithContentDescription("查看最近添加").performClick()
         compose.onNodeWithText("歌曲编号 1").assertIsDisplayed()
         compose.onNodeWithContentDescription("音乐库").performClick()
@@ -3751,6 +3751,29 @@ class MusicShellTest {
         compose.onNodeWithText("我的").assertIsDisplayed()
         compose.onNodeWithText("搜索").performClick()
         compose.onNodeWithText("搜索歌曲、歌手、专辑、歌单").assertIsDisplayed()
+    }
+
+    @Test
+    fun playlistManagementUsesOverflowAndPreservesConfirmations() {
+        val playlist = Playlist(PlaylistId("managed"), "管理测试歌单", trackCount = 1)
+        setContent(state = MusicUiState(loading = false, playlists = listOf(playlist),
+            detailTracks = listOf(Track(TrackId("one"), "一首歌曲"))))
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        compose.onNodeWithText("管理测试歌单").performClick()
+        compose.onNodeWithText("清理失效").assertDoesNotExist()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("清理失效").performClick()
+        compose.onNodeWithText("清理失效歌曲？").assertIsDisplayed()
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("删除").performClick()
+        compose.onNodeWithText("删除歌单？").assertIsDisplayed()
+        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("编辑").performClick()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithTag("library-detail-list").assertIsDisplayed()
     }
 
     private fun setContent(
