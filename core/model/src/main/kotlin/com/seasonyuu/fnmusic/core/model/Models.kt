@@ -38,6 +38,24 @@ data class ConnectionProfile(
     val allowPrivateLanHttp: Boolean = false,
 )
 
+enum class StreamingQuality { Original, Standard }
+data class StreamingQualityPreference(val wifi: StreamingQuality = StreamingQuality.Original, val mobile: StreamingQuality = StreamingQuality.Original)
+
+data class PlaybackCachePreference(
+    val enabled: Boolean = true,
+    val bytes: Long = 512L * 1024L * 1024L,
+    val tracks: Int = 0,
+)
+
+enum class AppearancePreference { Dark, Light, System }
+
+data class MusicUser(
+    val id: String,
+    val name: String,
+    val role: String? = null,
+    val lastAccessedAt: String? = null,
+)
+
 sealed interface SessionState {
     /** The app is checking encrypted credentials before deciding whether to show login. */
     data object Restoring : SessionState
@@ -50,6 +68,7 @@ sealed interface SessionState {
         val profile: ConnectionProfile,
         val serverName: String? = null,
         val serverVersion: String? = null,
+        val user: MusicUser? = null,
     ) : SessionState
 
     data class Error(
@@ -212,6 +231,7 @@ data class PlayableTrack(
 )
 
 data class PlayerState(
+    val playbackAudioSpec: AudioSpec? = null,
     val queue: List<PlayableTrack> = emptyList(),
     /** Local-only history for the active playback list. It is deliberately not persisted. */
     val playbackHistory: List<PlayableTrack> = emptyList(),

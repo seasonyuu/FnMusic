@@ -6,6 +6,10 @@ import com.seasonyuu.fnmusic.core.model.LoginForm
 import com.seasonyuu.fnmusic.core.model.MusicError
 import com.seasonyuu.fnmusic.core.model.SessionRepository
 import com.seasonyuu.fnmusic.core.model.SessionState
+import com.seasonyuu.fnmusic.core.model.MusicUser
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,28 +121,66 @@ class SessionCoordinator(
         val reusableToken = existingToken?.takeIf(String::isNotBlank)
         val restoredSession = reusableToken?.let { token ->
             network.cookieJar.setMusicToken(baseUrl, token)
-            if (runCatching { network.sessionApi.currentUser().requireData() }.isSuccess) {
-                runCatching { token to network.sessionApi.systemConfig().requireData() }.getOrNull()
+            val user = runCatching { network.sessionApi.currentUser().requireData() }.getOrNull()
+            if (user != null) {
+                runCatching { Triple(token, network.sessionApi.systemConfig().requireData(), user.toMusicUser()) }.getOrNull()
             } else null
         }
         if (restoredSession != null) {
-            val (validatedToken, existingConfig) = restoredSession
+            val (validatedToken, existingConfig, user) = restoredSession
             vault.save(SavedCredentials(profile, passwordHash, validatedToken))
-            mutableState.value = SessionState.Ready(profile, existingConfig.serverName, existingConfig.serverVersion)
+            mutableState.value = SessionState.Ready(profile, existingConfig.serverName, existingConfig.serverVersion, user)
             return
         }
 
-        val token = authenticate(profile, passwordHash, baseUrl)
+        val login = authenticate(profile, passwordHash, baseUrl)
+        val token = login.userToken
         val config = network.sessionApi.systemConfig().requireData()
         vault.save(SavedCredentials(profile, passwordHash, token))
-        mutableState.value = SessionState.Ready(profile, config.serverName, config.serverVersion)
+        mutableState.value = SessionState.Ready(profile, config.serverName, config.serverVersion,
+            login.user?.toMusicUser())
     }
 
-    private suspend fun authenticate(profile: ConnectionProfile, passwordHash: String, baseUrl: HttpUrl): String {
+    private suspend fun authenticate(profile: ConnectionProfile, passwordHash: String, baseUrl: HttpUrl): LoginData {
         val login = network.sessionApi.passwordLogin(LoginRequest(profile.username, passwordHash, vault.deviceId())).requireData()
         network.cookieJar.setMusicToken(baseUrl, login.userToken)
         mutableState.value = SessionState.MusicAuthenticated
-        return login.userToken
+        return login
+    }
+
+    suspend fun currentUser(): MusicUser = network.sessionApi.currentUser().requireData().toMusicUser()
+
+    suspend fun changePassword(password: CharArray) = connectionMutex.withLock {
+        check(mutableState.value is SessionState.Ready) { "请先登录音乐账户" }
+        try {
+            require(password.isNotEmpty()) { "请输入新密码" }
+            network.accountMutationApi.changePassword(ChangePasswordRequest(password.concatToString().sha256())).requireSuccess()
+            clearChangedPasswordSession()
+        } finally {
+            Arrays.fill(password, '\u0000')
+        }
+    }
+
+    fun updateServerName(name: String) {
+        val ready = mutableState.value as? SessionState.Ready ?: return
+        mutableState.value = ready.copy(serverName = name)
+    }
+
+    suspend fun updateUsername(username: String) = connectionMutex.withLock {
+        val ready = mutableState.value as? SessionState.Ready ?: return@withLock
+        val profile = ready.profile.copy(username = username)
+        vault.load()?.let { vault.save(it.copy(profile = profile)) }
+        updateLoginForm(loginForm.value.copy(username = username))
+        mutableState.value = ready.copy(profile = profile, user = ready.user?.copy(name = username))
+    }
+
+    suspend fun finishPasswordChange(username: String? = null) = connectionMutex.withLock { clearChangedPasswordSession(username) }
+
+    private fun clearChangedPasswordSession(username: String? = null) {
+        vault.clearCredentials()
+        updateLoginForm(loginForm.value.copy(password = "", username = username ?: loginForm.value.username))
+        network.cookieJar.clear()
+        mutableState.value = SessionState.Unresolved
     }
 
     override suspend fun logout(clearCredentials: Boolean) = connectionMutex.withLock {
@@ -153,3 +195,10 @@ class SessionCoordinator(
         else -> "连接失败，请检查地址、网络和账号"
     }
 }
+
+internal fun JsonObject.toMusicUser(): MusicUser = MusicUser(
+    id = (get("guid") as? JsonPrimitive)?.contentOrNull.orEmpty(),
+    name = (get("name") as? JsonPrimitive)?.contentOrNull.orEmpty(),
+    role = (get("role") as? JsonPrimitive)?.contentOrNull,
+    lastAccessedAt = (get("lastAccessedAt") as? JsonPrimitive)?.contentOrNull,
+)

@@ -14,6 +14,7 @@ import com.seasonyuu.fnmusic.core.model.Track
 import com.seasonyuu.fnmusic.core.model.TrackId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
@@ -124,6 +125,11 @@ data class PlaylistDto(
 
 @Serializable
 data class LoginRequest(val username: String, val password: String, val deviceId: String)
+
+@Serializable
+data class ChangePasswordRequest(val password: String) {
+    override fun toString() = "ChangePasswordRequest(password=<redacted>)"
+}
 
 @Serializable
 data class LoginData(val userToken: String, val user: JsonObject? = null)
@@ -256,6 +262,55 @@ interface MusicApi {
     @Headers("$NO_SESSION_RECOVERY_HEADER: true")
     @GET("api/v1/user/me")
     suspend fun currentUser(): ApiEnvelope<JsonObject>
+
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/user/passwd-change")
+    suspend fun changePassword(@Body body: ChangePasswordRequest): ApiEnvelope<JsonObject>
+
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/track/transcode")
+    suspend fun startTranscode(@Body body: JsonObject): ApiEnvelope<JsonObject>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/track/transcode/heartbeat")
+    suspend fun heartbeatTranscode(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/track/transcode/quit")
+    suspend fun quitTranscode(@Body body: JsonObject): ApiEnvelope<JsonElement>
+
+    @GET("api/v1/task/list")
+    suspend fun adminTasks(): ApiEnvelope<JsonElement>
+    @GET("api/v1/shared-library/list")
+    suspend fun adminFolders(): ApiEnvelope<JsonElement>
+    @GET("api/v1/user/list")
+    suspend fun adminUsers(): ApiEnvelope<JsonElement>
+    @GET("api/v1/settings/user")
+    suspend fun defaultUserSettings(): ApiEnvelope<JsonObject>
+    @GET("api/v1/settings/server")
+    suspend fun adminServerSettings(): ApiEnvelope<JsonObject>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/shared-library/create")
+    suspend fun createFolder(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/shared-library/edit")
+    suspend fun editFolder(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/shared-library/delete")
+    suspend fun deleteFolder(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/shared-library/scan")
+    suspend fun scanFolder(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/user/create")
+    suspend fun createUser(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/user/edit")
+    suspend fun editUser(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/settings/user")
+    suspend fun saveDefaultUserSettings(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/settings/server")
+    suspend fun saveAdminServerSettings(@Body body: JsonObject): ApiEnvelope<JsonElement>
 
     @GET("api/v1/track/list")
     suspend fun tracks(

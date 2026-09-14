@@ -186,6 +186,9 @@ class NetworkRuntime {
     // bypassed auth calls their own slots so a full queue cannot deadlock login.
     internal val sessionApi: MusicApi = createApi(httpClient.newBuilder().dispatcher(okhttp3.Dispatcher()).build())
 
+    internal val accountMutationApi: MusicApi = createApi(httpClient.newBuilder()
+        .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).build())
+
     private fun createApi(client: OkHttpClient): MusicApi = Retrofit.Builder()
         .baseUrl("https://music.invalid/")
         .client(client)
