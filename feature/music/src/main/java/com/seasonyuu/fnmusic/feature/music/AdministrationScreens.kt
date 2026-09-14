@@ -1,29 +1,75 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-private fun AdminPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun AdminPage(
+    title: String,
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+    isRefreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val pullState = rememberPullToRefreshState()
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
-        Box(Modifier.padding(horizontal = 20.dp)) { PageTitle(title, onBack) }
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState())
-                .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            content = content,
-        )
+        Box(Modifier.padding(horizontal = 20.dp)) { PageTitle(title, onBack, actions = actions) }
+        if (onRefresh == null) {
+            Column(
+                Modifier.weight(1f).verticalScroll(scrollState)
+                    .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                content = content,
+            )
+        } else {
+            PullToRefreshBox(
+                modifier = Modifier.weight(1f),
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                state = pullState,
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullState,
+                        isRefreshing = isRefreshing,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                    )
+                },
+            ) {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(scrollState)
+                        .padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    content = content,
+                )
+            }
+        }
     }
 }
 
@@ -136,6 +182,7 @@ internal fun UserAdministrationScreen(api: MusicAdministration, currentUserId: S
     var error by remember { mutableStateOf<String?>(null) }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun reload() {
         val nextFolders = api.folders()
@@ -153,53 +200,99 @@ internal fun UserAdministrationScreen(api: MusicAdministration, currentUserId: S
             finally { busy = false }
         }
     }
+    fun refreshUsers() {
+        if (busy || refreshing) return
+        refreshing = true
+        scope.launch {
+            try { reload(); error = null }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { error = failure.message ?: "刷新失败，请重试" }
+            finally { refreshing = false }
+        }
+    }
     LaunchedEffect(api) { try { reload() } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } }
     BackHandler(editing != null) { if (!busy) editing = null }
-    if (editing != null && users != null) key(editing) {
-        val original = users?.firstOrNull { it.guid == editing }
-        val defaultEditor = editing == "defaults"
-        if (!editing.isNullOrEmpty() && !defaultEditor && original == null) {
-            AdminPage("用户管理", { editing = null }) { Text("这个用户已不可用，请返回刷新。") }
-        } else {
-        val initial = if (defaultEditor || original == null) defaults else original.access
-        var username by rememberSaveable { mutableStateOf(original?.name.orEmpty()) }
-        var password by remember { mutableStateOf("") }
-        var confirmation by remember { mutableStateOf("") }
-        var visible by remember { mutableStateOf(false) }
-        var mode by rememberSaveable { mutableStateOf(initial.mode) }
-        var ids by rememberSaveable { mutableStateOf(ArrayList(initial.guids)) }
-        val access = FolderAccess(mode, ids)
-        AdminPage(if (defaultEditor) "新用户默认权限" else if (original == null) "新增用户" else "编辑用户", { if (!busy) editing = null }) {
-            if (!defaultEditor) {
-                OutlinedTextField(username, { username = it }, label = { Text("用户名") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                Text(if (original == null) "设置用户密码" else "修改密码（留空则保留）")
-                OutlinedTextField(password, { password = it }, label = { Text("新密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } })
-                OutlinedTextField(confirmation, { confirmation = it }, label = { Text("确认密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation())
-                if (original?.guid == currentUserId && password.isNotEmpty()) Text("修改自己的密码后将返回登录页。")
+    val editorVisible = editing != null && users != null
+    AnimatedContent(
+        targetState = editorVisible,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            if (targetState) {
+                (fadeIn(tween(220)) + slideInHorizontally(tween(280)) { it / 4 }) togetherWith
+                    (fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { -it / 4 })
+            } else {
+                (fadeIn(tween(220)) + slideInHorizontally(tween(280)) { -it / 4 }) togetherWith
+                    (fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { it / 4 })
             }
-            FolderAccessEditor(access, folders, !busy) { mode = it.mode; ids = ArrayList(it.guids) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(onClick = { action {
-                if (defaultEditor) api.saveDefaultAccess(access) else api.saveUser(original, username, password.takeIf { it.isNotEmpty() }, access)
-                password = ""; confirmation = ""; editing = null; reload()
-            } }, enabled = !busy && (defaultEditor || username.isNotBlank() && password == confirmation && (original != null || password.isNotEmpty()))) { Text("保存修改") }
-        }
-        }
-    } else AdminPage("用户管理", onBack) {
-        Row { Button(onClick = { editing = ""; error = null }, enabled = users != null && !busy) { Text("新增用户") }; TextButton(onClick = { editing = "defaults"; error = null }, enabled = users != null && !busy) { Text("默认权限") } }
-        users?.forEach { user ->
-            OutlinedCard(onClick = { editing = user.guid; error = null }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(user.name, style = MaterialTheme.typography.titleMedium)
-                    Text(if (user.role == "admin") "管理员" else "普通用户")
-                    Text(when (user.access.mode) { "all" -> "全部音乐文件夹"; "partial" -> "${user.access.guids.size} 个音乐文件夹"; else -> "无音乐文件夹权限" })
-                    user.lastAccessedAt?.takeIf { it > 0 }?.let { Text("最近访问：${formatAdminTime(it)}") }
+        },
+        label = "user-administration-page",
+    ) { showEditor ->
+        if (showEditor) key(editing) {
+            val original = users?.firstOrNull { it.guid == editing }
+            val defaultEditor = editing == "defaults"
+            if (!editing.isNullOrEmpty() && !defaultEditor && original == null) {
+                AdminPage("用户管理", { editing = null }) { Text("这个用户已不可用，请返回刷新。") }
+            } else {
+                val initial = if (defaultEditor || original == null) defaults else original.access
+                var username by rememberSaveable { mutableStateOf(original?.name.orEmpty()) }
+                var password by remember { mutableStateOf("") }
+                var confirmation by remember { mutableStateOf("") }
+                var visible by remember { mutableStateOf(false) }
+                var mode by rememberSaveable { mutableStateOf(initial.mode) }
+                var ids by rememberSaveable { mutableStateOf(ArrayList(initial.guids)) }
+                val access = FolderAccess(mode, ids)
+                AdminPage(if (defaultEditor) "新用户默认权限" else if (original == null) "新增用户" else "编辑用户", { if (!busy) editing = null }) {
+                    if (!defaultEditor) {
+                        OutlinedTextField(username, { username = it }, label = { Text("用户名") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                        Text(if (original == null) "设置用户密码" else "修改密码（留空则保留）")
+                        OutlinedTextField(password, { password = it }, label = { Text("新密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } })
+                        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("确认密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation())
+                        if (original?.guid == currentUserId && password.isNotEmpty()) Text("修改自己的密码后将返回登录页。")
+                    }
+                    FolderAccessEditor(access, folders, !busy) { mode = it.mode; ids = ArrayList(it.guids) }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Button(onClick = { action {
+                        if (defaultEditor) api.saveDefaultAccess(access) else api.saveUser(original, username, password.takeIf { it.isNotEmpty() }, access)
+                        password = ""; confirmation = ""; editing = null; reload()
+                    } }, enabled = !busy && (defaultEditor || username.isNotBlank() && password == confirmation && (original != null || password.isNotEmpty()))) { Text("保存修改") }
                 }
             }
+        } else {
+            AdminPage(
+                title = "用户管理",
+                onBack = onBack,
+                actions = {
+                    AppBarButton(
+                        onClick = { if (users != null && !busy) { editing = ""; error = null } },
+                        enabled = users != null && !busy,
+                    ) { Icon(Icons.Rounded.Add, "新增用户") }
+                    AppBarButton(
+                        onClick = { if (users != null && !busy) { editing = "defaults"; error = null } },
+                        enabled = users != null && !busy,
+                    ) { Icon(Icons.Rounded.Settings, "权限管理") }
+                },
+                isRefreshing = refreshing,
+                onRefresh = { refreshUsers() },
+            ) {
+                users?.forEach { user ->
+                    OutlinedCard(onClick = { editing = user.guid; error = null }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            UserTitle(user.name, user.role, titleStyle = MaterialTheme.typography.titleMedium)
+                            UserSubtitle(when (user.access.mode) {
+                                "all" -> "音乐文件夹权限 · 全部文件夹"
+                                "partial" -> "音乐文件夹权限 · ${user.access.guids.size} 个文件夹"
+                                else -> "音乐文件夹权限 · 无权限"
+                            })
+                            user.lastAccessedAt?.takeIf { it > 0 }?.let {
+                                Text("最近访问 · ${formatAdminTime(it)}", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                if (users == null && error == null) CircularProgressIndicator()
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
         }
-        if (users == null && error == null) CircularProgressIndicator()
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = { action { reload() } }, enabled = !busy) { Text("刷新") }
     }
 }
 

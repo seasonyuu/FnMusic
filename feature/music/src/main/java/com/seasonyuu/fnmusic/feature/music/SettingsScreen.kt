@@ -67,13 +67,9 @@ internal fun SettingsScreen(
                     Box(Modifier.size(56.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
                         Text(state.user?.name?.take(1)?.uppercase() ?: "♪", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(state.user?.name?.takeIf { it.isNotBlank() } ?: "音乐账户", style = MaterialTheme.typography.titleLarge)
-                        Text(state.serverName, color = FnTextSecondary)
-                        when (state.user?.role) {
-                            "admin" -> Text("管理员", color = FnTextSecondary)
-                            "member" -> Text("普通用户", color = FnTextSecondary)
-                        }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        UserTitle(state.user?.name?.takeIf { it.isNotBlank() } ?: "音乐账户", state.user?.role)
+                        UserSubtitle("当前服务器 · ${state.serverName.ifBlank { "未连接" }}")
                     }
                 }
             }

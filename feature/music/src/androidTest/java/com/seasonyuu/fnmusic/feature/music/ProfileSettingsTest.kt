@@ -22,9 +22,11 @@ class ProfileSettingsTest {
                 SettingsScreen(MusicUiState(user = MusicUser("test", "Listener", "admin"), serverName = "Test NAS"), {}, {}, {})
             }
         }
+        compose.onNodeWithTag("profile-identity").performScrollTo()
         compose.onNodeWithText("Listener").assertIsDisplayed()
         compose.onNodeWithText("管理员").assertIsDisplayed()
-        compose.onAllNodesWithText("Test NAS").onFirst().assertIsDisplayed()
+        compose.onNodeWithTag("admin-badge").assertIsDisplayed()
+        compose.onNodeWithText("当前服务器 · Test NAS").assertIsDisplayed()
     }
 
     @Test fun passwordRequiresMatchingConfirmationAndIsNotRestored() {
@@ -47,6 +49,7 @@ class ProfileSettingsTest {
         compose.onNodeWithText("音乐库管理").assertDoesNotExist()
         compose.onNodeWithText("用户管理").assertDoesNotExist()
         compose.onNodeWithText("服务器设置").assertDoesNotExist()
+        compose.onNodeWithText("普通用户").assertDoesNotExist()
     }
 
     @Test fun selectingLightAppearanceChangesActualPalette() {
