@@ -185,6 +185,87 @@ class SessionCoordinatorTest {
         assertEquals(5, server.requestCount)
     }
 
+    @Test
+    fun `restored session retains current user identity`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"guid":"test-user","name":"Listener","role":"admin","lastAccessedAt":"2026-09-01"}}"""))
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"serverName":"Test NAS"}}"""))
+        val profile = ConnectionProfile(Endpoint.Direct(server.url("/").toString()), "tester", true)
+        val coordinator = SessionCoordinator(NetworkRuntime(), FakeSessionVault(SavedCredentials(profile, "hash", "token")))
+
+        coordinator.reconnect()
+
+        val ready = coordinator.state.value as SessionState.Ready
+        assertEquals("test-user", ready.user?.id)
+        assertEquals("Listener", ready.user?.name)
+        assertEquals("admin", ready.user?.role)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `login retains returned user without an additional authentication request`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"userToken":"token","user":{"guid":"test-user","name":"Listener","role":2}}}"""))
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"serverName":"Test NAS"}}"""))
+        val profile = ConnectionProfile(Endpoint.Direct(server.url("/").toString()), "tester", true)
+        val coordinator = SessionCoordinator(NetworkRuntime(), FakeSessionVault(null))
+
+        coordinator.connect(profile, "password".toCharArray())
+
+        val ready = coordinator.state.value as SessionState.Ready
+        assertEquals("Listener", ready.user?.name)
+        assertEquals("2", ready.user?.role)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `password change clears every old secret and retains connection fields`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"guid":"test-user","name":"Listener"}}"""))
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"serverName":"Test NAS"}}"""))
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":null}"""))
+        val profile = ConnectionProfile(Endpoint.Direct(server.url("/").toString()), "tester", true)
+        val vault = FakeSessionVault(SavedCredentials(profile, "old-hash", "old-token"))
+        val coordinator = SessionCoordinator(NetworkRuntime(), vault)
+        coordinator.updateLoginForm(coordinator.loginForm.value.copy(password = "old-password"))
+        coordinator.reconnect()
+        val password = "new-password".toCharArray()
+
+        coordinator.changePassword(password)
+
+        assertTrue(password.all { it == '\u0000' })
+        assertNull(vault.saved)
+        assertEquals("", vault.form?.password)
+        assertEquals("tester", vault.form?.username)
+        assertTrue(coordinator.state.value is SessionState.Unresolved)
+        server.takeRequest()
+        server.takeRequest()
+        val request = server.takeRequest()
+        assertEquals("/music/api/v1/user/passwd-change", request.path)
+        assertEquals("POST", request.method)
+        assertEquals("""{"password":"${"new-password".sha256()}"}""", request.body.readUtf8())
+        val restarted = SessionCoordinator(NetworkRuntime(), vault)
+        restarted.reconnect()
+        assertTrue(restarted.state.value is SessionState.Unresolved)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `rejected password change keeps session and never replays the mutation`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"guid":"test-user"}}"""))
+        server.enqueue(MockResponse().setBody("""{"code":0,"data":{"serverName":"Test NAS"}}"""))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"code":401,"msg":"rejected"}"""))
+        val profile = ConnectionProfile(Endpoint.Direct(server.url("/").toString()), "tester", true)
+        val vault = FakeSessionVault(SavedCredentials(profile, "old-hash", "old-token"))
+        val coordinator = SessionCoordinator(NetworkRuntime(), vault)
+        coordinator.reconnect()
+        val password = "new-password".toCharArray()
+
+        assertTrue(runCatching { coordinator.changePassword(password) }.isFailure)
+
+        assertTrue(password.all { it == '\u0000' })
+        assertEquals("old-token", vault.saved?.token)
+        assertTrue(coordinator.state.value is SessionState.Ready)
+        assertEquals(3, server.requestCount)
+    }
+
     private class FakeSessionVault(initial: SavedCredentials?) : SessionVault {
         var saved: SavedCredentials? = initial
         var form: LoginForm? = null

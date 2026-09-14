@@ -14,7 +14,7 @@ import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
+import com.seasonyuu.fnmusic.core.designsystem.FnDarkPalette
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -59,27 +59,27 @@ class MusicPageAppearanceTest {
 
     @Test fun dynamicColorBelongsToEntryAndTabsRestoreTheirOwnAppearance() {
         setContent()
-        assertColor(FnNavigationSurface)
+        assertColor(FnDarkPalette.navigation)
         compose.runOnIdle {
-            navigation.push(morePage = MorePage.Albums)
+            navigation.push(page = MusicPage.Albums)
             colors[navigation.current.id] = warm
         }
         assertColor(warm)
         val albumEntry = navigation.current
         compose.runOnIdle { navigation.select(MusicDestination.Search) }
-        assertColor(FnNavigationSurface)
+        assertColor(FnDarkPalette.navigation)
         // A response arriving while its page is hidden updates only that page's cache.
         compose.runOnIdle { reporters.getValue(albumEntry.id)(MusicPageAppearance(cool)) }
-        assertColor(FnNavigationSurface)
+        assertColor(FnDarkPalette.navigation)
         compose.runOnIdle {
             colors[albumEntry.id] = cool
             navigation.select(MusicDestination.Home)
         }
         assertColor(cool)
         compose.runOnIdle { navigation.pop() }
-        assertColor(FnNavigationSurface)
+        assertColor(FnDarkPalette.navigation)
         compose.runOnIdle { reporters.getValue(albumEntry.id)(MusicPageAppearance(warm)) }
-        assertColor(FnNavigationSurface)
+        assertColor(FnDarkPalette.navigation)
         compose.runOnIdle { assertEquals(MusicPageAppearance(), navigation.appearanceFor(albumEntry)) }
     }
 
@@ -97,7 +97,7 @@ class MusicPageAppearanceTest {
         colors[navigation.current.id] = cool
         setContent()
         compose.runOnIdle {
-            navigation.push(morePage = MorePage.Albums)
+            navigation.push(page = MusicPage.Albums)
             colors[navigation.current.id] = warm
         }
         assertColor(warm)

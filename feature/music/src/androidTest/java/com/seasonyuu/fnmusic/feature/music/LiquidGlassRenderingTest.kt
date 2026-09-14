@@ -53,7 +53,7 @@ class LiquidGlassRenderingTest {
             FnMusicTheme {
                 CompositionLocalProvider(LocalLiquidGlassEnabled provides false) {
                     DynamicMusicBottomBar(
-                        state = PlayerState(), selectedDestination = MusicDestination.More,
+                        state = PlayerState(), selectedDestination = MusicDestination.Profile,
                         expansionProgress = 1f, playerExpansionProgress = 0f,
                         backdrop = rememberLayerBackdrop(), onDestinationSelected = {},
                         onToggle = {}, onNext = {}, onOpenPlayer = {}, onExpand = {},
@@ -62,7 +62,7 @@ class LiquidGlassRenderingTest {
             }
         }
         val layouts = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText("更多", useUnmergedTree = true)
+        compose.onNodeWithText("我的", useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertEquals(FnAccent, layouts.single().layoutInput.style.color)
     }

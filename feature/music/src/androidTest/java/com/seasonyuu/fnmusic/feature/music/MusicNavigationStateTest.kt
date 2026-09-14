@@ -18,15 +18,15 @@ class MusicNavigationStateTest {
             navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
         }
         compose.runOnIdle {
-            navigation.select(MusicDestination.More)
-            navigation.push(morePage = MorePage.Settings)
-            navigation.push(morePage = MorePage.LiquidGlass)
+            navigation.select(MusicDestination.Profile)
+            navigation.push(page = MusicPage.LiquidGlass)
         }
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle {
-            assertEquals(MorePage.LiquidGlass, navigation.current.morePage)
+            assertEquals(MusicPage.LiquidGlass, navigation.current.page)
             navigation.pop()
-            assertEquals(MorePage.Settings, navigation.current.morePage)
+            assertEquals(MusicPage.Root, navigation.current.page)
+            assertEquals(MusicDestination.Profile, navigation.destination)
         }
     }
 
@@ -43,24 +43,54 @@ class MusicNavigationStateTest {
         compose.runOnIdle {
             navigation.push(detail = album)
             homeId = navigation.current.id
-            navigation.select(MusicDestination.More)
-            navigation.push(morePage = MorePage.Playlists)
+            navigation.select(MusicDestination.Library)
+            navigation.push(page = MusicPage.Playlists)
             navigation.push(detail = editor)
             editorId = navigation.current.id
         }
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle {
-            assertEquals(MusicDestination.More, navigation.destination)
+            assertEquals(MusicDestination.Library, navigation.destination)
             assertEquals(editorId, navigation.current.id)
             assertEquals(editor, navigation.current.detail)
             navigation.pop()
-            assertEquals(MorePage.Playlists, navigation.current.morePage)
+            assertEquals(MusicPage.Playlists, navigation.current.page)
             navigation.pop()
             assertFalse(navigation.canPop)
             navigation.select(MusicDestination.Home)
             assertEquals(homeId, navigation.current.id)
             assertEquals(album, navigation.current.detail)
         }
+    }
+
+    @Test fun legacyAndMalformedSnapshotsFallBackToHome() {
+        listOf(
+            android.os.Bundle().apply { putString("destination", "Favorites") },
+            android.os.Bundle().apply { putInt("version", 2); putString("destination", "More") },
+            android.os.Bundle().apply { putInt("version", 2); putString("destination", "Home") },
+        ).forEach { saved ->
+            val navigation = MusicNavigationState.restoreNavigation(saved)
+            assertEquals(MusicDestination.Home, navigation.destination)
+            assertEquals(MusicPage.Root, navigation.current.page)
+            assertFalse(navigation.canPop)
+        }
+    }
+
+    @Test fun collectionsStayInTheirOriginStack() {
+        val navigation = MusicNavigationState()
+        navigation.select(MusicDestination.Library)
+        navigation.push(page = MusicPage.Playlists)
+        val libraryEntry = navigation.current.id
+        navigation.select(MusicDestination.Home)
+        navigation.push(page = MusicPage.Playlists)
+        navigation.push(detail = LibraryDetail.PlaylistPage(Playlist(PlaylistId("p"), "Playlist")))
+        navigation.pop()
+        assertEquals(MusicPage.Playlists, navigation.current.page)
+        navigation.pop()
+        assertEquals(MusicDestination.Home, navigation.destination)
+        assertFalse(navigation.canPop)
+        navigation.select(MusicDestination.Library)
+        assertEquals(libraryEntry, navigation.current.id)
     }
 
     @Test fun lateResponseForAnotherResourceCannotSupplyTracksOrErrors() {

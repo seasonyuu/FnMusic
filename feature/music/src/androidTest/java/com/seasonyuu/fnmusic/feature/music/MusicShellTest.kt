@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.dp
+import androidx.paging.cachedIn
 import androidx.paging.PagingData
 import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
 import com.seasonyuu.fnmusic.core.model.PlayerState
@@ -971,12 +972,12 @@ class MusicShellTest {
         compose.onNodeWithTag("首页快捷入口").performScrollToNode(hasContentDescription("最近添加 快捷入口"))
         compose.onNodeWithContentDescription("最近添加 快捷入口").performClick()
 
-        org.junit.Assert.assertEquals(TrackSort.RecentlyAdded, selectedSort)
+        compose.runOnIdle { org.junit.Assert.assertEquals(TrackSort.RecentlyAdded, selectedSort) }
         compose.onNodeWithText("音乐库").assertIsDisplayed()
     }
 
     @Test
-    fun homeUsesThreeRowRecentGridAndShowsPlaylistsWithoutAFakeRecentLink() {
+    fun homeUsesThreeRowRecentGridAndShowsCollectionLinks() {
         val tracks = (1..4).map { index -> Track(TrackId("track-$index"), "最近曲目 $index") }
         val playlist = Playlist(PlaylistId("playlist-placeholder"), "首页歌单", trackCount = 4)
         setContent(MusicUiState(loading = false, tracks = tracks, playlists = listOf(playlist)))
@@ -990,10 +991,14 @@ class MusicShellTest {
         org.junit.Assert.assertTrue(second.top > first.top)
         org.junit.Assert.assertTrue(third.top > second.top)
         org.junit.Assert.assertTrue(fourth.left > first.left)
-        compose.onNodeWithContentDescription("查看最近添加").assertDoesNotExist()
+        compose.onNodeWithContentDescription("查看最近添加").assertIsDisplayed()
         compose.onNodeWithContentDescription("查看专辑").assertIsDisplayed()
 
-        compose.onNodeWithText("首页歌单").performScrollTo().assertIsDisplayed().performClick()
+        // Scroll the vertical page: performScrollTo on a card only targets its nested horizontal row.
+        compose.onNodeWithTag("music-page-host").performTouchInput {
+            swipe(Offset(center.x, height * .75f), Offset(center.x, height * .25f), 500)
+        }
+        compose.onNodeWithText("首页歌单").assertIsDisplayed().performClick()
 
         compose.onNodeWithText("我的歌单").assertIsDisplayed()
     }
@@ -1003,7 +1008,7 @@ class MusicShellTest {
         val recent = Track(TrackId("track-placeholder"), "测试曲目")
         setContent(MusicUiState(loading = false, recent = listOf(recent)))
 
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("最近播放").performClick()
 
         compose.onNodeWithText("1 首歌曲").assertIsDisplayed()
@@ -1019,8 +1024,8 @@ class MusicShellTest {
             albums = PagingData.from(listOf(album)),
         )
 
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("专辑").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
         compose.onNodeWithText("测试专辑").performClick()
 
         compose.onNodeWithText("测试专辑").assertIsDisplayed()
@@ -1394,7 +1399,7 @@ class MusicShellTest {
         compose.onNodeWithTag("dynamic-primary-tab").assertDoesNotExist()
         val initialIndicatorCenter = compose.onNodeWithTag("liquid-bottom-tabs-indicator")
             .fetchSemanticsNode().boundsInRoot.center.x
-        compose.onNodeWithText("曲库").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.waitUntil(timeoutMillis = 3_000) {
             compose.onNodeWithTag("liquid-bottom-tabs-indicator")
                 .fetchSemanticsNode().boundsInRoot.center.x > initialIndicatorCenter + 100f
@@ -3216,18 +3221,20 @@ class MusicShellTest {
         var selected: TrackSort? = null
         setContent(onTrackSort = { selected = it })
 
-        compose.onNodeWithText("曲库").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌曲").performClick()
         compose.onNodeWithContentDescription("排序").performClick()
         compose.onNodeWithText("歌曲名 Z–A").performClick()
 
-        org.junit.Assert.assertEquals(TrackSort.TitleDescending, selected)
+        compose.runOnIdle { org.junit.Assert.assertEquals(TrackSort.TitleDescending, selected) }
     }
 
     @Test
     fun libraryShowsServerReportedTotalInsteadOfLoadedItemCount() {
         setContent(state = MusicUiState(loading = false, trackTotal = 128))
 
-        compose.onNodeWithText("曲库").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌曲").performClick()
 
         compose.onNodeWithText("共 128 首歌曲").assertIsDisplayed()
         compose.onNodeWithText("0 首已加载歌曲").assertDoesNotExist()
@@ -3238,7 +3245,7 @@ class MusicShellTest {
         val playlist = Playlist(PlaylistId("playlist-placeholder"), "测试歌单", trackCount = 3)
         setContent(state = MusicUiState(loading = false, playlists = listOf(playlist)))
 
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithText("只读").assertDoesNotExist()
         compose.onNodeWithContentDescription("新建歌单").performClick()
@@ -3299,7 +3306,7 @@ class MusicShellTest {
             onRemoveTracksFromPlaylist = { playlistId, trackIds -> removed = playlistId to trackIds },
         )
 
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithText("通勤歌单").performClick()
         compose.onNodeWithText("多选").performClick()
@@ -3319,14 +3326,13 @@ class MusicShellTest {
         compose.onNode(hasText("导航测试专辑") and androidx.compose.ui.test.hasClickAction())
             .performScrollTo()
             .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
-        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("曲目"))
-        compose.onNodeWithText("曲目").assertIsDisplayed()
+        compose.onNodeWithTag("album-play").assertIsDisplayed()
         if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
-        compose.onNodeWithText("收藏").performClick()
+        compose.onNodeWithText("我的").performClick()
         compose.onNodeWithText("首页").performClick()
-        compose.onNodeWithText("曲目").assertIsDisplayed()
+        compose.onNodeWithTag("album-play").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithText("歌曲信息").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
@@ -3336,12 +3342,12 @@ class MusicShellTest {
     @Test
     fun playlistEditorDraftSurvivesTabSwitch() {
         setContent()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithContentDescription("新建歌单").performClick()
         compose.onNodeWithText("歌单名称").performTextInput("保留草稿")
         compose.onNodeWithText("首页").performClick()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("保留草稿").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("新建歌单").assertIsDisplayed()
@@ -3353,8 +3359,8 @@ class MusicShellTest {
         val track = Track(TrackId("player-track"), "播放返回歌曲")
         val player = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0)
         setContent(state = MusicUiState(loading = false), albums = PagingData.from(listOf(album)), playerState = player)
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("专辑").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
         compose.onNodeWithText("播放返回专辑").performClick()
         compose.onNodeWithTag("dynamic-mini-player").assertIsDisplayed().performClick()
         compose.onNodeWithTag("player-morph-cover").assertIsDisplayed()
@@ -3368,13 +3374,13 @@ class MusicShellTest {
     fun editorDraftAndSelectedTabSurviveConfigurationRestore() {
         val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
         setContent(restoration = restoration)
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithContentDescription("新建歌单").performClick()
         compose.onNodeWithText("歌单名称").performTextInput("旋转后草稿")
         compose.onNodeWithText("首页").performClick()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("旋转后草稿").assertIsDisplayed()
     }
 
@@ -3385,8 +3391,8 @@ class MusicShellTest {
         val ready = MusicUiState(loading = false, detailKey = DetailRequestKey("album", album.id.value), detailTracks = tracks)
         val model = mutableStateOf(ready)
         setContent(stateProvider = { model.value }, albums = PagingData.from(listOf(album)))
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("专辑").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
         compose.onNodeWithText("长列表专辑").performClick()
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("列表歌曲 30"))
         val before = compose.onNodeWithText("列表歌曲 30").fetchSemanticsNode().boundsInRoot.top
@@ -3395,7 +3401,7 @@ class MusicShellTest {
         }
         compose.onNodeWithText("首页").performClick()
         compose.runOnIdle { model.value = ready.copy(detailKey = DetailRequestKey("playlist", "unrelated"), detailTracks = listOf(Track(TrackId("wrong"), "错误歌曲"))) }
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("错误歌曲").assertDoesNotExist()
         compose.onNodeWithContentDescription("正在加载曲目").assertIsDisplayed()
         compose.runOnIdle { model.value = ready }
@@ -3406,8 +3412,7 @@ class MusicShellTest {
     @Test
     fun liquidGlassSettingsReturnToSettingsWithToolbarAndSystemBack() {
         setContent()
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithText("我的").performClick()
         compose.onNodeWithText("Liquid Glass").performClick()
         compose.onNodeWithTag("liquid-glass-page").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
@@ -3416,20 +3421,20 @@ class MusicShellTest {
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.onNodeWithTag("settings-page").assertIsDisplayed()
-        compose.onNodeWithText("临时播放缓存").assertIsDisplayed()
+        compose.onNodeWithText("自动缓存歌曲").assertIsDisplayed()
         compose.onNodeWithTag("dynamic-bottom-bar").assertIsDisplayed()
     }
 
     @Test
     fun systemBackPopsMoreSubpageBeforeLeavingTheApp() {
         setContent()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithContentDescription("新建歌单").assertIsDisplayed()
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         compose.onNodeWithText("最近播放").assertIsDisplayed()
-        compose.onNodeWithText("设置").assertIsDisplayed()
+        compose.onNodeWithText("全部歌曲").assertIsDisplayed()
         compose.onNodeWithTag("dynamic-bottom-bar").assertIsDisplayed()
     }
 
@@ -3512,7 +3517,7 @@ class MusicShellTest {
             state = MusicUiState(loading = false, playlists = listOf(playlist), detailTracks = listOf(track)),
             restoration = restoration,
         )
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithText("保留选择歌单").performClick()
         compose.onNodeWithText("多选").performScrollTo().performClick()
@@ -3521,7 +3526,7 @@ class MusicShellTest {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
         compose.onNodeWithText("首页").performClick()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
@@ -3530,17 +3535,20 @@ class MusicShellTest {
     @Test
     fun albumGridScrollSurvivesSwitchingTabs() {
         val albums = (1..60).map { Album(AlbumId("grid-$it"), "专辑编号 $it") }
-        setContent(albums = PagingData.from(albums))
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("专辑").performClick()
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        setContent(restoration = restoration, albums = PagingData.from(albums))
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
         assertGridScrollSurvivesTabs("album-grid", "专辑编号 40")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("专辑编号 40").assertIsDisplayed()
     }
 
     @Test
     fun playlistGridScrollSurvivesSwitchingTabs() {
         val playlists = (1..60).map { Playlist(PlaylistId("grid-$it"), "歌单编号 $it") }
         setContent(state = MusicUiState(loading = false, playlists = playlists))
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         assertGridScrollSurvivesTabs("playlist-grid", "歌单编号 40")
     }
@@ -3552,7 +3560,7 @@ class MusicShellTest {
             compose.onNodeWithTag("dynamic-primary-tab").performClick()
         }
         compose.onNodeWithText("首页").performClick()
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         val after = compose.onNodeWithText(item).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
         assertEquals(before, after, 3f)
     }
@@ -3566,8 +3574,8 @@ class MusicShellTest {
         ).cacheCurrentDetail()
         val model = mutableStateOf(ready)
         setContent(stateProvider = { model.value }, albums = PagingData.from(listOf(album)))
-        compose.onNodeWithText("更多").performClick()
-        compose.onNodeWithText("专辑").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
         compose.onNodeWithText("缓存专辑").performClick()
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("缓存曲目 30"))
         val before = compose.onNodeWithText("缓存曲目 30").fetchSemanticsNode().boundsInRoot.top
@@ -3576,7 +3584,7 @@ class MusicShellTest {
         }
         compose.onNodeWithText("首页").performClick()
         compose.runOnIdle { model.value = ready.forDetail(DetailRequestKey("playlist", "other")) }
-        compose.onNodeWithText("更多").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("正在加载详情…").assertDoesNotExist()
         val after = compose.onNodeWithText("缓存曲目 30").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
         assertEquals(before, after, 3f)
@@ -3624,6 +3632,127 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("播放或暂停").assertIsDisplayed()
     }
 
+    @Test
+    fun homeCollectionLinksReturnToHomeWithoutReplacingLibraryStack() {
+        setContent()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("收藏 快捷入口").performClick()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithContentDescription("随机漫游").assertIsDisplayed()
+        compose.onNodeWithContentDescription("查看专辑").performClick()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithContentDescription("查看最近添加").performClick()
+        compose.onNodeWithText("全部歌曲").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithContentDescription("新建歌单").assertIsDisplayed()
+    }
+
+    @Test
+    fun collectionSortIsIndependentAcrossTabsAndRestores() {
+        var requestedSort: TrackSort? = null
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        setContent(restoration = restoration, onTrackSort = { requestedSort = it })
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌曲").performClick()
+        compose.onNodeWithContentDescription("排序").performClick()
+        compose.onNodeWithText("歌曲名 Z–A").performClick()
+        compose.runOnIdle { assertEquals(TrackSort.TitleDescending, requestedSort) }
+        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("查看最近添加").performClick()
+        compose.runOnIdle { assertEquals(TrackSort.RecentlyAdded, requestedSort) }
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.runOnIdle { assertEquals(TrackSort.TitleDescending, requestedSort) }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(TrackSort.TitleDescending, requestedSort) }
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithTag("library-menu").assertIsDisplayed()
+    }
+
+    @Test
+    fun trackScrollSurvivesHomeCollectionVisitAndConfigurationRestore() {
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        setContent(restoration = restoration, tracks = PagingData.from((1..80).map {
+            Track(TrackId("scroll-track-$it"), "歌曲编号 $it")
+        }))
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌曲").performClick()
+        compose.onNodeWithText("歌曲编号 40").assertDoesNotExist()
+        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText("歌曲编号 40"))
+        val before = compose.onNodeWithText("歌曲编号 40").fetchSemanticsNode().boundsInRoot.top
+        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag("dynamic-primary-tab").performClick()
+        }
+        compose.onNodeWithText("首页").performClick()
+        compose.onNodeWithContentDescription("查看最近添加").performClick()
+        compose.onNodeWithText("歌曲编号 1").assertIsDisplayed()
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        val restored = compose.onNodeWithText("歌曲编号 40").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals(before, restored, 3f)
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("歌曲编号 40").assertIsDisplayed()
+    }
+
+    @Test
+    fun profileIsARootPageAndSearchRemainsIndependent() {
+        setContent()
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("settings-page").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").assertDoesNotExist()
+        compose.onNodeWithText("Liquid Glass").performClick()
+        compose.onNodeWithTag("dynamic-search").performClick()
+        compose.onNodeWithText("搜索歌曲、歌手、专辑、歌单").assertIsDisplayed()
+        compose.onNodeWithTag("dynamic-search").assertIsSelected()
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("liquid-glass-page").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithTag("settings-page").assertIsDisplayed()
+    }
+
+    @Test
+    fun searchDetailReturnsToItsQueryAfterSwitchingTabs() {
+        val album = Album(AlbumId("search-nav"), "搜索导航专辑")
+        setContent(state = MusicUiState(
+            loading = false, searchQuery = "导航",
+            searchSuggestions = SearchSuggestions(albums = listOf(album)),
+        ))
+        compose.onNodeWithTag("dynamic-search").performClick()
+        compose.onNodeWithText("搜索导航专辑").performClick()
+        compose.onNodeWithTag("album-play").assertIsDisplayed()
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("dynamic-search").performClick()
+        compose.onNodeWithTag("album-play").assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("导航").assertIsDisplayed()
+        compose.onNodeWithText("快速匹配").assertIsDisplayed()
+    }
+
+    @Test
+    fun mediumNavigationShowsFourDestinations() {
+        assertWideNavigation(700)
+    }
+
+    @Test
+    fun expandedNavigationShowsFourDestinations() {
+        assertWideNavigation(1000)
+    }
+
+    private fun assertWideNavigation(width: Int) {
+        setContent(windowSize = { androidx.compose.ui.unit.DpSize(width.dp, 844.dp) })
+        compose.onNodeWithText("我的").performClick()
+        compose.onNodeWithTag("settings-page").assertIsDisplayed()
+        compose.onNodeWithText("音乐库").performClick()
+        compose.onNodeWithTag("library-menu").assertIsDisplayed()
+        compose.onNodeWithText("全部歌曲").performClick()
+        compose.onNodeWithText("首页").assertIsDisplayed()
+        compose.onNodeWithText("我的").assertIsDisplayed()
+        compose.onNodeWithText("搜索").performClick()
+        compose.onNodeWithText("搜索歌曲、歌手、专辑、歌单").assertIsDisplayed()
+    }
+
     private fun setContent(
         state: MusicUiState = MusicUiState(loading = false),
         restoration: androidx.compose.ui.test.junit4.StateRestorationTester? = null,
@@ -3632,6 +3761,7 @@ class MusicShellTest {
         playerState: PlayerState = PlayerState(),
         playerStateProvider: (() -> PlayerState)? = null,
         albums: PagingData<Album> = PagingData.empty(),
+        tracks: PagingData<Track> = PagingData.empty(),
         onToggleShuffle: () -> Unit = {},
         onCycleRepeatMode: () -> Unit = {},
         onTogglePlayback: () -> Unit = {},
@@ -3665,6 +3795,9 @@ class MusicShellTest {
         val content: @androidx.compose.runtime.Composable () -> Unit = {
             val detailKey =
                 androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
+            val pagingScope = androidx.compose.runtime.rememberCoroutineScope()
+            val trackFlow = androidx.compose.runtime.remember(tracks) { flowOf(tracks).cachedIn(pagingScope) }
+            val albumFlow = androidx.compose.runtime.remember(albums) { flowOf(albums).cachedIn(pagingScope) }
             MusicTestWindow(windowSize?.invoke(), testFontScale()) {
                 FnMusicTheme {
                     MusicShell(
@@ -3673,8 +3806,8 @@ class MusicShellTest {
                         managePlayerSystemBars = false,
                         state = stateProvider?.invoke() ?: state.copy(detailKey = detailKey.value),
                         playerState = playerStateProvider?.invoke() ?: playerState,
-                        pagedTracks = flowOf(PagingData.empty()),
-                        pagedAlbums = flowOf(albums),
+                        pagedTracks = { sort -> onTrackSort(sort); trackFlow },
+                        pagedAlbums = { albumFlow },
                         pagedArtists = flowOf(PagingData.empty()),
                         pagedFavorites = flowOf(PagingData.empty()),
                         pagedSearch = flowOf(PagingData.empty<SearchItem>()),
@@ -3682,8 +3815,6 @@ class MusicShellTest {
                         onRefresh = {},
                         onSearch = {},
                         onSearchType = { _: SearchType -> },
-                        onTrackSort = onTrackSort,
-                        onAlbumSort = {},
                         onRoam = onRoam,
                         onPlayAllTracks = {},
                         onPlayAllFavorites = {},

@@ -156,7 +156,7 @@ class LiquidGlassSettingsScreenTest {
     }
 
     @Test fun narrowLargeFontSettingsRetainAllActions() {
-        var cache = 0L
+        var cacheOpened = false
         var opened = false
         var loggedOut = false
         compose.setContent {
@@ -164,7 +164,7 @@ class LiquidGlassSettingsScreenTest {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                     Box(Modifier.width(320.dp)) {
-                        SettingsScreen(MusicUiState(), { cache = it }, { loggedOut = true }, { opened = true }, {})
+                        SettingsScreen(MusicUiState(), {}, { loggedOut = true }, { opened = true }, {}, onCache = { cacheOpened = true })
                     }
                 }
             }
@@ -172,12 +172,12 @@ class LiquidGlassSettingsScreenTest {
         compose.onAllNodes(hasText("%", substring = true)).assertCountEquals(0)
         compose.onNodeWithText("模糊程度", substring = true).assertDoesNotExist()
         compose.onNodeWithText("Liquid Glass").performScrollTo().performClick()
-        compose.onNodeWithText("2 GiB").performScrollTo().performClick()
-        compose.onNodeWithText("退出并清除凭据").performScrollTo().performClick()
+        compose.onNodeWithText("自动缓存歌曲").performScrollTo().performClick()
+        compose.onNodeWithText("退出音乐登录").performScrollTo().performClick()
         compose.runOnIdle {
             assertTrue(opened)
             assertTrue(loggedOut)
-            assertEquals(2_048L * 1024 * 1024, cache)
+            assertTrue(cacheOpened)
         }
     }
 

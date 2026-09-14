@@ -49,7 +49,7 @@ class MusicPageHostTest {
     @Test fun forwardEntersFromRightAndBackExitsToRight() {
         setContent()
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { navigation.push(morePage = MorePage.Albums) }
+        compose.runOnIdle { navigation.push(page = MusicPage.Albums) }
         compose.mainClock.advanceTimeBy(96)
         val entering = compose.onNodeWithTag("page-1").fetchSemanticsNode().boundsInRoot
         assertTrue("Forward page must enter from the right", entering.left > 0f)
@@ -65,8 +65,8 @@ class MusicPageHostTest {
     @Test fun predictiveBackSeeksCancelsAndCommitsOnlyOneEntry() {
         setContent()
         compose.runOnIdle {
-            navigation.push(morePage = MorePage.Albums)
-            navigation.push(morePage = MorePage.Playlists)
+            navigation.push(page = MusicPage.Albums)
+            navigation.push(page = MusicPage.Playlists)
         }
         compose.waitForIdle()
         val origin = navigation.current.id
