@@ -357,6 +357,7 @@ class Media3PlayerController(context: Context) : PlayerController {
         )
         .build()
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun publishState() {
         if (pendingTimeline) return
         val controller = runCatching { if (controllerFuture.isDone) controllerFuture.get() else null }.getOrNull() ?: return

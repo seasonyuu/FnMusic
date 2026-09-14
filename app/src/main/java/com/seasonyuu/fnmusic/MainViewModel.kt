@@ -51,6 +51,7 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 @HiltViewModel
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel() {
     val session: StateFlow<SessionState> = graph.session.state
     val loginForm = graph.session.loginForm
