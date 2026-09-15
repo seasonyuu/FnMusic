@@ -1084,12 +1084,13 @@ private fun HomeScreen(
     // full-width viewport so cards can slide under the screen edge instead of
     // being clipped at the page's 20dp content margin.
     Column(
-        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+        // Keep the root scroll surface edge-to-edge so the system-bar blur can
+        // sample content as it scrolls beneath the status bar.
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
     ) {
-        MusicAppBar("首页", modifier = Modifier.padding(horizontal = 20.dp))
         LazyColumn(
             Modifier.weight(1f),
-            contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            contentPadding = edgeToEdgeContentPadding(top = 20.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
           item {
@@ -1741,12 +1742,12 @@ private fun PlaylistRow(
 @Composable
 internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit) {
     Column(
-        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+        // Keep the collection surface behind the status bar for progressive blur.
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
     ) {
-        PageTitle("音乐库", onBack = null, subtitle = null)
         LazyColumn(
             modifier = Modifier.weight(1f).testTag("library-menu"),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item { LibraryEntry(FnIcons.Library, "全部歌曲", "浏览音乐库中的歌曲") { onNavigate(MusicPage.Tracks) } }

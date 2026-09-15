@@ -48,17 +48,27 @@ internal fun SettingsScreen(
     onAdminServer: (() -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { onRefreshProfile() }
+    val rootPage = onBack == null
     Column(
         modifier = Modifier.fillMaxSize().testTag("settings-page")
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    if (rootPage) WindowInsetsSides.Horizontal
+                    else WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                ),
+            ),
     ) {
-        Box(Modifier.padding(horizontal = 20.dp)) {
-            if (onBack != null) PageTitle("设置", onBack)
-            else PageTitle("我的")
+        if (onBack != null) {
+            Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("设置", onBack) }
         }
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            contentPadding = edgeToEdgeContentPadding(
+                horizontal = 20.dp,
+                top = 20.dp,
+                bottom = 20.dp,
+                includeTopInset = rootPage,
+            ),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
           item {
