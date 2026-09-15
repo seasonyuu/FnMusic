@@ -14,6 +14,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -54,6 +59,7 @@ fun LiquidBottomTabs(
 ) {
     if (tabsCount == 0) return
     val accent = FnAccent
+    val selectionColor = FnTextPrimary
     val glass = currentLiquidGlassMaterial()
     val scope = rememberCoroutineScope()
     val tabsBackdrop = rememberLayerBackdrop()
@@ -99,15 +105,14 @@ fun LiquidBottomTabs(
                 }
         }
         CompositionLocalProvider(LocalLiquidTabScale provides lerp(1f, 1.2f, dragAnimation.pressProgress)) {
-            // Static surfaces must sit behind the real labels. The glass path samples
-            // a tinted copy above them, which is deliberately absent when disabled.
+            // Static surfaces sit behind the labels; the moving tint is drawn above them.
             if (!useBackdrop) {
                 Box(Modifier.zIndex(-2f).graphicsLayer {
                     translationX = panelPx
                     val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
                     scaleX = scale
                     scaleY = scale
-                }.background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule()).height(64.dp).fillMaxWidth())
+                }.background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule()).liquidSurfaceHighlight().height(64.dp).fillMaxWidth())
             }
             Row(
                 Modifier
@@ -213,7 +218,7 @@ fun LiquidBottomTabs(
                                 scaleY *= 1f - (velocity * .25f).coerceIn(-.2f, .2f)
                             },
                             onDrawSurface = {
-                                drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
+                                drawRect(selectionColor.copy(alpha = .12f * (1f - .4f * dragAnimation.pressProgress)))
                                 drawRect(accent.copy(alpha = .08f * dragAnimation.pressProgress))
                             },
                         )
@@ -226,7 +231,7 @@ fun LiquidBottomTabs(
                             scaleY *= 1f - (velocity * .25f).coerceIn(-.2f, .2f)
                         }.clip(Capsule()).drawBehind {
                             drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
-                            drawRect(Color.White.copy(alpha = .12f * (1f - dragAnimation.pressProgress)))
+                            drawRect(selectionColor.copy(alpha = .12f * (1f - .4f * dragAnimation.pressProgress)))
                             drawRect(accent.copy(alpha = .08f * dragAnimation.pressProgress))
                         }
                     },
@@ -234,6 +239,39 @@ fun LiquidBottomTabs(
                 .height(56.dp).fillMaxWidth(1f / tabsCount)
                 .then(if (useBackdrop) Modifier.testTag("liquid-bottom-tabs-indicator") else Modifier)
             )
+            if (showSelectionIndicator && !useBackdrop) {
+                // The same moving color mask as the glass sample, drawn without
+                // backdrop sampling. Color follows the lens, not the committed page.
+                Row(
+                    Modifier.clearAndSetSemantics {}
+                        .graphicsLayer { translationX = panelPx }
+                        .drawWithContent {
+                            val left = 4.dp.toPx() + dragAnimation.value * tabWidthPx
+                            val center = left + tabWidthPx / 2f
+                            val velocity = dragAnimation.velocity / 10f
+                            val halfWidth = tabWidthPx * dragAnimation.scaleX /
+                                (1f - (velocity * .75f).coerceIn(-.2f, .2f)) / 2f
+                            val halfHeight = 56.dp.toPx() * dragAnimation.scaleY *
+                                (1f - (velocity * .25f).coerceIn(-.2f, .2f)) / 2f
+                            val mask = Path().apply {
+                                addRoundRect(RoundRect(center - halfWidth, size.height / 2f - halfHeight,
+                                    center + halfWidth, size.height / 2f + halfHeight, CornerRadius(halfHeight)))
+                            }
+                            clipPath(mask) { this@drawWithContent.drawContent() }
+                        }
+                        // Match the base row's layout and scale origin exactly. The mask
+                        // stays outside this transform, in the moving capsule's coordinates.
+                        .graphicsLayer {
+                            val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .height(64.dp).fillMaxWidth().padding(4.dp)
+                        .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = content,
+                )
+            }
             if (showSelectionIndicator && !useBackdrop) {
                 // Keep the selected tab's drag target above the row without painting over it.
                 Box(Modifier.padding(horizontal = 4.dp)

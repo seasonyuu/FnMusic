@@ -143,7 +143,7 @@ fun LiquidToggle(
                             onDrawSurface = { drawRect(Color.White.copy(alpha = 1f - motion.pressProgress)) },
                         )
                     } else {
-                        Modifier.graphicsLayer(transform).background(glass.surfaceColor, Capsule())
+                        Modifier.graphicsLayer(transform).background(Color.White.copy(alpha = 1f - .25f * motion.pressProgress.coerceIn(0f, 1f)), Capsule()).liquidSurfaceHighlight()
                     },
                 ),
             )

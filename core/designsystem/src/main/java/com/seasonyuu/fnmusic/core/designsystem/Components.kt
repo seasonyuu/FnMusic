@@ -272,7 +272,7 @@ fun MiniPlayer(
                             },
                         )
                     } else {
-                        Modifier.graphicsLayer(interaction.layerBlock).background(surfaceColor.copy(alpha = if (glass.enabled) .90f else glass.surfaceAlpha), Capsule())
+                        Modifier.graphicsLayer(interaction.layerBlock).background(surfaceColor.copy(alpha = if (glass.enabled) .90f else glass.surfaceAlpha), Capsule()).liquidSurfaceHighlight()
                     },
                 )
                 .clip(Capsule())

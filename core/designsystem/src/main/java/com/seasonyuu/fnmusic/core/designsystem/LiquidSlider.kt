@@ -129,7 +129,7 @@ fun LiquidSlider(
                     val velocity = if (pressed || dragged) motion.velocity / 10f else 0f
                     scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
                     scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
-                }.background(glass.surfaceColor, Capsule())).size(40.dp, 24.dp),
+                }.background(Color.White.copy(alpha = 1f - .25f * motion.pressProgress.coerceIn(0f, 1f)), Capsule()).liquidSurfaceHighlight()).size(40.dp, 24.dp),
             )
         },
     )

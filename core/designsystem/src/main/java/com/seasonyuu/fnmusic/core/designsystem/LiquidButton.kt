@@ -67,6 +67,7 @@ fun LiquidButton(
                     }
                     if (surfaceColor.isSpecified) drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                 })
+            .then(if (!glass.enabled) Modifier.liquidSurfaceHighlight() else Modifier)
             .clickable(
                 interactionSource = null,
                 indication = if (isInteractive) null else LocalIndication.current,

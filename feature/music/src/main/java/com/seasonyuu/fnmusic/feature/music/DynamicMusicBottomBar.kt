@@ -61,6 +61,7 @@ import com.seasonyuu.fnmusic.core.designsystem.DynamicBottomBarGeometryCalculato
 import com.seasonyuu.fnmusic.core.designsystem.FloatRect
 import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnAccent
+import com.seasonyuu.fnmusic.core.designsystem.FnAccentIcon
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
 import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
@@ -135,11 +136,11 @@ internal fun DynamicMusicBottomBar(
                         Icon(
                             destination.icon,
                             destination.label,
-                            tint = if (selectedDestination == destination) FnAccent else FnTextSecondary,
+                            tint = FnTextSecondary,
                         )
                         Text(
                             destination.label,
-                            color = if (selectedDestination == destination) FnAccent else FnTextSecondary,
+                            color = FnTextSecondary,
                             fontSize = 12.sp,
                             lineHeight = 14.sp,
                             maxLines = 1,
@@ -170,7 +171,7 @@ internal fun DynamicMusicBottomBar(
                 Icon(
                     compactDestination.icon,
                     compactDestination.label,
-                    tint = if (selectedDestination == MusicDestination.Search) FnTextSecondary else FnAccent,
+                    tint = if (selectedDestination == MusicDestination.Search) FnTextSecondary else FnAccentIcon,
                 )
             }
         }
@@ -187,7 +188,7 @@ internal fun DynamicMusicBottomBar(
             Icon(
                 MusicDestination.Search.icon,
                 MusicDestination.Search.label,
-                tint = if (selectedDestination == MusicDestination.Search) FnAccent else FnTextSecondary,
+                tint = if (selectedDestination == MusicDestination.Search) FnAccentIcon else FnTextSecondary,
             )
         }
 
