@@ -50,9 +50,9 @@ internal fun CacheSettingsScreen(value: PlaybackCachePreference, usage: Pair<Lon
         }
         Text("已缓存 ${usage.second} 首 · ${usage.first / (1024 * 1024)} MiB")
         Text("修改上限立即生效，优先清理较久未使用的歌曲。播放中的歌曲可能重新缓存。")
-        OutlinedButton(onClick = { confirm = true }, enabled = !busy) { Text("清除已缓存歌曲") }
+        OutlinedButton(colors = readableOutlinedButtonColors(), onClick = { confirm = true }, enabled = !busy) { Text("清除已缓存歌曲") }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("清除已缓存歌曲？") }, text = { Text("清除当前账户的临时缓存，当前播放继续。") }, confirmButton = { TextButton(onClick = { confirm = false; perform(onClear) }) { Text("清除") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("清除已缓存歌曲？") }, text = { Text("清除当前账户的临时缓存，当前播放继续。") }, confirmButton = { TextButton(colors = readableTextButtonColors(), onClick = { confirm = false; perform(onClear) }) { Text("清除") } }, dismissButton = { TextButton(colors = readableTextButtonColors(), onClick = { confirm = false }) { Text("取消") } })
 }

@@ -113,7 +113,7 @@ internal fun LibraryAdministrationScreen(api: MusicAdministration, onBack: () ->
             var metadata by rememberSaveable { mutableStateOf(original?.metadataPreference ?: "cloud_preferred") }
             var lyrics by rememberSaveable { mutableStateOf(original?.autoDownloadLyric ?: false) }
             AdminPage("音乐文件夹设置", { if (!busy) editing = null }) {
-                OutlinedTextField(path, { path = it }, label = { Text("音乐文件夹路径") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(path, { path = it }, label = { Text("音乐文件夹路径") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = readableTextFieldColors())
                 Text("元数据刮削偏好", style = MaterialTheme.typography.titleMedium)
                 listOf("cloud_preferred" to "优先使用线上数据", "local_only" to "仅使用本地数据").let { modes ->
                     (if (metadata == "local_preferred") modes + ("local_preferred" to "优先使用本地数据") else modes).forEach { (value, label) ->
@@ -135,9 +135,9 @@ internal fun LibraryAdministrationScreen(api: MusicAdministration, onBack: () ->
                     Text(folder.path)
                     if (folder.contentLastChangedAt > 0) Text("最近更新：${formatAdminTime(folder.contentLastChangedAt)}")
                     Row {
-                        TextButton(onClick = { editing = folder.guid; error = null }, enabled = !busy) { Text("编辑") }
-                        TextButton(onClick = { action { api.scanFolder(folder.guid); message = "已提交扫描任务"; reload() } }, enabled = !busy) { Text("扫描音乐库") }
-                        TextButton(onClick = { deleting = folder }, enabled = !busy) { Text("移除") }
+                        TextButton(colors = readableTextButtonColors(), onClick = { editing = folder.guid; error = null }, enabled = !busy) { Text("编辑") }
+                        TextButton(colors = readableTextButtonColors(), onClick = { action { api.scanFolder(folder.guid); message = "已提交扫描任务"; reload() } }, enabled = !busy) { Text("扫描音乐库") }
+                        TextButton(colors = readableTextButtonColors(), onClick = { deleting = folder }, enabled = !busy) { Text("移除") }
                     }
                 }
             }
@@ -155,9 +155,9 @@ internal fun LibraryAdministrationScreen(api: MusicAdministration, onBack: () ->
         }
         message?.let { Text(it) }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        TextButton(onClick = { action { reload() } }, enabled = !busy) { Text("刷新") }
+        TextButton(colors = readableTextButtonColors(), onClick = { action { reload() } }, enabled = !busy) { Text("刷新") }
     }
-    deleting?.let { folder -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("移除音乐文件夹？") }, text = { Text("从音乐库移除 ${folder.name.ifBlank { folder.path.trimEnd('/').substringAfterLast('/').ifBlank { folder.path } }}，不会删除原始音乐文件。") }, confirmButton = { TextButton(onClick = { deleting = null; action { api.removeFolder(folder.guid); reload() } }) { Text("移除") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } }) }
+    deleting?.let { folder -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("移除音乐文件夹？") }, text = { Text("从音乐库移除 ${folder.name.ifBlank { folder.path.trimEnd('/').substringAfterLast('/').ifBlank { folder.path } }}，不会删除原始音乐文件。") }, confirmButton = { TextButton(colors = readableTextButtonColors(), onClick = { deleting = null; action { api.removeFolder(folder.guid); reload() } }) { Text("移除") } }, dismissButton = { TextButton(colors = readableTextButtonColors(), onClick = { deleting = null }) { Text("取消") } }) }
 }
 
 @Composable
@@ -243,10 +243,10 @@ internal fun UserAdministrationScreen(api: MusicAdministration, currentUserId: S
                 val access = FolderAccess(mode, ids)
                 AdminPage(if (defaultEditor) "新用户默认权限" else if (original == null) "新增用户" else "编辑用户", { if (!busy) editing = null }) {
                     if (!defaultEditor) {
-                        OutlinedTextField(username, { username = it }, label = { Text("用户名") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(username, { username = it }, label = { Text("用户名") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = readableTextFieldColors())
                         Text(if (original == null) "设置用户密码" else "修改密码（留空则保留）")
-                        OutlinedTextField(password, { password = it }, label = { Text("新密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } })
-                        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("确认密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation())
+                        OutlinedTextField(password, { password = it }, label = { Text("新密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(), trailingIcon = { TextButton(colors = readableTextButtonColors(), onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } })
+                        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("确认密码") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(), colors = readableTextFieldColors())
                         if (original?.guid == currentUserId && password.isNotEmpty()) Text("修改自己的密码后将返回登录页。")
                     }
                     FolderAccessEditor(access, folders, !busy) { mode = it.mode; ids = ArrayList(it.guids) }
@@ -308,7 +308,7 @@ internal fun ServerAdministrationScreen(api: MusicAdministration, onBack: () -> 
     LaunchedEffect(api) { try { load() } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } }
     AdminPage("服务器设置", onBack) {
         if (settings != null) {
-            OutlinedTextField(name.orEmpty(), { name = it; saved = false }, label = { Text("服务器名称") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name.orEmpty(), { name = it; saved = false }, label = { Text("服务器名称") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = readableTextFieldColors())
             Button(onClick = { busy = true; scope.launch {
                 try { api.saveServerSettings(settings!!.copy(name = name!!.trim())); saved = true; error = null }
                 catch (cancelled: CancellationException) { throw cancelled }
@@ -318,7 +318,7 @@ internal fun ServerAdministrationScreen(api: MusicAdministration, onBack: () -> 
             if (saved) Text("已保存")
         } else if (error == null) CircularProgressIndicator()
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (settings == null) TextButton(onClick = { scope.launch { try { load(); error = null } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } } }) { Text("重试") }
+        if (settings == null) TextButton(colors = readableTextButtonColors(), onClick = { scope.launch { try { load(); error = null } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } } }) { Text("重试") }
     }
 }
 

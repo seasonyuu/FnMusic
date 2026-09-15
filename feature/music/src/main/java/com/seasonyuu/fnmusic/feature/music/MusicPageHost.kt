@@ -38,6 +38,7 @@ internal fun MusicPageHost(
     backEnabled: Boolean,
     onPop: () -> Unit,
     onNavigationSurfaceChanged: (Color) -> Unit = {},
+    onForegroundChanged: (Boolean) -> Unit = {},
     content: @Composable (MusicPageEntry) -> Unit,
 ) {
     val current = navigation.current
@@ -61,7 +62,11 @@ internal fun MusicPageHost(
     }
     // Observe frames in composition; a read inside SideEffect alone is not observed.
     val navigationSurface = surfaceAnimation.value
-    SideEffect { onNavigationSurfaceChanged(navigationSurface) }
+    SideEffect {
+        onNavigationSurfaceChanged(navigationSurface)
+        onForegroundChanged(navigation.appearanceFor(current).darkForeground
+            ?: (com.seasonyuu.fnmusic.core.designsystem.contrastingForeground(defaultSurface) == Color.Black))
+    }
     LaunchedEffect(navigation.entryIds, transitionState.currentState.id, transitionState.targetState.id) {
         navigation.retainAppearances(setOf(transitionState.currentState.id, transitionState.targetState.id))
     }

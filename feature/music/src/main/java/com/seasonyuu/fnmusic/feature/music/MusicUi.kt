@@ -290,6 +290,9 @@ import com.seasonyuu.fnmusic.core.model.TrackMetadata
 import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.model.AlbumSort
 import com.seasonyuu.fnmusic.core.model.SearchSuggestions
+import androidx.compose.runtime.SideEffect
+import com.seasonyuu.fnmusic.core.designsystem.contrastingForeground
+import com.seasonyuu.fnmusic.core.designsystem.FnAccentIcon
 import androidx.compose.material3.LocalContentColor
 import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.AlbumId
@@ -471,6 +474,7 @@ fun MusicShell(
         val pageStateHolder = rememberSaveableStateHolder()
         val defaultNavigationSurface = FnNavigationSurface
         var navigationSurface by remember(defaultNavigationSurface) { mutableStateOf(defaultNavigationSurface) }
+        var navigationDarkForeground by remember(defaultNavigationSurface) { mutableStateOf(contrastingForeground(defaultNavigationSurface) == Color.Black) }
         val destination = navigation.destination
         val detail = navigation.current.detail
         val keyboard = LocalSoftwareKeyboardController.current
@@ -559,6 +563,16 @@ fun MusicShell(
             }
         }
         val appBarBackdrop = rememberLayerBackdrop()
+        val systemBarView = androidx.compose.ui.platform.LocalView.current
+        val activity = systemBarView.context as? android.app.Activity
+        SideEffect {
+            activity?.let {
+                androidx.core.view.WindowCompat.getInsetsController(it.window, systemBarView).apply {
+                    isAppearanceLightStatusBars = !playerComposed && navigationDarkForeground
+                    isAppearanceLightNavigationBars = !playerComposed && navigationDarkForeground
+                }
+            }
+        }
         CompositionLocalProvider(
             LocalAppBarBackdrop provides appBarBackdrop,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
@@ -604,7 +618,7 @@ fun MusicShell(
                                 ),
                         ) {
                             if (!compact) {
-                                FnMusicTheme(darkTheme = navigationSurface.luminance() < .5f) {
+                                FnMusicTheme(darkTheme = !navigationDarkForeground) {
                                 if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName, navigationSurface)
                                 else MusicRail(destination, { navigate(it) }, navigationSurface)
                                 }
@@ -615,7 +629,7 @@ fun MusicShell(
                                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                                 snackbarHost = { SnackbarHost(snackbarHostState) },
                                 bottomBar = {
-                                    FnMusicTheme(darkTheme = navigationSurface.luminance() < .5f) {
+                                    FnMusicTheme(darkTheme = !navigationDarkForeground) {
                                     if (compact) {
                                         val backdrop = LocalFnBackdrop.current
                                         if (backdrop != null) {
@@ -682,6 +696,7 @@ fun MusicShell(
                                             backEnabled = !playerComposed,
                                             onPop = { popPage() },
                                             onNavigationSurfaceChanged = { navigationSurface = it },
+                                            onForegroundChanged = { navigationDarkForeground = it },
                                         ) { entry ->
                                             pageStateHolder.SaveableStateProvider(entry.id) {
                                                 val selected = entry.detail
@@ -721,7 +736,7 @@ fun MusicShell(
                                                                 popPage()
                                                             },
                                                         )
-                                                        is LibraryDetail.AlbumPage -> AlbumDetailScreen(
+                                                        is LibraryDetail.AlbumPage -> FnMusicTheme(darkTheme = true) { AlbumDetailScreen(
                                                             album = detailState.detailAlbum?.takeIf { it.id == selected.album.id } ?: selected.album,
                                                             state = detailState,
                                                             playerState = playerState,
@@ -730,7 +745,7 @@ fun MusicShell(
                                                             onMore = LocalTrackAction.current,
                                                             onBack = { popPage() },
                                                             onRetry = { onLoadAlbum(selected.album.id) },
-                                                        )
+                                                        ) }
                                                         else -> LibraryDetailScreen(
                                                             detail = selected,
                                                             state = detailState,
@@ -979,13 +994,13 @@ fun MusicShell(
                     title = { Text("删除歌单？") },
                     text = { Text("“${playlist.name}”将被永久删除，音乐文件不会受到影响。") },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(colors = readableTextButtonColors(), onClick = {
                             onDeletePlaylist(playlist.id)
                             deletePlaylistCandidate = null
                             popPage()
                         }) { Text("删除", color = MaterialTheme.colorScheme.error) }
                     },
-                    dismissButton = { TextButton(onClick = { deletePlaylistCandidate = null }) { Text("取消") } },
+                    dismissButton = { TextButton(colors = readableTextButtonColors(), onClick = { deletePlaylistCandidate = null }) { Text("取消") } },
                 )
             }
             purgePlaylistCandidate?.let { playlist ->
@@ -994,12 +1009,12 @@ fun MusicShell(
                     title = { Text("清理失效歌曲？") },
                     text = { Text("只会从歌单中移除已不存在或无权访问的条目，不会删除音乐文件。") },
                     confirmButton = {
-                        TextButton(onClick = {
+                        TextButton(colors = readableTextButtonColors(), onClick = {
                             onPurgeInvalidPlaylistTracks(playlist.id)
                             purgePlaylistCandidate = null
                         }) { Text("开始清理") }
                     },
-                    dismissButton = { TextButton(onClick = { purgePlaylistCandidate = null }) { Text("取消") } },
+                    dismissButton = { TextButton(colors = readableTextButtonColors(), onClick = { purgePlaylistCandidate = null }) { Text("取消") } },
                 )
             }
         }
@@ -1177,7 +1192,7 @@ private fun RecentTracksGrid(
                         Icon(
                             if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                             if (favorite) "取消收藏" else "收藏",
-                            tint = if (favorite) FnAccent else FnTextSecondary,
+                            tint = if (favorite) FnAccentIcon else FnTextSecondary,
                         )
                     }
                     IconButton(
@@ -1227,7 +1242,7 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
                 )
                 Box(
                     Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .08f))),
+                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .70f))),
                     ),
                 )
             }
@@ -1262,6 +1277,8 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
                     contentScale = ContentScale.Crop,
                 )
             }
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(70.dp)
+                .clip(shape).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .80f)))))
             Row(
                 Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1269,7 +1286,7 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
             ) {
                 Icon(FnIcons.Roam, null, tint = Color.White, modifier = Modifier.size(22.dp))
                 Text(
-                    "漫游",
+                    "漫游", color = Color.White,
                     style = TextStyle(fontSize = 15.sp, lineHeight = 20.sp),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -1312,6 +1329,7 @@ private fun FlowFeatureCard(
         ) {
             Box(Modifier.fillMaxSize()) {
                 FlowingLightBackground(variant)
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .70f)))))
                 Icon(
                     icon,
                     contentDescription = null,
@@ -1319,7 +1337,7 @@ private fun FlowFeatureCard(
                     modifier = Modifier.align(Alignment.Center).size(58.dp),
                 )
                 Text(
-                    title,
+                    title, color = Color.White,
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 20.dp),
                     style = TextStyle(fontSize = 15.sp, lineHeight = 20.sp),
                     fontWeight = FontWeight.SemiBold,
@@ -1497,7 +1515,7 @@ private fun FavoriteTrackRow(
     TrackRow(track, coverUrl(track.coverId, 120), onPlay) {
         Row {
             IconButton(onClick = { onToggleFavorite(track.copy(isFavorite = favorite)) }) {
-                Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "收藏", tint = if (favorite) FnAccent else FnTextSecondary)
+                Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "收藏", tint = if (favorite) FnAccentIcon else FnTextSecondary)
             }
             val onMore = LocalTrackAction.current
             IconButton(onClick = { onMore(track) }) {
@@ -1556,6 +1574,7 @@ private fun SearchScreen(
             placeholder = { Text("搜索歌曲、歌手、专辑、歌单") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             singleLine = true,
+            colors = readableTextFieldColors(),
         )
         AnimatedVisibility(visible = state.searchQuery.isNotBlank() && !state.searchSuggestions.isEmpty()) {
             SearchSuggestionPanel(
@@ -1904,7 +1923,7 @@ private fun PlaylistGridScreen(
             item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     CollectionHeading("歌单", "${playlists.size} 个", heading)
-                    OutlinedButton(onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
+                    OutlinedButton(colors = readableOutlinedButtonColors(), onClick = onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
                         Icon(Icons.Rounded.Add, "新建歌单")
                         Text("新建歌单")
                     }
@@ -2012,6 +2031,7 @@ private fun PlaylistEditorScreen(
                         placeholder = { Text("请输入歌单名称") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                        colors = readableTextFieldColors(),
                     )
                     Text("${name.length} / 32", color = FnTextSecondary, modifier = Modifier.align(Alignment.End))
                 }
@@ -2032,7 +2052,7 @@ private fun PlaylistEditorScreen(
                                     Icon(
                                         if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
                                         if (selected) "已选择" else "选择封面",
-                                        tint = if (selected) FnAccent else FnTextSecondary,
+                                        tint = if (selected) FnAccentIcon else FnTextSecondary,
                                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp),
                                     )
                                 }
@@ -2190,7 +2210,7 @@ private fun ActionSheetRow(icon: ImageVector, label: String, onClick: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Icon(icon, null, tint = FnAccent, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = FnAccentIcon, modifier = Modifier.size(24.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
@@ -2454,7 +2474,7 @@ private fun LibraryDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 item {
-                                    OutlinedButton(
+                                    OutlinedButton(colors = readableOutlinedButtonColors(),
                                         onClick = {
                                             if (selectingTracks) {
                                                 selectingTracks = false
@@ -2560,7 +2580,7 @@ private fun DetailHeading(
 private fun PagingErrorPane(message: String, onRetry: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(message, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = onRetry) { Text("重试") }
+        TextButton(colors = readableTextButtonColors(), onClick = onRetry) { Text("重试") }
     }
 }
 
@@ -3594,7 +3614,7 @@ private fun NowPlayingLyricsScreen(
                                     if (favorite) Icons.Rounded.Favorite
                                     else Icons.Rounded.FavoriteBorder,
                                     "收藏",
-                                    tint = if (favorite) FnAccent else FnTextSecondary,
+                                    tint = if (favorite) FnAccentIcon else FnTextSecondary,
                                 )
                             }
                             Spacer(Modifier.width(10.dp))
@@ -4453,7 +4473,7 @@ private fun NowPlayingScreen(
                         current.track.album?.name?.let { Text(it, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall) }
                     }
                     IconButton(onClick = { onToggleFavorite(current.track.copy(isFavorite = favorite)) }, modifier = Modifier.size(48.dp)) {
-                        Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "收藏", tint = if (favorite) FnAccent else FnTextSecondary)
+                        Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "收藏", tint = if (favorite) FnAccentIcon else FnTextSecondary)
                     }
                 }
             }
@@ -4499,7 +4519,7 @@ private fun NowPlayingScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onToggleShuffle, enabled = !state.isRoaming, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Shuffle, if (state.shuffleEnabled) "关闭随机播放" else "开启随机播放", tint = if (state.shuffleEnabled) FnAccent else FnTextSecondary)
+                        Icon(Icons.Rounded.Shuffle, if (state.shuffleEnabled) "关闭随机播放" else "开启随机播放", tint = if (state.shuffleEnabled) FnAccentIcon else FnTextSecondary)
                     }
                     IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "上一首", Modifier.size(34.dp)) }
                     FilledIconButton(onClick = onToggle, modifier = Modifier.size(72.dp)) {
@@ -4536,7 +4556,7 @@ private fun PlayerQueueOrRoamEntry(
                 .clearAndSetSemantics { contentDescription = "漫游模式" },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(FnIcons.Roam, null, tint = FnAccent, modifier = Modifier.size(24.dp))
+            Icon(FnIcons.Roam, null, tint = FnAccentIcon, modifier = Modifier.size(24.dp))
         }
     } else {
         IconButton(
@@ -5262,7 +5282,7 @@ private fun QueueTrackRow(
                 Column(Modifier.weight(1f)) {
                     Text(
                         item.track.title,
-                        color = if (current) FnAccent else FnTextPrimary,
+                        color = FnTextPrimary,
                         fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

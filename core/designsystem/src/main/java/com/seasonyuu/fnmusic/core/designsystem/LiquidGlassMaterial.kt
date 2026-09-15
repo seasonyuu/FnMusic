@@ -3,12 +3,13 @@ package com.seasonyuu.fnmusic.core.designsystem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.seasonyuu.fnmusic.core.model.LiquidGlassBlur
 
 /** Experimental clear/default/tinted material, independently resolving blur, brightness, and surface opacity. */
 @Immutable
-data class LiquidGlassMaterial(val blurScale: Float, val surfaceAlpha: Float, val brightness: Float, val enabled: Boolean = true) {
-    val surfaceColor: Color get() = Color(0xFF14121B).copy(alpha = surfaceAlpha)
+data class LiquidGlassMaterial(val blurScale: Float, val surfaceAlpha: Float, val brightness: Float, val enabled: Boolean = true, val baseSurface: Color = Color(0xFF14121B)) {
+    val surfaceColor: Color get() = baseSurface.copy(alpha = surfaceAlpha)
 }
 
 fun resolveLiquidGlassMaterial(setting: Float, enabled: Boolean = true): LiquidGlassMaterial {
@@ -28,4 +29,17 @@ fun resolveLiquidGlassMaterial(setting: Float, enabled: Boolean = true): LiquidG
 }
 
 @Composable
-fun currentLiquidGlassMaterial(): LiquidGlassMaterial = resolveLiquidGlassMaterial(LocalLiquidGlassBlur.current, LocalLiquidGlassEnabled.current)
+fun currentLiquidGlassMaterial(): LiquidGlassMaterial {
+    val material = resolveLiquidGlassMaterial(LocalLiquidGlassBlur.current, LocalLiquidGlassEnabled.current)
+    val surface = FnNavigationSurface
+    return material.copy(
+        baseSurface = surface,
+        // Light glass needs a stronger neutral veil so scrolling text cannot compete
+        // with the controls. Disabled glass uses a solid, theme-matched surface.
+        surfaceAlpha = when {
+            !material.enabled -> 1f
+            surface.luminance() > .5f -> material.surfaceAlpha + (1f - material.surfaceAlpha) * .4f
+            else -> material.surfaceAlpha
+        },
+    )
+}

@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -56,7 +55,7 @@ internal fun ThemeColorPicker(
                     Box(Modifier.size(48.dp).border(2.dp, if (choice == value) color else Color.Transparent, CircleShape)
                         .padding(5.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
                         if (choice == value) Icon(Icons.Rounded.Check, null,
-                            tint = if (color.luminance() > .5f) Color.Black else Color.White)
+                            tint = com.seasonyuu.fnmusic.core.designsystem.contrastingForeground(color))
                     }
                 }
             }

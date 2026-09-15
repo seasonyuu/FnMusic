@@ -7,10 +7,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 
-/** Opaque base color only. Navigation keeps glass opacity and interaction styling consistent. */
+/** Page-owned surface and foreground intent; foreground does not follow intermediate animation frames. */
 @Immutable
 internal data class MusicPageAppearance(
     val navigationSurfaceColor: Color = Color.Unspecified,
+    val darkForeground: Boolean? = null,
 )
 
 internal val LocalMusicPageAppearanceReporter =
@@ -23,7 +24,7 @@ internal val LocalMusicPageAppearanceReporter =
  * change another page's navigation. Undeclared pages use the default appearance.
  */
 @Composable
-internal fun PageNavigationAppearance(surfaceColor: Color) {
+internal fun PageNavigationAppearance(surfaceColor: Color, darkForeground: Boolean = false) {
     val report = LocalMusicPageAppearanceReporter.current
-    SideEffect { report(MusicPageAppearance(surfaceColor)) }
+    SideEffect { report(MusicPageAppearance(surfaceColor, darkForeground)) }
 }

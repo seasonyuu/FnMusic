@@ -70,7 +70,7 @@ internal fun CollectionPlayButton(enabled: Boolean, onClick: () -> Unit) {
         shape = RoundedCornerShape(50),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .06f),
-            contentColor = FnAccent)) {
+            contentColor = FnTextPrimary)) {
         Icon(Icons.Rounded.PlayArrow, null)
         Spacer(Modifier.width(6.dp))
         Text("播放全部")

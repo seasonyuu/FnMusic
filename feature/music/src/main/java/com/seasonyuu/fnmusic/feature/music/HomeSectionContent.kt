@@ -31,7 +31,7 @@ internal fun HomeSectionContent(
         if (error != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                 Text(error, Modifier.weight(1f).padding(vertical = 12.dp), color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onRetry) { Text("重试") }
+                TextButton(colors = readableTextButtonColors(), onClick = onRetry) { Text("重试") }
             }
         }
         when {
@@ -57,7 +57,7 @@ private fun HomeSectionSkeleton(section: CatalogSection) {
     if (section == CatalogSection.Tracks) {
         Column(semantics.fillMaxWidth().height(220.dp).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             repeat(3) {
-                Row(Modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = .04f)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(14.dp)).background(com.seasonyuu.fnmusic.core.designsystem.FnCard).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Placeholder(Modifier.size(52.dp))
                     Column(Modifier.weight(1f).padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Placeholder(Modifier.fillMaxWidth(.58f).height(14.dp))
@@ -81,5 +81,5 @@ private fun HomeSectionSkeleton(section: CatalogSection) {
 
 @Composable
 private fun Placeholder(modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = .09f)))
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary.copy(alpha = .10f)))
 }

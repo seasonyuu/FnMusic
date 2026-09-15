@@ -180,7 +180,7 @@ internal fun AlbumDetailScreen(
                     state.detailError != null -> item(key = "error") {
                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(state.detailError, color = Color.White)
-                            TextButton(onClick = onRetry) { Text("重试", color = Color.White) }
+                            TextButton(colors = readableTextButtonColors(), onClick = onRetry) { Text("重试", color = Color.White) }
                         }
                     }
                     tracks.isEmpty() -> item(key = "empty") {

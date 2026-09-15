@@ -46,7 +46,7 @@ internal fun UserRoleBadge(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.testTag("admin-badge"),
         color = FnAccent.copy(alpha = 0.14f),
-        contentColor = FnAccent,
+        contentColor = com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary,
         shape = RoundedCornerShape(50),
     ) {
         Text("管理员", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium)

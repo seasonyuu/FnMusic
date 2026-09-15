@@ -33,19 +33,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: MainViewModel = hiltViewModel()
             val music by viewModel.music.collectAsState()
+            val session by viewModel.session.collectAsState()
             val dark = when (music.appearance) {
                 com.seasonyuu.fnmusic.core.model.AppearancePreference.Dark -> true
                 com.seasonyuu.fnmusic.core.model.AppearancePreference.Light -> false
                 com.seasonyuu.fnmusic.core.model.AppearancePreference.System -> androidx.compose.foundation.isSystemInDarkTheme()
             }
             androidx.compose.runtime.SideEffect {
-                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                if (session !is SessionState.Ready) androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !dark
                     isAppearanceLightNavigationBars = !dark
                 }
             }
             FnMusicTheme(darkTheme = dark, accent = androidx.compose.ui.graphics.Color(music.themeColor.argb)) {
-                val session by viewModel.session.collectAsState()
                 val player by viewModel.player.collectAsState()
                 if (session is SessionState.Ready) {
                     MusicShell(

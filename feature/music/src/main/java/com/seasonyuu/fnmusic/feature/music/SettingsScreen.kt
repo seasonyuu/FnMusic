@@ -76,7 +76,7 @@ internal fun SettingsScreen(
           }
         state.profileError?.let { message -> item {
             Text(message, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onRefreshProfile) { Text("重试") }
+            TextButton(colors = readableTextButtonColors(), onClick = onRefreshProfile) { Text("重试") }
         } }
         item {
             SettingsNavigationGroup(buildList {
@@ -168,7 +168,7 @@ internal fun LiquidGlassSettingsScreen(
                         Text("默认", style = MaterialTheme.typography.labelMedium, color = FnTextSecondary)
                         Text("色调", style = MaterialTheme.typography.labelMedium, color = FnTextSecondary)
                     }
-                    OutlinedButton(
+                    OutlinedButton(colors = readableOutlinedButtonColors(),
                         enabled = enabled,
                         onClick = { onValueChange(LiquidGlassBlur.Default); onSave() },
                         modifier = Modifier.fillMaxWidth(),
@@ -178,7 +178,7 @@ internal fun LiquidGlassSettingsScreen(
             if (saveError != null) {
                 item {
                     Text(saveError, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("liquid-glass-save-error"))
-                    TextButton(onClick = onSave) { Text("重试保存") }
+                    TextButton(colors = readableTextButtonColors(), onClick = onSave) { Text("重试保存") }
                 }
             }
             }

@@ -39,13 +39,14 @@ internal fun PasswordSettingsScreen(
             password, { password = it; error = null }, label = { Text("新密码") },
             enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth(),
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } },
+            trailingIcon = { TextButton(colors = readableTextButtonColors(), onClick = { visible = !visible }) { Text(if (visible) "隐藏" else "显示") } },
         )
         OutlinedTextField(
             confirmation, { confirmation = it; error = null }, label = { Text("确认密码") },
             enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth(),
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             isError = confirmation.isNotEmpty() && confirmation != password,
+            colors = readableTextFieldColors(),
         )
         if (confirmation.isNotEmpty() && confirmation != password) Text("两次输入的密码不一致", color = MaterialTheme.colorScheme.error)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
