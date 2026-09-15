@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -255,7 +256,14 @@ internal fun LiquidMiniPlayer(
                 CoverImage(current.coverUrl, current.track.title, artworkModifier)
             }
             Column(Modifier.weight(1f)) {
-                Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    current.track.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = FnTextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     current.track.artists.joinToString(" / ") { it.name },
                     style = MaterialTheme.typography.bodySmall,

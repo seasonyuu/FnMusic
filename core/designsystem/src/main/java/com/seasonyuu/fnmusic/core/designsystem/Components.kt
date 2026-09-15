@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
@@ -300,7 +301,14 @@ fun MiniPlayer(
                         },
                 )
                 Column(Modifier.weight(1f)) {
-                    Text(current.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        current.track.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = FnTextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         current.track.artists.joinToString(" / ") { it.name },
                         style = MaterialTheme.typography.bodySmall,

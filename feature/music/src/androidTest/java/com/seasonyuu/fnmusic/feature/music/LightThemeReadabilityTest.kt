@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -26,6 +27,13 @@ class LightThemeReadabilityTest {
         val layouts = mutableListOf<TextLayoutResult>()
         compose.onNodeWithText(label, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         return layouts.single().layoutInput.style.color
+    }
+
+    private fun textLayout(label: String): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(label, useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        return layouts.single()
     }
 
     @Test fun nestedDarkSurfaceOverridesInheritedLightText() {
@@ -51,7 +59,13 @@ class LightThemeReadabilityTest {
 
 
     @Test fun realMiniPlayerUsesLocalForegroundForTitle() {
-        val track = com.seasonyuu.fnmusic.core.model.Track(com.seasonyuu.fnmusic.core.model.TrackId("contrast"), "迷你播放器标题")
+        val track = com.seasonyuu.fnmusic.core.model.Track(
+            com.seasonyuu.fnmusic.core.model.TrackId("contrast"),
+            "迷你播放器标题",
+            artists = listOf(com.seasonyuu.fnmusic.core.model.Artist(
+                com.seasonyuu.fnmusic.core.model.ArtistId("contrast-artist"), "歌手",
+            )),
+        )
         val player = com.seasonyuu.fnmusic.core.model.PlayerState(
             queue = listOf(com.seasonyuu.fnmusic.core.model.PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0)
         compose.setContent { FnMusicTheme(darkTheme = false) {
@@ -60,6 +74,12 @@ class LightThemeReadabilityTest {
             }
         } }
         assertEquals(FnDarkPalette.primary, textColor("迷你播放器标题"))
+        val title = textLayout("迷你播放器标题")
+        val artist = textLayout("歌手")
+        assertEquals("Mini player title and artist use the same text size", artist.layoutInput.style.fontSize, title.layoutInput.style.fontSize)
+        assertEquals(FontWeight.SemiBold, title.layoutInput.style.fontWeight)
+        assertEquals(FnDarkPalette.primary, title.layoutInput.style.color)
+        assertEquals(FnDarkPalette.secondary, artist.layoutInput.style.color)
     }
 
     @Test fun focusedInputAndTextActionUseNeutralText() {
