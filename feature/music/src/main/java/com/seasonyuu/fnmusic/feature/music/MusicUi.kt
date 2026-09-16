@@ -108,6 +108,10 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -162,8 +166,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ModalBottomSheet
@@ -263,6 +265,8 @@ import com.seasonyuu.fnmusic.core.designsystem.FnIcons
 import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnProgressiveSystemBars
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
+import com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost
+import com.seasonyuu.fnmusic.core.designsystem.LiquidMenuItem
 import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTabs
 import com.seasonyuu.fnmusic.core.designsystem.LocalFnBackdrop
@@ -456,7 +460,7 @@ fun MusicShell(
         .union(WindowInsets.displayCutout).union(WindowInsets.waterfall).union(WindowInsets.ime),
     immersivePlayerInsets: WindowInsets = WindowInsets.displayCutout.union(WindowInsets.waterfall),
     managePlayerSystemBars: Boolean = true,
-) {
+) = LiquidMenuHost {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val playerInsets = playerWindowInsets.asPaddingValues()
         val playerDirection = LocalLayoutDirection.current
@@ -1418,15 +1422,7 @@ internal fun PagingTrackScreen(
     CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }, actions = {
         if (sort != null && onSort != null) TrackSortMenu(sort, onSort)
         if (!pullRefreshEnabled) {
-            var expanded by remember { mutableStateOf(false) }
-            Box {
-                AppBarButton({ expanded = true }) { Icon(Icons.Rounded.MoreVert, "更多") }
-                DropdownMenu(expanded, { expanded = false }) {
-                    DropdownMenuItem(text = { Text("刷新") }, onClick = {
-                        expanded = false; tracks.refresh(); onRefresh()
-                    })
-                }
-            }
+            TrackRefreshMenu { tracks.refresh(); onRefresh() }
         }
     }) { heading, top ->
         PullToRefreshBox(
@@ -1521,26 +1517,36 @@ private fun FavoriteTrackRow(
     }
 }
 
+/** Keep the ordering direction visible without rotating letters or clock faces. */
 @Composable
-private fun TrackSortMenu(selected: TrackSort, onSelect: (TrackSort) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        AppBarButton(onClick = { expanded = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, "排序") }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            listOf(
-                TrackSort.RecentlyAdded to "最新添加",
-                TrackSort.OldestAdded to "最早添加",
-                TrackSort.TitleAscending to "歌曲名 A–Z",
-                TrackSort.TitleDescending to "歌曲名 Z–A",
-            ).forEach { (sort, label) ->
-                DropdownMenuItem(
-                    text = { Text(label) },
-                    onClick = { onSelect(sort); expanded = false },
-                    leadingIcon = { if (sort == selected) Icon(Icons.Rounded.PlayCircle, null, tint = FnAccent) },
-                )
-            }
-        }
+private fun MenuSortIcon(alphabetical: Boolean, ascending: Boolean) {
+    Row(Modifier.size(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (alphabetical) Icons.Rounded.SortByAlpha else Icons.Rounded.Schedule,
+            contentDescription = null, modifier = Modifier.size(16.dp))
+        Icon(if (ascending) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+            contentDescription = null, modifier = Modifier.size(8.dp))
     }
+}
+
+@Composable
+internal fun TrackSortMenu(selected: TrackSort, onSelect: (TrackSort) -> Unit) {
+    val choices = listOf(
+        TrackSort.RecentlyAdded to "最新添加",
+        TrackSort.OldestAdded to "最早添加",
+        TrackSort.TitleAscending to "歌曲名 A–Z",
+        TrackSort.TitleDescending to "歌曲名 Z–A",
+    )
+    AppBarMenu(
+        items = choices.map { (sort, label) ->
+            LiquidMenuItem(sort.name, label, selected = sort == selected, icon = {
+                MenuSortIcon(
+                    alphabetical = sort == TrackSort.TitleAscending || sort == TrackSort.TitleDescending,
+                    ascending = sort == TrackSort.OldestAdded || sort == TrackSort.TitleAscending,
+                )
+            })
+        },
+        onSelect = { id -> onSelect(choices.first { it.first.name == id }.first) },
+    ) { Icon(Icons.AutoMirrored.Rounded.Sort, "排序") }
 }
 
 @Composable
@@ -1727,27 +1733,43 @@ private fun AlbumGridScreen(
 }
 
 @Composable
-private fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        AppBarButton(onClick = { expanded = true }) {
-            Icon(Icons.AutoMirrored.Rounded.Sort, "专辑排序")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            listOf(
-                AlbumSort.RecentlyUpdated to "最近更新",
-                AlbumSort.OldestUpdated to "最早更新",
-                AlbumSort.NameAscending to "专辑名 A–Z",
-                AlbumSort.NameDescending to "专辑名 Z–A",
-            ).forEach { (sort, label) ->
-                DropdownMenuItem(
-                    text = { Text(label) },
-                    onClick = { onSelect(sort); expanded = false },
-                    leadingIcon = { if (sort == selected) Icon(Icons.Rounded.PlayCircle, null, tint = FnAccent) },
+internal fun AlbumSortMenu(selected: AlbumSort, onSelect: (AlbumSort) -> Unit) {
+    val choices = listOf(
+        AlbumSort.RecentlyUpdated to "最近更新",
+        AlbumSort.OldestUpdated to "最早更新",
+        AlbumSort.NameAscending to "专辑名 A–Z",
+        AlbumSort.NameDescending to "专辑名 Z–A",
+    )
+    AppBarMenu(
+        items = choices.map { (sort, label) ->
+            LiquidMenuItem(sort.name, label, selected = sort == selected, icon = {
+                MenuSortIcon(
+                    alphabetical = sort == AlbumSort.NameAscending || sort == AlbumSort.NameDescending,
+                    ascending = sort == AlbumSort.OldestUpdated || sort == AlbumSort.NameAscending,
                 )
-            }
-        }
+            })
+        },
+        onSelect = { id -> onSelect(choices.first { it.first.name == id }.first) },
+    ) { Icon(Icons.AutoMirrored.Rounded.Sort, "专辑排序") }
+}
+
+@Composable
+internal fun TrackRefreshMenu(onRefresh: () -> Unit) {
+    AppBarMenu(listOf(LiquidMenuItem("refresh", "刷新", icon = { Icon(Icons.Rounded.Refresh, null) })), { onRefresh() }) {
+        Icon(Icons.Rounded.MoreVert, "更多")
     }
+}
+
+@Composable
+internal fun PlaylistActionsMenu(busy: Boolean, onEdit: () -> Unit, onPurge: () -> Unit, onDelete: () -> Unit) {
+    AppBarMenu(
+        listOf(
+            LiquidMenuItem("edit", "编辑", icon = { Icon(Icons.Rounded.Edit, null) }),
+            LiquidMenuItem("purge", "清理失效", enabled = !busy, icon = { Icon(Icons.Rounded.DeleteSweep, null) }),
+            LiquidMenuItem("delete", "删除", enabled = !busy, destructive = true, icon = { Icon(Icons.Rounded.Delete, null) }),
+        ),
+        { id -> when (id) { "edit" -> onEdit(); "purge" -> onPurge(); "delete" -> onDelete() } },
+    ) { Icon(Icons.Rounded.MoreVert, "更多") }
 }
 
 @Composable
@@ -2275,17 +2297,12 @@ private fun LibraryDetailScreen(
     ) { mutableStateOf(emptySet<TrackId>()) }
     CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }, actions = {
         managedPlaylist?.let { playlist ->
-            var expanded by remember { mutableStateOf(false) }
-            Box {
-                AppBarButton({ expanded = true }) { Icon(Icons.Rounded.MoreVert, "更多") }
-                DropdownMenu(expanded, { expanded = false }) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = { expanded = false; onEditPlaylist(playlist) })
-                    DropdownMenuItem(text = { Text("清理失效") }, enabled = !state.playlistBusy,
-                        onClick = { expanded = false; onPurgePlaylist(playlist) })
-                    DropdownMenuItem(text = { Text("删除", color = MaterialTheme.colorScheme.error) }, enabled = !state.playlistBusy,
-                        onClick = { expanded = false; onDeletePlaylist(playlist) })
-                }
-            }
+            PlaylistActionsMenu(
+                busy = state.playlistBusy,
+                onEdit = { onEditPlaylist(playlist) },
+                onPurge = { onPurgePlaylist(playlist) },
+                onDelete = { onDeletePlaylist(playlist) },
+            )
         }
     }) { heading, top ->
         if (state.detailLoading) {

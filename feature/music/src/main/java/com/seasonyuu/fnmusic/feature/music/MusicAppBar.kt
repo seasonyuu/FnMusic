@@ -60,10 +60,34 @@ internal fun AppBarButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    menuAnchor: LiquidMenuAnchorScope? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val backdrop = LocalAppBarBackdrop.current ?: rememberLayerBackdrop()
     LiquidButton(onClick = onClick, backdrop = backdrop, enabled = enabled,
-        modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+        modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .then(menuAnchor?.surfaceModifier() ?: Modifier),
+        foregroundModifier = menuAnchor?.foregroundModifier ?: Modifier,
         contentPadding = PaddingValues(horizontal = 12.dp), content = content)
+}
+
+/** Standard app-bar menu adapter: business callers only supply entries and actions. */
+@Composable
+internal fun AppBarMenu(
+    items: List<LiquidMenuEntry>,
+    onSelect: (String) -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val backdrop = LocalAppBarBackdrop.current ?: rememberLayerBackdrop()
+    LiquidMenu(
+        expanded = expanded,
+        onDismissRequest = { expanded = false },
+        onExpandedChange = { expanded = it },
+        backdrop = backdrop,
+        items = items,
+        onSelect = onSelect,
+        transition = LiquidMenuTransition.Attached,
+        trigger = { toggle -> AppBarButton(toggle, menuAnchor = this, content = content) },
+    )
 }
