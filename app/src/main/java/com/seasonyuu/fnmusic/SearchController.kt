@@ -27,6 +27,10 @@ internal class SearchController(
     private var generation = 0L
 
     fun search(query: String) {
+        if (query.isBlank()) {
+            reset()
+            return
+        }
         val previous = music.value.search
         if (query.trim() == previous.query.trim()) {
             music.update { it.copy(search = it.search.copy(query = query)) }

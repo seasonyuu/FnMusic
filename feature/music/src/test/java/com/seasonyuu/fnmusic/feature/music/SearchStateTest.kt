@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SearchStateTest {
+    @Test fun `zero result categories are hidden but unknown counts remain available`() {
+        val state = SearchUiState(categoryCounts = mapOf(
+            SearchFilter.Artist to 0, SearchFilter.Album to 0,
+            SearchFilter.Track to 5, SearchFilter.Playlist to 0,
+        ))
+        assertEquals(listOf(SearchFilter.Best, SearchFilter.Track), state.orderedFilters())
+        assertEquals(listOf(SearchFilter.Best), state.copy(categoryCounts = SearchFilter.entries.associateWith { 0 }).orderedFilters())
+        assertEquals(SearchFilter.entries, SearchUiState().orderedFilters())
+    }
+
     @Test fun `best results preserve type order and deduplicate songs by identity`() {
         val first = Track(TrackId("shared"), "first")
         val second = Track(TrackId("second"), "second")

@@ -11,6 +11,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SearchControllerTest {
+    @Test fun `clearing a category search starts the next search in best results`() = check { controller, repository, state ->
+        controller.search("old"); controller.submit()
+        state.first { it.search.status == SearchStatus.Ready }
+        controller.select(SearchFilter.Track)
+        state.first { it.search.status == SearchStatus.Ready }
+        controller.search(" ")
+        assertEquals(SearchFilter.Best, state.value.search.filter)
+        assertEquals(SearchStatus.Idle, state.value.search.status)
+        assertTrue(state.value.search.categoryCounts.isEmpty())
+        controller.search("new"); controller.submit()
+        state.first { it.search.status == SearchStatus.Ready }
+        assertEquals(SearchFilter.Best, state.value.search.filter)
+        assertEquals(listOf("old", "new"), repository.suggestions)
+        assertEquals(listOf("old" to SearchType.Track), repository.pages)
+    }
+
     private class Repository : SearchRepository {
         val suggestions = mutableListOf<String>()
         val pages = mutableListOf<Pair<String, SearchType>>()

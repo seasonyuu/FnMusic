@@ -33,6 +33,7 @@ fun SearchUiState.orderedFilters(): List<SearchFilter> = buildList {
     addAll(
         SearchFilter.entries
             .filterNot { it == SearchFilter.Best }
+            .filter { categoryCounts[it] != 0 }
             .sortedWith(compareByDescending<SearchFilter> { categoryCounts[it] ?: 0 }.thenBy { it.ordinal }),
     )
 }
