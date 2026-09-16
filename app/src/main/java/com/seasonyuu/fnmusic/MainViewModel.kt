@@ -17,11 +17,9 @@ import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.model.Album
 import com.seasonyuu.fnmusic.core.model.AlbumSort
-import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.AlbumId
 import com.seasonyuu.fnmusic.core.model.ArtistId
 import com.seasonyuu.fnmusic.core.model.PlaylistId
-import com.seasonyuu.fnmusic.data.SearchItem
 import com.seasonyuu.fnmusic.feature.music.MusicUiState
 import com.seasonyuu.fnmusic.feature.music.DetailRequestKey
 import com.seasonyuu.fnmusic.feature.music.cacheCurrentDetail
@@ -36,10 +34,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
@@ -82,15 +77,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     fun pagedAlbums(sort: AlbumSort) = albumPages.getOrPut(sort) { graph.catalog.albums(sort).cachedIn(viewModelScope) }
     val pagedArtists = graph.catalog.artists().cachedIn(viewModelScope)
     val pagedFavorites = graph.catalog.favorites().cachedIn(viewModelScope)
-    private val pagedSearchRequest = MutableStateFlow("" to SearchType.Track)
-    @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val pagedSearch = pagedSearchRequest
-        .debounce(300)
-        .flatMapLatest { (query, type) ->
-            if (query.isBlank()) flowOf(PagingData.empty<SearchItem>())
-            else graph.search.results(query.trim(), type)
-        }
-        .cachedIn(viewModelScope)
+    private val searchController = SearchController(viewModelScope, graph.search, mutableMusic)
     private val liquidGlassSettings = com.seasonyuu.fnmusic.data.LiquidGlassSettings(
         scope = viewModelScope,
         read = { graph.settings.liquidGlass.first() },
@@ -105,6 +92,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     private val catalogRefresh = CatalogRefresh(graph.catalog, mutableMusic, graph.favorites::seed)
 
     private fun resetCatalog() {
+        searchController.reset()
         refreshJob?.cancel()
         val previous = mutableMusic.value
         mutableMusic.value = MusicUiState(
@@ -120,7 +108,6 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         )
     }
 
-    private var searchJob: Job? = null
     private var detailJob: Job? = null
     private var detailGeneration = 0L
     private val queueRecovery = PlaybackQueueRecovery(
@@ -251,25 +238,10 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
         }
     }
 
-    fun search(query: String) {
-        mutableMusic.value = mutableMusic.value.copy(searchQuery = query)
-        pagedSearchRequest.value = query to mutableMusic.value.searchType
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            delay(300)
-            val suggestions = if (query.isBlank()) {
-                com.seasonyuu.fnmusic.core.model.SearchSuggestions()
-            } else {
-                runCatching { graph.search.suggestions(query) }.getOrDefault(com.seasonyuu.fnmusic.core.model.SearchSuggestions())
-            }
-            if (mutableMusic.value.searchQuery == query) mutableMusic.value = mutableMusic.value.copy(searchSuggestions = suggestions)
-        }
-    }
-
-    fun selectSearchType(type: SearchType) {
-        mutableMusic.value = mutableMusic.value.copy(searchType = type)
-        pagedSearchRequest.value = mutableMusic.value.searchQuery to type
-    }
+    fun search(query: String) = searchController.search(query)
+    fun selectSearchType(filter: com.seasonyuu.fnmusic.feature.music.SearchFilter) = searchController.select(filter)
+    fun submitSearch() = searchController.submit()
+    fun retrySearch() = searchController.submit()
 
     fun roam() {
         viewModelScope.launch {

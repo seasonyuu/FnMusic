@@ -33,7 +33,6 @@ class HomeLoadingTest {
                     pagedAlbums = { flowOf(PagingData.empty()) },
                     pagedArtists = flowOf(PagingData.empty()),
                     pagedFavorites = flowOf(PagingData.empty()),
-                    pagedSearch = flowOf(PagingData.empty()),
                     coverUrl = { _, _ -> null },
                     onRefresh = { },
                     onSearch = { _ -> },

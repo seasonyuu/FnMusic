@@ -273,6 +273,12 @@ class MusicSearchRepository(private val api: MusicApi) : SearchRepository {
             albums = value.album.items.map(AlbumDto::toDomain),
             artists = value.artist.items.map { it.toDomain() },
             playlists = value.playlist.items.map { it.toDomain() },
+            // Some compatible servers omit totals (or return zero) while still
+            // providing suggestion items. Keep tab ordering useful in that case.
+            trackTotal = maxOf(value.track.total, value.track.items.size),
+            albumTotal = maxOf(value.album.total, value.album.items.size),
+            artistTotal = maxOf(value.artist.total, value.artist.items.size),
+            playlistTotal = maxOf(value.playlist.total, value.playlist.items.size),
         )
     }
 

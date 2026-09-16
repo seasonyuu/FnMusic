@@ -192,6 +192,10 @@ data class SearchSuggestions(
     val albums: List<Album> = emptyList(),
     val artists: List<Artist> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
+    val trackTotal: Int = tracks.size,
+    val albumTotal: Int = albums.size,
+    val artistTotal: Int = artists.size,
+    val playlistTotal: Int = playlists.size,
 )
 
 enum class SearchType { Track, Album, Artist, Playlist }

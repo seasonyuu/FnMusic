@@ -48,7 +48,6 @@ import com.seasonyuu.fnmusic.core.model.ArtistId
 import com.seasonyuu.fnmusic.core.model.AudioSpec
 import com.seasonyuu.fnmusic.core.model.LyricLine
 import com.seasonyuu.fnmusic.core.model.SearchSuggestions
-import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.Track
 import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackMetadata
@@ -56,6 +55,8 @@ import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.model.Playlist
 import com.seasonyuu.fnmusic.core.model.PlaylistId
 import com.seasonyuu.fnmusic.data.SearchItem
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.hasTestTag
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.Test
@@ -3204,22 +3205,70 @@ class MusicShellTest {
     }
 
     @Test
-    fun searchShowsCrossCategorySuggestionsBeforePagedResults() {
+    fun searchShowsBestResultsWithoutSuggestionPanel() {
         val track = Track(TrackId("track-placeholder"), "建议歌曲")
         val album = Album(AlbumId("album-placeholder"), "建议专辑")
         setContent(
             state = MusicUiState(
                 loading = false,
-                searchQuery = "建议",
-                searchSuggestions = SearchSuggestions(tracks = listOf(track), albums = listOf(album)),
+                search = SearchUiState(query = "建议", status = SearchStatus.Ready,
+                    bestResults = SearchSuggestions(tracks = listOf(track), albums = listOf(album)).bestResults()),
             ),
         )
 
         compose.onNodeWithTag("dynamic-search").performClick()
 
-        compose.onNodeWithText("快速匹配").assertIsDisplayed()
+        compose.onNodeWithText("快速匹配").assertDoesNotExist()
         compose.onNodeWithText("建议歌曲").assertIsDisplayed()
         compose.onNodeWithText("建议专辑").assertIsDisplayed()
+    }
+
+    @Test
+    fun searchMoreUsesExistingFavoriteMenu() {
+        val track = Track(TrackId("search-menu"), "搜索菜单歌曲")
+        var favorite: Track? = null
+        setContent(state = MusicUiState(loading = false, search = SearchUiState(
+            query = "歌曲", status = SearchStatus.Ready,
+            bestResults = listOf(SearchItem.TrackItem(track)),
+        )), onToggleFavorite = { favorite = it })
+        compose.onNodeWithTag("dynamic-search").performClick()
+        compose.onNodeWithContentDescription("更多操作：搜索菜单歌曲").performClick()
+        compose.onNodeWithText("下一首播放").assertIsDisplayed()
+        compose.onNodeWithText("收藏").performClick()
+        compose.runOnIdle { assertEquals(track.id, favorite?.id) }
+    }
+
+    @Test
+    fun searchLastResultClearsPlayerWithKeyboardOpen() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        org.junit.Assume.assumeTrue("Enable the software keyboard when a hardware keyboard is connected",
+            context.resources.configuration.keyboard == android.content.res.Configuration.KEYBOARD_NOKEYS ||
+                android.provider.Settings.Secure.getInt(context.contentResolver, "show_ime_with_hard_keyboard", 0) == 1)
+        val tracks = (0..39).map { Track(TrackId("search-$it"), "搜索结果 $it") }
+        setContent(windowSize = null, state = MusicUiState(loading = false, search = SearchUiState(
+            query = "搜索", status = SearchStatus.Ready,
+            bestResults = tracks.map { SearchItem.TrackItem(it) },
+        )), playerState = PlayerState(queue = listOf(PlayableTrack(tracks[0], "https://music.invalid/stream")), currentIndex = 0))
+        var keyboardVisible = false
+        fun readKeyboardVisibility(): Boolean {
+            compose.runOnIdle {
+                val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single()
+                keyboardVisible = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+                    ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+            }
+            return keyboardVisible
+        }
+        compose.onNodeWithTag("dynamic-search").performClick()
+        compose.onNodeWithTag("search-input").performClick()
+        // Floating keyboards report visibility with zero bottom inset; do not assume a docked IME.
+        compose.waitUntil(5_000) { readKeyboardVisibility() }
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-row-track:search-39"))
+        val footer = compose.onNodeWithTag("search-row-track:search-39").fetchSemanticsNode().boundsInRoot
+        val player = compose.onNodeWithTag("dynamic-mini-player").fetchSemanticsNode().boundsInRoot
+        assertTrue("Results must remain above the player while typing", footer.bottom <= player.top)
+        compose.onNodeWithTag("search-input").performImeAction()
+        compose.waitUntil(5_000) { !readKeyboardVisibility() }
     }
 
     @Test
@@ -3732,8 +3781,8 @@ class MusicShellTest {
     fun searchDetailReturnsToItsQueryAfterSwitchingTabs() {
         val album = Album(AlbumId("search-nav"), "搜索导航专辑")
         setContent(state = MusicUiState(
-            loading = false, searchQuery = "导航",
-            searchSuggestions = SearchSuggestions(albums = listOf(album)),
+            loading = false, search = SearchUiState(query = "导航", status = SearchStatus.Ready,
+                bestResults = SearchSuggestions(albums = listOf(album)).bestResults()),
         ))
         compose.onNodeWithTag("dynamic-search").performClick()
         compose.onNodeWithText("搜索导航专辑").performClick()
@@ -3742,8 +3791,10 @@ class MusicShellTest {
         compose.onNodeWithTag("dynamic-search").performClick()
         compose.onNodeWithTag("album-play").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("搜索").assertIsDisplayed()
+        compose.onNodeWithTag("search-input").assertIsDisplayed()
         compose.onNodeWithText("导航").assertIsDisplayed()
-        compose.onNodeWithText("快速匹配").assertIsDisplayed()
+        compose.onNodeWithText("快速匹配").assertDoesNotExist()
     }
 
     @Test
@@ -3849,11 +3900,10 @@ class MusicShellTest {
                         pagedAlbums = { albumFlow },
                         pagedArtists = flowOf(PagingData.empty()),
                         pagedFavorites = flowOf(PagingData.empty()),
-                        pagedSearch = flowOf(PagingData.empty<SearchItem>()),
                         coverUrl = { _, _ -> null },
                         onRefresh = {},
                         onSearch = {},
-                        onSearchType = { _: SearchType -> },
+                        onSearchType = { _: SearchFilter -> },
                         onRoam = onRoam,
                         onPlayAllTracks = {},
                         onPlayAllFavorites = {},

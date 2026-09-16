@@ -289,16 +289,13 @@ import com.seasonyuu.fnmusic.core.model.TrackId
 import com.seasonyuu.fnmusic.core.model.TrackMetadata
 import com.seasonyuu.fnmusic.core.model.TrackSort
 import com.seasonyuu.fnmusic.core.model.AlbumSort
-import com.seasonyuu.fnmusic.core.model.SearchSuggestions
 import androidx.compose.runtime.SideEffect
 import com.seasonyuu.fnmusic.core.designsystem.contrastingForeground
 import com.seasonyuu.fnmusic.core.designsystem.FnAccentIcon
 import androidx.compose.material3.LocalContentColor
-import com.seasonyuu.fnmusic.core.model.SearchType
 import com.seasonyuu.fnmusic.core.model.AlbumId
 import com.seasonyuu.fnmusic.core.model.ArtistId
 import com.seasonyuu.fnmusic.core.model.PlaylistId
-import com.seasonyuu.fnmusic.data.SearchItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -342,9 +339,7 @@ data class MusicUiState(
     val favorites: List<Track> = emptyList(),
     val recent: List<Track> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
-    val searchQuery: String = "",
-    val searchSuggestions: SearchSuggestions = SearchSuggestions(),
-    val searchType: SearchType = SearchType.Track,
+    val search: SearchUiState = SearchUiState(),
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
     val user: MusicUser? = null,
@@ -375,7 +370,7 @@ data class MusicUiState(
 )
 
 private val LocalTrackAction = compositionLocalOf<(Track) -> Unit> { {} }
-private val LocalBottomOverlayPadding = compositionLocalOf { 0.dp }
+internal val LocalBottomOverlayPadding = compositionLocalOf { 0.dp }
 
 @Composable
 internal fun edgeToEdgeContentPadding(
@@ -406,11 +401,10 @@ fun MusicShell(
     pagedAlbums: (AlbumSort) -> Flow<PagingData<Album>>,
     pagedArtists: Flow<PagingData<Artist>>,
     pagedFavorites: Flow<PagingData<Track>>,
-    pagedSearch: Flow<PagingData<SearchItem>>,
     coverUrl: (String?, Int) -> String?,
     onRefresh: () -> Unit,
     onSearch: (String) -> Unit,
-    onSearchType: (SearchType) -> Unit,
+    onSearchType: (SearchFilter) -> Unit,
     onRoam: () -> Unit,
     onPlayAllTracks: (TrackSort) -> Unit,
     onPlayAllFavorites: () -> Unit,
@@ -441,6 +435,8 @@ fun MusicShell(
     onCycleRepeatMode: () -> Unit,
     onCacheSizeChange: (Long) -> Unit,
     onLogout: () -> Unit,
+    onSubmitSearch: () -> Unit = {},
+    onRetrySearch: () -> Unit = {},
     onStreamingQualityChange: suspend (com.seasonyuu.fnmusic.core.model.StreamingQualityPreference) -> Unit = {},
     administration: com.seasonyuu.fnmusic.core.model.MusicAdministration? = null,
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
@@ -507,7 +503,6 @@ fun MusicShell(
         var catalogEditVersion by remember { mutableStateOf(0) }
         val artistItems = pagedArtists.collectAsLazyPagingItems()
         val favoriteItems = pagedFavorites.collectAsLazyPagingItems()
-        val searchItems = pagedSearch.collectAsLazyPagingItems()
         val snackbarHostState = remember { SnackbarHostState() }
         LaunchedEffect(state.error) {
             state.error?.let { snackbarHostState.showSnackbar(it) }
@@ -711,7 +706,7 @@ fun MusicShell(
                                                                         catalogEditVersion++
                                                                         artistItems.refresh()
                                                                         favoriteItems.refresh()
-                                                                        searchItems.refresh()
+                                                                        onRetrySearch()
                                                                     }
                                                                 }
                                                             },
@@ -826,7 +821,7 @@ fun MusicShell(
                                                         )
                                                         MusicDestination.Library -> LibraryMenu(::openPage)
                                                         MusicDestination.Search -> SearchScreen(
-                                                            state, searchItems, coverUrl, onSearch, onSearchType, onPlay, onToggleFavorite,
+                                                            state.search, coverUrl, onSearch, onSearchType, onSubmitSearch, onRetrySearch, onPlay, LocalTrackAction.current,
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
                                                             { pushDetail(LibraryDetail.ArtistPage(it)) },
                                                             { pushDetail(LibraryDetail.PlaylistPage(it)) },
@@ -1549,122 +1544,6 @@ private fun TrackSortMenu(selected: TrackSort, onSelect: (TrackSort) -> Unit) {
 }
 
 @Composable
-private fun SearchScreen(
-    state: MusicUiState,
-    results: LazyPagingItems<SearchItem>,
-    coverUrl: (String?, Int) -> String?,
-    onSearch: (String) -> Unit,
-    onSearchType: (SearchType) -> Unit,
-    onPlay: (List<Track>, Int) -> Unit,
-    onToggleFavorite: (Track) -> Unit,
-    onAlbum: (Album) -> Unit,
-    onArtist: (Artist) -> Unit,
-    onPlaylist: (Playlist) -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .padding(top = 20.dp),
-    ) {
-        MusicAppBar("搜索", modifier = Modifier.padding(horizontal = 20.dp))
-        OutlinedTextField(
-            value = state.searchQuery,
-            onValueChange = onSearch,
-            modifier = Modifier.fillMaxWidth().padding(20.dp),
-            placeholder = { Text("搜索歌曲、歌手、专辑、歌单") },
-            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-            singleLine = true,
-            colors = readableTextFieldColors(),
-        )
-        AnimatedVisibility(visible = state.searchQuery.isNotBlank() && !state.searchSuggestions.isEmpty()) {
-            SearchSuggestionPanel(
-                suggestions = state.searchSuggestions,
-                coverUrl = coverUrl,
-                onTrack = { track ->
-                    val tracks = state.searchSuggestions.tracks
-                    val index = tracks.indexOfFirst { it.id == track.id }
-                    if (index >= 0) onPlay(tracks, index)
-                },
-                onAlbum = onAlbum,
-                onArtist = onArtist,
-                onPlaylist = onPlaylist,
-            )
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SearchType.entries.forEach { type ->
-                FilterChip(
-                    selected = state.searchType == type,
-                    onClick = { onSearchType(type) },
-                    label = { Text(type.label()) },
-                )
-            }
-        }
-        LazyColumn(contentPadding = edgeToEdgeContentPadding(bottom = 20.dp)) {
-            items(count = results.itemCount, key = results.itemKey { item -> item.key() }) { index ->
-                when (val item = results[index]) {
-                    is SearchItem.TrackItem -> FavoriteTrackRow(item.value, state, coverUrl, {
-                        val tracks = results.itemSnapshotList.items.mapNotNull { (it as? SearchItem.TrackItem)?.value }
-                        val actualIndex = tracks.indexOfFirst { it.id == item.value.id }
-                        if (actualIndex >= 0) onPlay(tracks, actualIndex)
-                    }, onToggleFavorite)
-                    is SearchItem.AlbumItem -> SearchCategoryRow(item.value.name, item.value.artists.joinToString(" / ") { it.name }, coverUrl(item.value.coverId, 120)) { onAlbum(item.value) }
-                    is SearchItem.ArtistItem -> SearchCategoryRow(item.value.name, "${item.value.trackCount} 首歌曲", coverUrl(item.value.coverId, 120)) { onArtist(item.value) }
-                    is SearchItem.PlaylistItem -> SearchCategoryRow(item.value.name, item.value.trackCount.countLabel(), coverUrl(item.value.coverId, 120)) { onPlaylist(item.value) }
-                    null -> Unit
-                }
-            }
-            when (val refresh = results.loadState.refresh) {
-                is LoadState.Loading -> if (state.searchQuery.isNotBlank()) item { EmptyPane("正在搜索…") }
-                is LoadState.Error -> item { PagingErrorPane(refresh.error.message ?: "搜索失败") { results.retry() } }
-                else -> if (state.searchQuery.isNotBlank() && results.itemCount == 0) item { EmptyPane("没有找到相关内容") }
-            }
-        }
-    }
-}
-
-private fun SearchSuggestions.isEmpty(): Boolean =
-    tracks.isEmpty() && albums.isEmpty() && artists.isEmpty() && playlists.isEmpty()
-
-@Composable
-private fun SearchSuggestionPanel(
-    suggestions: SearchSuggestions,
-    coverUrl: (String?, Int) -> String?,
-    onTrack: (Track) -> Unit,
-    onAlbum: (Album) -> Unit,
-    onArtist: (Artist) -> Unit,
-    onPlaylist: (Playlist) -> Unit,
-) {
-    Surface(
-        color = FnCard,
-        contentColor = FnTextPrimary,
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-        tonalElevation = 6.dp,
-    ) {
-        Column(Modifier.padding(vertical = 10.dp)) {
-            Text("快速匹配", style = MaterialTheme.typography.titleSmall, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-            suggestions.tracks.take(2).forEach { track ->
-                SearchCategoryRow(
-                    track.title,
-                    "歌曲 · ${track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }}",
-                    coverUrl(track.coverId, 120),
-                ) { onTrack(track) }
-            }
-            suggestions.albums.firstOrNull()?.let { album ->
-                SearchCategoryRow(album.name, "专辑 · ${album.artists.joinToString(" / ") { it.name }}", coverUrl(album.coverId, 120)) { onAlbum(album) }
-            }
-            suggestions.artists.firstOrNull()?.let { artist ->
-                SearchCategoryRow(artist.name, "歌手 · ${artist.trackCount} 首歌曲", coverUrl(artist.coverId, 120)) { onArtist(artist) }
-            }
-            suggestions.playlists.firstOrNull()?.let { playlist ->
-                SearchCategoryRow(playlist.name, "歌单 · ${playlist.trackCount.countLabel()}", coverUrl(playlist.coverId, 120)) { onPlaylist(playlist) }
-            }
-        }
-    }
-}
-
-@Composable
 private fun AlbumRow(albums: List<Album>, coverUrl: (String?, Int) -> String?, onAlbum: (Album) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
@@ -2132,22 +2011,6 @@ private fun PlaylistPickerSheet(
     }
 }
 
-@Composable
-private fun SearchCategoryRow(title: String, subtitle: String, cover: String?, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CoverImage(cover, title, Modifier.size(52.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = FnTextSecondary, maxLines = 1, style = MaterialTheme.typography.bodySmall)
-        }
-        Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TrackActionSheet(
@@ -2585,19 +2448,7 @@ private fun PagingErrorPane(message: String, onRetry: () -> Unit) {
     }
 }
 
-private fun SearchType.label(): String = when (this) {
-    SearchType.Track -> "歌曲"
-    SearchType.Album -> "专辑"
-    SearchType.Artist -> "歌手"
-    SearchType.Playlist -> "歌单"
-}
 
-private fun SearchItem.key(): String = when (this) {
-    is SearchItem.TrackItem -> "track:${value.id.value}"
-    is SearchItem.AlbumItem -> "album:${value.id.value}"
-    is SearchItem.ArtistItem -> "artist:${value.id.value}"
-    is SearchItem.PlaylistItem -> "playlist:${value.id.value}"
-}
 
 @Composable
 private fun EmptyPane(text: String) {
