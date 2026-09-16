@@ -92,22 +92,21 @@ internal fun SearchScreen(
     // observe the current category's item count and reveal filters as soon as
     // a paged response arrives (including after deleting and re-entering text).
     val pages = state.pages.collectAsLazyPagingItems()
-    var headerHeightPx by remember { mutableIntStateOf(0) }
+    // Restore the measured inset with the page, just like its scroll position.
+    // Otherwise every return animates the list from an unmeasured zero height.
+    var headerHeightPx by rememberSaveable(density.density, density.fontScale) { mutableIntStateOf(0) }
     val headerHeight = with(density) { headerHeightPx.toDp() }
-    val animatedHeaderSpacer by animateDpAsState(
+    val animatedHeaderSpacer = if (headerHeightPx > 0) animateDpAsState(
         targetValue = headerHeight + 16.dp,
         animationSpec = tween(durationMillis = 220),
         label = "search-header-spacer-height",
-    )
+    ).value else 0.dp
     // This tracks the compact search-header mode. Once entered by focusing the
     // field, it remains active until the close button is explicitly tapped.
-    var searchFocused by remember { mutableStateOf(false) }
+    var searchFocused by rememberSaveable { mutableStateOf(state.query.isNotBlank()) }
     LaunchedEffect(Unit) {
-        // A reused composition can retain the IME focus from the previous page.
-        // Reset the compact mode before measuring the overlay header so its
-        // initial title and list padding agree.
+        // Clear stale IME focus without resetting the saved search-header mode.
         focus.clearFocus(force = true)
-        searchFocused = false
     }
     val orderedFilters = state.orderedFilters()
     val hasSearchResults = when (state.filter) {

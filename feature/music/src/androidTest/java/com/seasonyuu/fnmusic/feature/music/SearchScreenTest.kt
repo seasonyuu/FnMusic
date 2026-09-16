@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -74,6 +75,39 @@ class SearchScreenTest {
         compose.onNodeWithTag("search-filters").assertIsDisplayed()
         compose.onNodeWithTag("search-close").assertIsDisplayed()
         compose.onNodeWithContentDescription("关闭搜索").performClick()
+        compose.onNodeWithText("搜索").assertIsDisplayed()
+        compose.onNodeWithTag("search-filters").assertDoesNotExist()
+    }
+
+    @Test fun returningToSearchRestoresFiltersWithoutRestoringInputFocus() {
+        var visible by mutableStateOf(true)
+        var state by mutableStateOf(SearchUiState())
+        compose.setContent {
+            val holder = rememberSaveableStateHolder()
+            FnMusicTheme {
+                if (visible) holder.SaveableStateProvider("search") {
+                    Page(state, onSearch = { state = SearchUiState(query = it) })
+                }
+            }
+        }
+        compose.onNodeWithTag("search-input").performClick()
+        compose.runOnIdle { state = best() }
+        compose.onNodeWithTag("search-filters").assertIsDisplayed()
+        val originalTop = compose.onNodeWithTag("search-row-track:0").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { visible = false }
+        compose.onNodeWithTag("search-page").assertDoesNotExist()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { visible = true }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertEquals(originalTop, compose.onNodeWithTag("search-row-track:0").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals(originalTop, compose.onNodeWithTag("search-row-track:0").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("search-filter-Best").assertIsDisplayed().assertIsSelected()
+        compose.onNodeWithTag("search-input").assertTextContains("音乐").assertIsNotFocused()
+        compose.onNodeWithText("搜索").assertDoesNotExist()
+        compose.onNodeWithTag("search-close").performClick()
         compose.onNodeWithText("搜索").assertIsDisplayed()
         compose.onNodeWithTag("search-filters").assertDoesNotExist()
     }
