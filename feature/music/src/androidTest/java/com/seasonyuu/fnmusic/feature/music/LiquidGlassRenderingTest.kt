@@ -16,7 +16,10 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toPixelMap
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.luminance
 import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.platform.testTag
@@ -60,20 +63,32 @@ class LiquidGlassRenderingTest {
         }
     }
 
-    @Test fun disabledGlassButtonRetainsEdgeHighlightAndOpaqueInterior() {
-        compose.setContent { FnMusicTheme(darkTheme = true) {
+    @Test fun disabledGlassButtonRetainsEdgeHighlightAndTranslucentInterior() {
+        var dark by mutableStateOf(true)
+        var background by mutableStateOf(Color.Red)
+        compose.setContent { FnMusicTheme(darkTheme = dark) {
             CompositionLocalProvider(LocalLiquidGlassEnabled provides false) {
-                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Red), contentAlignment = Alignment.Center) {
-                    LiquidButton({}, rememberLayerBackdrop(), Modifier.size(120.dp, 48.dp).testTag("solid-button")) {}
+                Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
+                    LiquidButton({}, rememberLayerBackdrop(), Modifier.size(120.dp, 48.dp).testTag("fallback-button")) {}
                 }
             }
         } }
-        val pixels = compose.onNodeWithTag("solid-button").captureToImage().toPixelMap()
-        val center = pixels[pixels.width / 2, pixels.height / 2]
-        assertEquals(FnDarkPalette.navigation.red, center.red, .01f)
-        assertEquals(FnDarkPalette.navigation.green, center.green, .01f)
-        val edge = (0..4).maxOf { pixels[pixels.width / 4, it].luminance() }
-        assertTrue("Highlight should survive with glass disabled", edge > center.luminance() + .05f)
+        for (theme in listOf(true, false)) for (backdrop in listOf(Color.Red, Color.Blue)) {
+            compose.runOnIdle { dark = theme; background = backdrop }
+            val pixels = compose.onNodeWithTag("fallback-button").captureToImage().toPixelMap()
+            val center = pixels[pixels.width / 2, pixels.height / 2]
+            val surface = if (theme) FnDarkPalette.navigation else FnLightPalette.navigation
+            // The fallback deliberately keeps 25% of the background visible (8daac5a).
+            val expected = surface.copy(alpha = .75f).compositeOver(backdrop)
+            val message = "Fallback compositing: dark=$theme background=$backdrop"
+            assertEquals(message, expected.red, center.red, .01f)
+            assertEquals(message, expected.green, center.green, .01f)
+            assertEquals(message, expected.blue, center.blue, .01f)
+            if (theme) {
+                val edge = (0..4).maxOf { pixels[pixels.width / 4, it].luminance() }
+                assertTrue("Highlight should survive with glass disabled", edge > center.luminance() + .05f)
+            }
+        }
     }
 
     @Test fun draggedColorMaskMovesBeforePageSelectionIsCommitted() {
@@ -176,24 +191,38 @@ class LiquidGlassRenderingTest {
         }
     }
 
-    @Test fun staticSelectionSurfaceDoesNotDarkenSelectedContent() {
+    @Test fun staticSelectionTintKeepsAccentColorInBothThemes() {
+        val accent = Color(0xFFF62C55)
+        var dark by mutableStateOf(true)
         compose.setContent {
-            FnMusicTheme {
+            FnMusicTheme(darkTheme = dark, accent = accent) {
                 CompositionLocalProvider(LocalLiquidGlassEnabled provides false) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        LiquidBottomTabs(0, {}, rememberLayerBackdrop(), 2, Modifier.width(240.dp)) {
-                            LiquidBottomTab({}) { Box(Modifier.size(16.dp).background(FnAccent).testTag("selected-color")) }
+                    Box(Modifier.fillMaxSize().background(FnNavigationSurface), contentAlignment = Alignment.Center) {
+                        LiquidBottomTabs(0, {}, rememberLayerBackdrop(), 2,
+                            Modifier.width(240.dp).testTag("static-tabs")) {
+                            LiquidBottomTab({}, Modifier.testTag("selected-tab")) {
+                                Box(Modifier.size(16.dp).background(FnTextSecondary.copy(alpha = 1f)))
+                            }
                             LiquidBottomTab({}) { Box(Modifier.size(16.dp)) }
                         }
                     }
                 }
             }
         }
-        val pixels = compose.onNodeWithTag("selected-color", useUnmergedTree = true).captureToImage().toPixelMap()
-        val center = pixels[pixels.width / 2, pixels.height / 2]
-        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).red, center.red, 0.01f)
-        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).green, center.green, 0.01f)
-        assertEquals(androidx.compose.ui.graphics.Color(0xFFF62C55).blue, center.blue, 0.01f)
+        for (theme in listOf(true, false)) {
+            compose.runOnIdle { dark = theme }
+            val tabs = compose.onNodeWithTag("static-tabs")
+            val bounds = tabs.fetchSemanticsNode().boundsInRoot
+            val selected = compose.onNodeWithTag("selected-tab").fetchSemanticsNode().boundsInRoot
+            // The selection tint is a sibling of the base label. Capture their common
+            // parent so every Android renderer includes the final color-mask composite.
+            val pixels = tabs.captureToImage().toPixelMap()
+            val center = pixels[(selected.center.x - bounds.left).roundToInt(),
+                (selected.center.y - bounds.top).roundToInt()]
+            assertEquals("Selected red: dark=$theme", accent.red, center.red, .01f)
+            assertEquals("Selected green: dark=$theme", accent.green, center.green, .01f)
+            assertEquals("Selected blue: dark=$theme", accent.blue, center.blue, .01f)
+        }
     }
 
     @Test fun baseTabTextRemainsNeutralWithGlassDisabled() {

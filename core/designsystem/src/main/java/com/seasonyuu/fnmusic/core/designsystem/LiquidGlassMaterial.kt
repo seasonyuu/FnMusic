@@ -35,7 +35,7 @@ fun currentLiquidGlassMaterial(): LiquidGlassMaterial {
     return material.copy(
         baseSurface = surface,
         // Light glass needs a stronger neutral veil so scrolling text cannot compete
-        // with the controls. Disabled glass uses a solid, theme-matched surface.
+        // with the controls. Disabled glass retains a translucent, theme-matched surface.
         surfaceAlpha = when {
             !material.enabled -> 0.75f
             surface.luminance() > .5f -> material.surfaceAlpha + (1f - material.surfaceAlpha) * .4f
