@@ -3,6 +3,7 @@ package com.seasonyuu.fnmusic.core.designsystem
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -112,7 +113,8 @@ fun LiquidBottomTabs(
                     val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, dragAnimation.pressProgress)
                     scaleX = scale
                     scaleY = scale
-                }.background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule()).liquidSurfaceHighlight().height(64.dp).fillMaxWidth())
+                }.background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule()).liquidSurfaceHighlight()
+                    .border(1.dp, FnBorder.copy(alpha = FnBorder.alpha * .5f), Capsule()).height(64.dp).fillMaxWidth())
             }
             Row(
                 Modifier

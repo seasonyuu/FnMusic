@@ -1,6 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,7 @@ import com.seasonyuu.fnmusic.core.designsystem.FloatRect
 import com.seasonyuu.fnmusic.core.designsystem.FnNavigationSurface
 import com.seasonyuu.fnmusic.core.designsystem.FnAccent
 import com.seasonyuu.fnmusic.core.designsystem.FnAccentIcon
+import com.seasonyuu.fnmusic.core.designsystem.FnBorder
 import com.seasonyuu.fnmusic.core.designsystem.FnTextPrimary
 import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
 import com.seasonyuu.fnmusic.core.designsystem.LiquidBottomTab
@@ -305,6 +307,7 @@ private fun Modifier.glassCapsule(
     if (!glass.enabled) return this
         .graphicsLayer { layerBlock?.invoke(this) }
         .background(surfaceColor.copy(alpha = glass.surfaceAlpha), Capsule())
+        .border(1.dp, FnBorder.copy(alpha = FnBorder.alpha * .5f), Capsule())
     return drawBackdrop(
         backdrop = backdrop,
         shape = { Capsule() },

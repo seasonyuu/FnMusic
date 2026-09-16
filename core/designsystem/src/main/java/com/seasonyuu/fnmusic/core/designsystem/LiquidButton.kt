@@ -4,6 +4,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -60,7 +61,9 @@ fun LiquidButton(
                     if (surfaceColor.isSpecified) drawRect(surfaceColor.copy(alpha = glass.surfaceAlpha))
                 },
             ) else Modifier.graphicsLayer { if (isInteractive) interaction.layerBlock(this) }
-                .clip(Capsule()).drawBehind {
+                .clip(Capsule())
+                .border(1.dp, FnBorder.copy(alpha = FnBorder.alpha * .5f), Capsule())
+                .drawBehind {
                     if (tint.isSpecified) {
                         drawRect(tint, blendMode = BlendMode.Hue)
                         drawRect(tint.copy(alpha = glass.surfaceAlpha))

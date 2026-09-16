@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -282,6 +283,7 @@ internal fun SearchScreen(
                     .padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val backdrop = LocalAppBarBackdrop.current ?: rememberLayerBackdrop()
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -289,7 +291,7 @@ internal fun SearchScreen(
                         .then(
                             if (glass.enabled) {
                                 Modifier.drawBackdrop(
-                                    backdrop = headerBackdrop,
+                                    backdrop = backdrop,
                                     shape = { Capsule() },
                                     effects = {
                                         colorControls(brightness = glass.brightness, saturation = 1.5f)
@@ -302,6 +304,7 @@ internal fun SearchScreen(
                                 )
                             } else {
                                 Modifier.background(FnSurface, CircleShape)
+                                    .border(1.dp, FnBorder.copy(alpha = FnBorder.alpha * .5f), CircleShape)
                             },
                         )
                 ) {
