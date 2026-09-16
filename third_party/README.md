@@ -30,3 +30,13 @@ not yet used by the screen. No NeriPlayer application source is copied.
 The adapter preserves resolved accurate/estimated timings and Unicode segment
 boundaries. Zero-duration segments receive a 1 ms rendering duration to avoid
 upstream division by zero. This does not change the stored lyric data.
+
+# Liquid menu reference
+
+The menu morph equations are adapted from
+[sdegenaar/liquid_glass_widgets](https://github.com/sdegenaar/liquid_glass_widgets/tree/097dea6993e474d5d04db33a4f6f2ea31dd40ac1),
+pinned at `097dea6993e474d5d04db33a4f6f2ea31dd40ac1`.
+The original MIT notice is in [licenses/liquid-glass-widgets.txt](licenses/liquid-glass-widgets.txt).
+FnMusic implements its own Compose host, Android AGSL renderer and interaction handling;
+it does not embed Flutter or import the upstream renderer.
+The independent numeric fixture generator is `scripts/generate_liquid_menu_samples.py`.

@@ -37,6 +37,7 @@ fun LiquidButton(
     tint: Color = Color.Unspecified,
     surfaceColor: Color = FnNavigationSurface,
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
+    foregroundModifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
     val interaction = rememberLiquidInteraction()
@@ -85,7 +86,9 @@ fun LiquidButton(
                     Modifier
                 },
             )
-            .padding(contentPadding),
+            .padding(contentPadding)
+            // Record only foreground drawing, after the surface, indication and padding.
+            .then(foregroundModifier),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

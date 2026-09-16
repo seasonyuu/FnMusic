@@ -6,7 +6,10 @@ plugins {
 android {
     namespace = "com.seasonyuu.fnmusic.core.designsystem"
     compileSdk = 37
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -24,6 +27,12 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.backdrop)
     implementation(libs.backdrop.shapes)
+    implementation(libs.androidx.activity.compose)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
