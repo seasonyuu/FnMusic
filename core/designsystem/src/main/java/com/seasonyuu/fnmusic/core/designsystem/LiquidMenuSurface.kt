@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawPlainBackdrop
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.runtimeShaderEffect
 import kotlin.math.*
@@ -33,6 +34,7 @@ uniform float padding;
 uniform float density;
 uniform float4 tint;
 uniform float2 touch;
+uniform float4 optics;
 float rounded(float2 p, float4 r, float radius) {
     float2 q = abs(p-r.xy)-r.zw+radius;
     return length(max(q,0.0))+min(max(q.x,q.y),0.0)-radius;
@@ -53,11 +55,17 @@ half4 main(float2 coord) {
     float2 gradient = float2(distanceAt(p+float2(0.5,0))-distanceAt(p-float2(0.5,0)),
                              distanceAt(p+float2(0,0.5))-distanceAt(p-float2(0,0.5)));
     float2 normal = gradient/max(length(gradient),0.001);
-    float edge = 1.0-smoothstep(0.0,6.0*density,-d);
-    half4 bg = content.eval(coord-normal*edge*4.0*density);
+    // Match Backdrop lens(): a circular refraction profile, with no interior zoom.
+    float depth = max(-d,0.0);
+    float t = clamp(1.0-depth/optics.x,0.0,1.0);
+    float bend = (1.0-sqrt(max(0.0,1.0-t*t)))*optics.y;
+    float2 displacement = normal*bend;
+    half4 bg = content.eval(coord-displacement);
     float3 color = mix(float3(bg.rgb),tint.rgb,tint.a);
-    float light = max(dot(normal,normalize(float2(-0.6,-0.8))),0.0);
-    float rim = (1.0-smoothstep(0.0,1.2*density,-d))*light*0.35;
+    // Highlight.Default: 45-degree, two-sided lighting with additive white.
+    // A softened SDF band follows the fused contour instead of outlining its bounding box.
+    float light = abs(dot(normal,normalize(float2(1.0,1.0))));
+    float rim = (1.0-smoothstep(optics.z-optics.w,optics.z+optics.w,depth))*light*0.5;
     float glow = touch.x < 0.0 ? 0.0 : exp(-length(p-touch)/(45.0*density))*0.10;
     return half4(half3(clamp(color+rim+glow,0.0,1.0))*half(coverage),half(coverage));
 }
@@ -118,6 +126,7 @@ internal fun LiquidMenuSurface(
                     backdrop,
                     { RectangleShape },
                     effects = {
+                        colorControls(brightness = material.brightness, saturation = LiquidControlOptics.Saturation)
                         blur(density.density * material.blurScale)
                         runtimeShaderEffect("FnLiquidMenu:$shaderSource", shaderSource, "content") {
                             setFloatUniform(
@@ -146,6 +155,11 @@ internal fun LiquidMenuSurface(
                                 tint.blue,
                                 material.surfaceAlpha,
                             )
+                            setFloatUniform("optics",
+                                with(density) { LiquidControlOptics.RefractionHeight.toPx() },
+                                with(density) { LiquidControlOptics.RefractionAmount.toPx() },
+                                with(density) { LiquidControlOptics.Highlight.width.toPx() },
+                                with(density) { LiquidControlOptics.Highlight.blurRadius.toPx() })
                             setFloatUniform("touch", touch.x, touch.y)
                         }
                     },

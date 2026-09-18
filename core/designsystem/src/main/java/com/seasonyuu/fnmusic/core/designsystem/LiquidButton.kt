@@ -49,10 +49,11 @@ fun LiquidButton(
                 backdrop = backdrop,
                 shape = { Capsule() },
                 effects = {
-                    colorControls(brightness = glass.brightness, saturation = 1.5f)
+                    colorControls(brightness = glass.brightness, saturation = LiquidControlOptics.Saturation)
                     blur(1f.dp.toPx() * glass.blurScale)
-                    lens(4.dp.toPx(), 6.dp.toPx())
+                    lens(LiquidControlOptics.RefractionHeight.toPx(), LiquidControlOptics.RefractionAmount.toPx())
                 },
+                highlight = { LiquidControlOptics.Highlight },
                 layerBlock = if (isInteractive) interaction.layerBlock else null,
                 onDrawSurface = {
                     if (tint.isSpecified) {

@@ -48,12 +48,18 @@ class LiquidMenuRenderingTest {
                 }
             }
         }
+        val baselineDrifts = mutableListOf<String>()
         for (p in listOf(0f, .08f, .2f, .4f, .7f, 1f, 1.03f, -.02f, 0f)) {
             compose.runOnIdle { progress = p }
             compose.waitForIdle()
             compose.onNodeWithTag("liquid-menu-shader").assertExists()
             val image = compose.onNodeWithTag("scene").captureToImage()
-            save("contour-$p", image)
+            try {
+                save("contour-$p", image)
+            } catch (failure: AssertionError) {
+                if (failure.message?.startsWith("Screenshot drift:") != true) throw failure
+                baselineDrifts += failure.message.orEmpty()
+            }
             val pixels = image.toPixelMap()
             val blobs = menuBlobs(anchor, target, p, 1f)
             var inside = 0
@@ -80,6 +86,7 @@ class LiquidMenuRenderingTest {
             }
             assertTrue("Nonempty liquid shape", inside > 100)
         }
+        assertTrue("Contour oracle passed; screenshot baselines need review: $baselineDrifts", baselineDrifts.isEmpty())
     }
 
     @Test
@@ -113,6 +120,37 @@ class LiquidMenuRenderingTest {
         val outside = compose.onNodeWithTag("scene").captureToImage().toPixelMap()[10, 150]
         assertEquals(1f, outside.blue, .01f)
         assertEquals(0f, outside.red, .01f)
+    }
+
+    @Test
+    fun lensUsesButtonEdgeProfileWithoutInteriorZoom() {
+        assumeTrue(Build.VERSION.SDK_INT >= 33)
+        var refract by mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                FnMusicTheme(darkTheme = true) {
+                    val backdrop = rememberLayerBackdrop()
+                    Box(Modifier.size(320.dp).testTag("lens-scene")) {
+                        androidx.compose.foundation.Canvas(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+                            for (x in 0 until 320) drawRect(Color(x / 320f, x / 320f, x / 320f), Offset(x.toFloat(), 0f), Size(1f, 320f))
+                        }
+                        LiquidMenuSurface(backdrop,
+                            menuBlobs(Rect(240f, 20f, 288f, 68f), Rect(88f, 20f, 288f, 240f), 1f, 1f),
+                            shaderSource = if (refract) MenuShader else MenuShader.replace(
+                                "content.eval(coord-displacement)", "content.eval(coord)"))
+                    }
+                }
+            }
+        }
+        val flat = compose.onNodeWithTag("lens-scene").captureToImage().toPixelMap()
+        compose.runOnIdle { refract = true }
+        val lens = compose.onNodeWithTag("lens-scene").captureToImage().toPixelMap()
+        // Recover displacement from a known linear red ramp after the shared 55% tint.
+        fun shift(x: Int) = (lens[x, 130].red - flat[x, 130].red) * 320f / .45f
+        assertTrue("Button lens bends the inner edge", shift(89) > .5f)
+        assertEquals("Button lens leaves the interior unwarped", 0f, shift(140), .01f)
+        assertTrue("Opposite edge bends in the opposite direction", shift(286) < -.5f)
+        assertEquals(flat[20, 130].red, lens[20, 130].red, .001f)
     }
 
     private fun save(name: String, image: ImageBitmap) {

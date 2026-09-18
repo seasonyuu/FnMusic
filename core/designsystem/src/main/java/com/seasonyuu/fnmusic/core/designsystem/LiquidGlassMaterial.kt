@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.dp
 import com.seasonyuu.fnmusic.core.model.LiquidGlassBlur
 
 /** Experimental clear/default/tinted material, independently resolving blur, brightness, and surface opacity. */
@@ -49,4 +50,12 @@ fun currentLiquidGlassMaterial(): LiquidGlassMaterial {
             else -> material.surfaceAlpha
         },
     )
+}
+
+/** Shared compact-control optics used by buttons and morphing menus. */
+internal object LiquidControlOptics {
+    const val Saturation = 1.5f
+    val RefractionHeight = 4.dp
+    val RefractionAmount = 6.dp
+    val Highlight = com.kyant.backdrop.highlight.Highlight.Default
 }

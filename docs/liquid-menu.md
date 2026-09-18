@@ -57,7 +57,10 @@ allows reversal without replacing the trigger layout or its interaction bounds.
 ## Rendering and interaction
 
 - Android 13/API 33+: two rounded shapes with a smooth SDF union, backdrop blur,
-  refraction, edge lighting, and finger glow. Text is outside the shader.
+  refraction, edge lighting, and finger glow. Text is outside the shader. `LiquidControlOptics` shares the button saturation,
+  4dp refraction height, 6dp refraction amount and default highlight dimensions.
+  The morph shader applies the circular lens profile and two-sided highlight to its fused SDF;
+  the highlight blur is approximated by a softened distance band. Global blur and tint are preserved.
 - API 31–32: blurred rounded menu. API 26–30: theme-colored solid menu.
 - Disabled glass or shader compilation failure: solid menu. Disabled system
   animations: immediate open/close. No SDK minimum or production dependency upgrade.
