@@ -70,6 +70,9 @@ allows reversal without replacing the trigger layout or its interaction bounds.
   Movement is measured in window coordinates to avoid feedback from the menu's own
   deformation. Release/cancel springs back with damping ratio 0.5 and stiffness 300;
   scrollable menus retain scroll priority.
+- During closing, a fresh tap in the original anchor reverses the existing session.
+  A held tap retains the session until release, even if the spring finishes first;
+  cancellation or dragging out dismisses normally. Selection callbacks are not replayed.
 - Stable item IDs preserve business identity. A selection dismisses once, then invokes
   the current callback. Disposal removes the overlay immediately. Escape and system
   back dismiss; arrows/Tab and Enter select. Focus returns to the trigger.

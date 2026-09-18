@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.*
 import com.kyant.backdrop.Backdrop
 import kotlin.math.*
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.first
 
 enum class LiquidMenuTransition {
     Attached,
@@ -83,6 +84,7 @@ private class MenuRegistration(
     val items: State<List<LiquidMenuEntry>>,
     val onDismiss: State<() -> Unit>,
     val onSelect: State<(String) -> Unit>,
+    val onExpandedChange: State<(Boolean) -> Unit>,
     val backdrop: State<Backdrop>,
     val locals: State<CompositionLocalContext>,
 ) {
@@ -99,6 +101,8 @@ private class MenuRegistration(
 
 private class MenuSession(val owner: MenuRegistration) {
     var dismissed by mutableStateOf(false)
+    var reopenGestureActive by mutableStateOf(false)
+    var reopenRequested by mutableStateOf(false)
 
     fun dismiss() {
         if (!dismissed) {
@@ -173,10 +177,11 @@ fun LiquidMenu(
     val itemState = rememberUpdatedState(items)
     val dismissState = rememberUpdatedState(onDismissRequest)
     val selectState = rememberUpdatedState(onSelect)
+    val expandedChangeState = rememberUpdatedState(onExpandedChange)
     val backdropState = rememberUpdatedState(backdrop)
     val locals = rememberUpdatedState(currentCompositionLocalContext)
     val owner = remember {
-        MenuRegistration(expandedState, itemState, dismissState, selectState, backdropState, locals)
+        MenuRegistration(expandedState, itemState, dismissState, selectState, expandedChangeState, backdropState, locals)
     }
     val foregroundLayer = rememberGraphicsLayer()
     val hiddenLayer = rememberGraphicsLayer()
@@ -203,7 +208,10 @@ fun LiquidMenu(
                     it.owner.hidden = false
                 }
                 host.active = MenuSession(owner)
-            } else host.active?.dismissed = false
+            } else {
+                host.active?.dismissed = false
+                host.active?.reopenRequested = false
+            }
         }
     }
     DisposableEffect(host, owner) {
@@ -319,6 +327,9 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                 initialVelocity = if (open) progress.velocity else min(progress.velocity, -2.5f),
             )
         if (!open) {
+            // A tap that began during the final frame still owns its release.
+            snapshotFlow { session.reopenGestureActive }.first { !it }
+            if (session.reopenRequested) return@LaunchedEffect
             owner.hidden = false
             if (host.active === session) host.active = null
             runCatching { owner.focus.requestFocus() }
@@ -640,6 +651,43 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                     }
                 }
             }
+        }
+        if (!open) {
+            fun reopen() {
+                if (host.active !== session || owner.anchor != currentAnchor || owner.anchor.isEmpty ||
+                    owner.items.value.none { it is LiquidMenuItem && it.enabled }) return
+                session.reopenRequested = true
+                session.dismissed = false
+                owner.onExpandedChange.value(true)
+            }
+            // Painted last: this intercepts only the fixed original anchor, even when the
+            // shrinking content overlaps it. A closing gesture cannot enter this new hit path.
+            Box(Modifier.offset { IntOffset(anchor.left.roundToInt(), anchor.top.roundToInt()) }
+                .size(with(density) { anchor.width.toDp() }, with(density) { anchor.height.toDp() })
+                .testTag("liquid-menu-reopen")
+                .semantics { role = Role.Button; onClick("重新打开菜单") { reopen(); true } }
+                .pointerInput(session) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        session.reopenGestureActive = true
+                        var valid = true
+                        try {
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                valid = valid && !change.isConsumed && event.changes.size == 1 &&
+                                    change.position.x in 0f..size.width.toFloat() &&
+                                    change.position.y in 0f..size.height.toFloat() &&
+                                    (change.position - down.position).getDistance() <= viewConfiguration.touchSlop
+                                event.changes.forEach { it.consume() }
+                                if (!change.pressed && valid) reopen()
+                            } while (change.pressed)
+                        } finally {
+                            session.reopenGestureActive = false
+                        }
+                    }
+                })
         }
     }
 }

@@ -25,7 +25,7 @@ class LiquidMenuInteractionTest {
     private val selected = mutableListOf<String>()
     private var dismissals = 0
 
-    private fun fixture(long: Boolean = false) {
+    private fun fixture(long: Boolean = false, transition: LiquidMenuTransition = LiquidMenuTransition.Attached) {
         compose.setContent {
             FnMusicTheme {
                 LiquidMenuHost {
@@ -53,7 +53,7 @@ class LiquidMenuInteractionTest {
                                     ),
                                 { selected += it },
                                 onExpandedChange = { expanded = it },
-                                transition = LiquidMenuTransition.Attached,
+                                transition = transition,
                                 trigger = { toggle ->
                                     LiquidButton(toggle, backdrop,
                                         Modifier.testTag("trigger").height(48.dp).then(surfaceModifier()),
@@ -275,5 +275,47 @@ class LiquidMenuInteractionTest {
         assertEquals(100, dismissals)
         compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
         compose.onNodeWithTag("trigger").assertExists()
+    }
+    private fun reopenDuringClosing(transition: LiquidMenuTransition, waitForFinish: Boolean = true) {
+        fixture(transition = transition)
+        open()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("liquid-menu-item-first").performClick()
+        compose.mainClock.advanceTimeBy(120)
+        val reopen = compose.onNodeWithTag("liquid-menu-reopen")
+        reopen.performTouchInput { down(center) }
+        // Finish the spring while the new tap is held; its release must still reopen.
+        if (waitForFinish) compose.mainClock.advanceTimeBy(2_000)
+        reopen.assertExists().performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
+        compose.onNodeWithTag("liquid-menu-reopen").assertDoesNotExist()
+        assertEquals(listOf("first"), selected)
+        assertEquals(1, dismissals)
+        compose.onNodeWithTag("liquid-menu-item-last").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        assertEquals(listOf("first", "last"), selected)
+    }
+
+    @Test fun transientAnchorReversesBeforeClosingFinishes() = reopenDuringClosing(LiquidMenuTransition.Transient, waitForFinish = false)
+
+    @Test fun attachedAnchorReopensOnANewTapDuringClosing() = reopenDuringClosing(LiquidMenuTransition.Attached)
+    @Test fun transientAnchorReopensEvenAfterTheGlassDisappears() = reopenDuringClosing(LiquidMenuTransition.Transient)
+    @Test fun detachedAnchorReopensDuringClosing() = reopenDuringClosing(LiquidMenuTransition.Detached)
+
+    @Test fun canceledReopenTapDoesNotLeaveAnOverlay() {
+        fixture()
+        open()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("liquid-menu-dismiss").performClick()
+        compose.mainClock.advanceTimeBy(80)
+        compose.onNodeWithTag("liquid-menu-reopen").performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithTag("liquid-menu-reopen").performTouchInput { cancel() }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        assertTrue(selected.isEmpty())
     }
 }
