@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.test.platform.app.InstrumentationRegistry
 
 import androidx.compose.ui.test.assertIsEnabled
@@ -2396,7 +2397,7 @@ class MusicShellTest {
     }
 
     @Test
-    fun lyricsHeaderMoreActionUsesTheTrackCommandSheet() {
+    fun lyricsHeaderMoreActionUsesLiquidMenuAndStaysVisible() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         val player = PlayerState(
             queue = listOf(PlayableTrack(track, "https://music.invalid/stream")),
@@ -2418,6 +2419,11 @@ class MusicShellTest {
 
         compose.onNodeWithTag("player-lyrics-more-action", useUnmergedTree = true).performClick()
         compose.onNodeWithText("下一首播放").assertIsDisplayed()
+        compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
+        compose.mainClock.advanceTimeBy(4_000)
+        compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
+        compose.onNodeWithTag("liquid-menu-dismiss").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
     }
 
     @Test
@@ -3089,6 +3095,84 @@ class MusicShellTest {
         compose.onNodeWithText("下一首播放").assertIsDisplayed().performClick()
 
         org.junit.Assert.assertEquals(track.id, playedNext?.id)
+    }
+
+    @Test
+    fun playerMoreMorphsFromTransientSurfaceAndRestoresIcon() {
+        org.junit.Assume.assumeTrue(android.os.Build.VERSION.SDK_INT >= 33)
+        val track = Track(TrackId("morph-menu"), "液滴菜单测试")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artwork = java.io.File(context.cacheDir, "menu-artwork.png")
+        val bitmap = android.graphics.Bitmap.createBitmap(320, 320, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint()
+        for (row in 0..3) for (column in 0..3) {
+            paint.color = if ((row + column) % 2 == 0) android.graphics.Color.rgb(220, 145, 45)
+                else android.graphics.Color.rgb(40, 100, 140)
+            canvas.drawRect(column * 80f, row * 80f, (column + 1) * 80f, (row + 1) * 80f, paint)
+        }
+        artwork.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        setContent(playerState = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/stream", coverUrl = artwork.absolutePath)), currentIndex = 0))
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        compose.waitForIdle()
+        val anchor = compose.onNodeWithTag("player-more-action").fetchSemanticsNode().boundsInRoot
+        val rootBounds = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val restPixels = compose.onRoot().captureToImage().toPixelMap()
+        captureQueueScreenshot("player-menu-rest")
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("player-more-action").performClick()
+        compose.mainClock.advanceTimeBy(48)
+        compose.onNodeWithTag("liquid-menu-shader").assertExists()
+        compose.onNodeWithTag("liquid-menu-foreground", useUnmergedTree = true).assertExists()
+        val early = compose.onNodeWithTag("liquid-menu-foreground", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        captureQueueScreenshot("player-menu-opening")
+        compose.mainClock.advanceTimeBy(1_000)
+        val expanded = compose.onNodeWithTag("liquid-menu-content").fetchSemanticsNode().boundsInRoot
+        assertTrue("Menu must grow from the registered transient surface", expanded.height > early.height * 1.2f)
+        assertTrue("Player menu must grow upward", expanded.top < anchor.top)
+        assertEquals("Bottom edge stays at the trigger", anchor.bottom, expanded.bottom, 2f)
+        captureQueueScreenshot("player-menu-expanded")
+        compose.onNodeWithTag("liquid-menu-dismiss").performTouchInput { click(Offset(width * .1f, height * .8f)) }
+        compose.mainClock.advanceTimeBy(320)
+        compose.onNodeWithTag("liquid-menu-foreground", useUnmergedTree = true).assertExists()
+        captureQueueScreenshot("player-menu-returning")
+        val returningPixels = compose.onRoot().captureToImage().toPixelMap()
+        // Probe the old temporary circle away from the icon; only the original background remains.
+        for (dx in listOf(-.3f, .3f)) for (dy in listOf(-.3f, .3f)) {
+            val x = (anchor.center.x + anchor.width * dx - rootBounds.left).toInt()
+            val y = (anchor.center.y + anchor.height * dy - rootBounds.top).toInt()
+            val expected = restPixels[x, y]
+            val actual = returningPixels[x, y]
+            assertEquals("No residual glass: red", expected.red, actual.red, .04f)
+            assertEquals("No residual glass: green", expected.green, actual.green, .04f)
+            assertEquals("No residual glass: blue", expected.blue, actual.blue, .04f)
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("player-more-action").assertIsDisplayed()
+        captureQueueScreenshot("player-menu-restored")
+    }
+
+    @Test
+    fun playerLiquidMenuDeliversQueueAndFavoriteActionsOnce() {
+        val track = Track(TrackId("menu-current"), "当前歌曲")
+        val calls = mutableListOf<String>()
+        setContent(playerState = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0),
+            onToggleFavorite = { calls += "favorite:${it.id.value}" },
+            onPlayNext = { calls += "next:${it.id.value}" },
+            onAddToQueue = { calls += "queue:${it.id.value}" })
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        for (id in listOf("favorite", "next", "queue")) {
+            compose.onNodeWithTag("player-more-action").performClick()
+            compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
+            compose.onNodeWithTag("liquid-menu-item-$id").performClick()
+            compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        }
+        assertEquals(listOf("favorite:menu-current", "next:menu-current", "queue:menu-current"), calls)
     }
 
     @Test
@@ -3860,6 +3944,7 @@ class MusicShellTest {
         onSeek: (Long) -> Unit = {},
         onToggleFavorite: (Track) -> Unit = {},
         onPlayNext: (Track) -> Unit = {},
+        onAddToQueue: (Track) -> Unit = {},
         onTrackSort: (TrackSort) -> Unit = {},
         onRoam: () -> Unit = {},
         onSkipToQueueItem: (Int) -> Unit = {},
@@ -3924,7 +4009,7 @@ class MusicShellTest {
                         onSaveTrackMetadata = onSaveTrackMetadata,
                         onPlay = { _, _ -> },
                         onPlayNext = onPlayNext,
-                        onAddToQueue = {},
+                        onAddToQueue = onAddToQueue,
                         onToggleFavorite = onToggleFavorite,
                         onTogglePlayback = onTogglePlayback,
                         onSeek = onSeek,

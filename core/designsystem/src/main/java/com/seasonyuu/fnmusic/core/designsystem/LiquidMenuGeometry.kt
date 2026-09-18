@@ -43,12 +43,12 @@ internal fun menuCubic(t: Float, x1: Float, y1: Float, x2: Float, y2: Float): Fl
     return curve((lo + hi) / 2, y1, y2)
 }
 
-internal fun menuDestination(anchor: Rect, desired: Size, safe: Rect): Rect {
+internal fun menuDestination(anchor: Rect, desired: Size, safe: Rect, preferAboveAnchor: Boolean = false): Rect {
     val w = desired.width.coerceIn(0f, safe.width.coerceAtLeast(0f))
     val h = desired.height.coerceIn(0f, safe.height.coerceAtLeast(0f))
     val x = if (anchor.center.x > safe.center.x) anchor.right - w else anchor.left
     val y =
-        if (safe.bottom - anchor.top < h && anchor.bottom - safe.top >= h) anchor.bottom - h
+        if (preferAboveAnchor || (safe.bottom - anchor.top < h && anchor.bottom - safe.top >= h)) anchor.bottom - h
         else anchor.top
     return Rect(
         Offset(
@@ -116,4 +116,33 @@ internal fun menuDetachedDestination(anchor: Rect, desired: Size, safe: Rect, ga
         .coerceIn(safe.left, max(safe.left, safe.right - width))
     val top = if (useBelow) belowStart else aboveEnd - height
     return Rect(Offset(left, top.coerceIn(safe.top, max(safe.top, safe.bottom - height))), Size(width, height))
+}
+
+/** Foreground handoff timing, independent of the closing glass geometry. */
+internal fun menuTransientSurfaceAlpha(progress: Float): Float {
+    // Keep the icon handoff late in the collapse, independently of glass visibility.
+    val t = ((progress - .15f) / .20f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/** Closing-only geometry; the real anchor remains available for input and foreground recording. */
+internal fun menuTransientCollapse(blobs: MenuBlobs, anchor: Rect, progress: Float, closing: Float): MenuBlobs {
+    if (closing <= 0f || progress >= .35f) return blobs
+    val t = (progress / .35f).coerceIn(0f, 1f)
+    val shrink = t * t * (3f - 2f * t)
+    val scale = 1f + (shrink - 1f) * closing.coerceIn(0f, 1f)
+    fun collapse(rect: Rect): Rect {
+        if (rect.isEmpty) return Rect.Zero
+        val center = anchor.center + (rect.center - anchor.center) * scale
+        val half = Offset(rect.width, rect.height) * (.5f * scale)
+        return Rect(center - half, center + half)
+    }
+    return MenuBlobs(collapse(blobs.anchor), collapse(blobs.body),
+        blobs.anchorRadius * scale, blobs.radius * scale, blobs.blend * scale)
+}
+
+/** Only suppress the final subpixel glint; disappearance primarily comes from geometry. */
+internal fun menuTransientTipAlpha(progress: Float): Float {
+    val t = (progress / .04f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }

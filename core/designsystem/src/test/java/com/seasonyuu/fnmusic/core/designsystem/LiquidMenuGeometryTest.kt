@@ -97,4 +97,33 @@ class LiquidMenuGeometryTest {
             assertTrue(target.bottom <= a.top - 8f || target.top >= a.bottom + 8f)
         }
     }
+    @Test
+    fun transientSurfaceDisappearsBeforeTheClosingCircleAndUndershoot() {
+        for (progress in listOf(-.1f, -.02f, 0f, .05f, .15f)) {
+            assertEquals(0f, menuTransientSurfaceAlpha(progress), 0f)
+        }
+        assertEquals(.5f, menuTransientSurfaceAlpha(.25f), .00001f)
+        assertEquals(1f, menuTransientSurfaceAlpha(.35f), .00001f)
+        assertEquals(1f, menuTransientSurfaceAlpha(1.1f), 0f)
+    }
+    @Test
+    fun transientClosingShrinksToZeroWithoutNegativeSizesAndCanReverse() {
+        val anchor = Rect(240f, 300f, 288f, 348f)
+        val target = Rect(88f, 80f, 288f, 348f)
+        for (progress in listOf(-.05f, 0f, .01f, .15f, .35f, 1f)) {
+            val original = menuBlobs(anchor, target, progress, 1f)
+            for (closing in listOf(0f, .25f, .5f, .75f, 1f)) {
+                val result = menuTransientCollapse(original, anchor, progress, closing)
+                assertTrue(result.body.width >= 0f && result.body.height >= 0f)
+                assertTrue(result.body.left.isFinite() && result.body.top.isFinite())
+                if (closing == 0f) assertEquals(original, result)
+                if (closing == 1f && progress <= 0f) {
+                    assertTrue(result.body.isEmpty && result.anchor.isEmpty)
+                    assertEquals(anchor.center, result.body.center)
+                    assertEquals(0f, menuTransientTipAlpha(progress), 0f)
+                }
+            }
+        }
+        assertEquals(1f, menuTransientTipAlpha(.15f), 0f)
+    }
 }

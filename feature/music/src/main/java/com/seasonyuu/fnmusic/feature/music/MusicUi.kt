@@ -373,6 +373,11 @@ data class MusicUiState(
     val error: String? = null,
 )
 
+private val LocalPlayerArtworkBackdrop = compositionLocalOf<com.kyant.backdrop.backdrops.LayerBackdrop?> { null }
+
+internal data class PlayerMenuAction(val item: LiquidMenuItem, val invoke: () -> Unit)
+internal val LocalPlayerMenuActions = compositionLocalOf<(Track) -> List<PlayerMenuAction>> { { emptyList() } }
+
 private val LocalTrackAction = compositionLocalOf<(Track) -> Unit> { {} }
 internal val LocalBottomOverlayPadding = compositionLocalOf { 0.dp }
 
@@ -562,6 +567,7 @@ fun MusicShell(
             }
         }
         val appBarBackdrop = rememberLayerBackdrop()
+        val playerArtworkBackdrop = rememberLayerBackdrop()
         val systemBarView = androidx.compose.ui.platform.LocalView.current
         val activity = systemBarView.context as? android.app.Activity
         SideEffect {
@@ -574,9 +580,32 @@ fun MusicShell(
         }
         CompositionLocalProvider(
             LocalAppBarBackdrop provides appBarBackdrop,
+            LocalPlayerArtworkBackdrop provides playerArtworkBackdrop,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassEnabled provides state.liquidGlassEnabled,
             LocalContentColor provides FnTextPrimary,
+            LocalPlayerMenuActions provides { track ->
+                fun action(id: String, label: String, icon: ImageVector, callback: () -> Unit) =
+                    PlayerMenuAction(LiquidMenuItem(id, label, icon = { Icon(icon, null) }), callback)
+                val favorite = state.favoriteOverrides[track.id] ?: track.isFavorite
+                buildList {
+                    add(action("favorite", if (favorite) "取消收藏" else "收藏",
+                        if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder) {
+                        onToggleFavorite(track.copy(isFavorite = favorite))
+                    })
+                    add(action("next", "下一首播放", Icons.AutoMirrored.Rounded.PlaylistPlay) { onPlayNext(track) })
+                    add(action("queue", "加入待播队列", Icons.AutoMirrored.Rounded.QueueMusic) { onAddToQueue(track) })
+                    add(action("playlist", "添加到歌单", Icons.AutoMirrored.Rounded.PlaylistAdd) { playlistPickerTrack = track })
+                    track.album?.let { album -> add(action("album", "查看专辑", Icons.Rounded.Album) { pushDetail(LibraryDetail.AlbumPage(album)) }) }
+                    track.artists.firstOrNull()?.let { artist -> add(action("artist", "查看歌手", Icons.Rounded.Person) { pushDetail(LibraryDetail.ArtistPage(artist)) }) }
+                    (detail as? LibraryDetail.PlaylistPage)?.playlist?.let { playlist ->
+                        add(action("remove-playlist", "从歌单移除", Icons.Rounded.RemoveCircleOutline) {
+                            onRemoveTracksFromPlaylist(playlist.id, listOf(track.id))
+                        })
+                    }
+                    add(action("info", "歌曲信息", Icons.Rounded.Info) { pushDetail(LibraryDetail.TrackPage(track)) })
+                }
+            },
             LocalTrackAction provides { track ->
                 queueActionEntryId = null
                 actionTrack = track
@@ -2707,6 +2736,7 @@ private fun PlayerMorphOverlay(
             surfaceBounds.top + targetCover.bottom * contentScale,
         )
         val coverBounds = lerpRect(coverAnchor, transformedTarget, coverProgress)
+        val artworkCapture = LocalPlayerArtworkBackdrop.current
         CoverImage(
             highResolutionCoverUrl,
             current.track.title,
@@ -2716,6 +2746,8 @@ private fun PlayerMorphOverlay(
                     with(density) { coverBounds.width.coerceAtLeast(1f).toDp() },
                     with(density) { coverBounds.height.coerceAtLeast(1f).toDp() },
                 )
+                // Record artwork separately so menus sample it without recapturing their trigger.
+                .then(if (artworkCapture != null) Modifier.layerBackdrop(artworkCapture) else Modifier)
                 .clip(RoundedCornerShape(with(density) { lerpFloat(8.dp.toPx(), 14.dp.toPx(), p).toDp() }))
                 .graphicsLayer { alpha = if (showCover) 1f else 0f }
                 .drawWithContent {
@@ -2905,7 +2937,11 @@ private fun NowPlayingLyricsScreen(
     val lyricsDragging by lyricsListState.interactionSource.collectIsDraggedAsState()
     val density = LocalDensity.current
     val playerBackgroundBackdrop = rememberLayerBackdrop()
-    val onMore = LocalTrackAction.current
+    val artworkBackdrop = LocalPlayerArtworkBackdrop.current
+    val playerMenuBackdrop = if (artworkBackdrop != null)
+        com.kyant.backdrop.backdrops.rememberCombinedBackdrop(playerBackgroundBackdrop, artworkBackdrop)
+        else playerBackgroundBackdrop
+    var moreMenuOpen by remember(current.track.id) { mutableStateOf(false) }
     val context = LocalContext.current
     val audioManager =
         remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -3099,6 +3135,7 @@ private fun NowPlayingLyricsScreen(
         controlsActivity,
         current.track.id,
         sliderInteracting,
+        moreMenuOpen,
         lyricsDragging
     ) {
         controlsShown = true
@@ -3106,6 +3143,7 @@ private fun NowPlayingLyricsScreen(
                 displayedLyricsMode &&
                 !displayedQueueMode &&
                 !sliderInteracting &&
+                !moreMenuOpen &&
                 !lyricsDragging &&
                 !landscapeTouchActive
         ) {
@@ -3156,7 +3194,8 @@ private fun NowPlayingLyricsScreen(
                     current.track,
                     favorite,
                     onToggleFavorite,
-                    onMore,
+                    playerMenuBackdrop,
+                    { moreMenuOpen = it },
                     titleMaxLines = if (landscapeLayout) 1 else 2
                 )
             }
@@ -3487,33 +3526,11 @@ private fun NowPlayingLyricsScreen(
                                 )
                             }
                             Spacer(Modifier.width(10.dp))
-                            Box(
-                                modifier =
-                                    Modifier.size(if (inQueue) 40.dp else 46.dp)
-                                        .clip(CircleShape)
-                                        .pointerInput(current.track.id) {
-                                            detectTapGestures {
-                                                revealControls()
-                                                onMore(current.track)
-                                            }
-                                        }
-                                        .semantics {
-                                            contentDescription = "更多操作"
-                                            onClick {
-                                                revealControls()
-                                                onMore(current.track)
-                                                true
-                                            }
-                                        }
-                                        .testTag("player-lyrics-more-action"),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.MoreVert,
-                                    null,
-                                    tint = FnTextPrimary.copy(alpha = 0.82f)
-                                )
-                            }
+                            PlayerMoreMenu(
+                                current.track, playerMenuBackdrop,
+                                modifier = Modifier.size(if (inQueue) 40.dp else 46.dp).testTag("player-lyrics-more-action"),
+                                onOpenChange = { moreMenuOpen = it; revealControls() },
+                            )
                         }
                     }
                 if (!splitLayout && (displayedLyricsMode || (!displayedQueueMode && lastImmersiveContentWasLyrics))) {
@@ -4007,11 +4024,47 @@ private fun PlayerLyricsPane(
 }
 
 @Composable
+internal fun PlayerMoreMenu(
+    track: Track,
+    backdrop: com.kyant.backdrop.Backdrop,
+    modifier: Modifier = Modifier.size(46.dp),
+    onOpenChange: (Boolean) -> Unit = {},
+) {
+    androidx.compose.runtime.key(track.id) {
+        var expanded by remember { mutableStateOf(false) }
+        val actions = LocalPlayerMenuActions.current(track)
+        val notify = rememberUpdatedState(onOpenChange)
+        DisposableEffect(Unit) { onDispose { notify.value(false) } }
+        com.seasonyuu.fnmusic.core.designsystem.LiquidMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false; onOpenChange(false) },
+            onExpandedChange = { expanded = it; onOpenChange(it) },
+            backdrop = backdrop,
+            transition = com.seasonyuu.fnmusic.core.designsystem.LiquidMenuTransition.Transient,
+            preferAboveAnchor = true,
+            items = actions.map { it.item },
+            onSelect = { id -> actions.firstOrNull { it.item.id == id }?.invoke?.invoke() },
+            trigger = { toggle ->
+                // The resting icon has no surface. This explicitly registered circle exists
+                // only during the morph, matching the player's transient glass press surface.
+                Box(modifier.then(surfaceModifier()).clip(CircleShape).clickable(onClick = toggle)
+                    .semantics { contentDescription = "更多操作" }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.matchParentSize().then(foregroundModifier), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = .82f))
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
 private fun PlayerTrackMetadata(
     track: Track,
     favorite: Boolean,
     onToggleFavorite: (Track) -> Unit,
-    onMore: (Track) -> Unit,
+    backdrop: com.kyant.backdrop.Backdrop,
+    onMenuOpenChange: (Boolean) -> Unit,
     titleMaxLines: Int = 2,
 ) {
     Row(
@@ -4059,21 +4112,9 @@ private fun PlayerTrackMetadata(
                 tint = if (favorite) FnAccent else FnTextPrimary.copy(alpha = 0.82f),
             )
         }
-        Box(
-            modifier =
-                Modifier.size(46.dp)
-                    .clip(CircleShape)
-                    .pointerInput(track.id) { detectTapGestures { onMore(track) } }
-                    .semantics {
-                        contentDescription = "更多操作"
-                        onClick {
-                            onMore(track)
-                            true
-                        }
-                    }
-                    .testTag("player-more-action"),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = 0.82f)) }
+        PlayerMoreMenu(track, backdrop,
+            Modifier.size(46.dp).testTag("player-more-action"), onMenuOpenChange)
+
     }
 }
 

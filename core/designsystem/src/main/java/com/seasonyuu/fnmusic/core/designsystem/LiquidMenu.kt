@@ -39,7 +39,12 @@ import com.kyant.backdrop.Backdrop
 import kotlin.math.*
 import kotlinx.coroutines.currentCoroutineContext
 
-enum class LiquidMenuTransition { Attached, Detached }
+enum class LiquidMenuTransition {
+    Attached,
+    Detached,
+    /** A temporary opening surface shrinks to zero on close, leaving the original bare foreground. */
+    Transient,
+}
 
 sealed interface LiquidMenuAnchorShape {
     data object Capsule : LiquidMenuAnchorShape
@@ -87,6 +92,7 @@ private class MenuRegistration(
     var shape by mutableStateOf<LiquidMenuAnchorShape>(LiquidMenuAnchorShape.Capsule)
     var layer: GraphicsLayer? = null
     var transition by mutableStateOf(LiquidMenuTransition.Detached)
+    var preferAboveAnchor by mutableStateOf(false)
     var hidden by mutableStateOf(false)
     val focus = FocusRequester()
 }
@@ -155,6 +161,7 @@ fun LiquidMenu(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     transition: LiquidMenuTransition = LiquidMenuTransition.Detached,
+    preferAboveAnchor: Boolean = false,
     trigger: @Composable LiquidMenuAnchorScope.(toggle: () -> Unit) -> Unit,
     onExpandedChange: (Boolean) -> Unit,
 ) {
@@ -173,7 +180,7 @@ fun LiquidMenu(
     }
     val foregroundLayer = rememberGraphicsLayer()
     val hiddenLayer = rememberGraphicsLayer()
-    SideEffect { owner.transition = transition; owner.layer = foregroundLayer }
+    SideEffect { owner.transition = transition; owner.preferAboveAnchor = preferAboveAnchor; owner.layer = foregroundLayer }
     val toggle = { if (expanded) host.active?.dismiss() else onExpandedChange(true); Unit }
     val scope = LiquidMenuAnchorScope(
         toggle,
@@ -181,7 +188,7 @@ fun LiquidMenu(
             owner.surface = it.boundsInWindow()
             owner.shape = shape
         } },
-        if (transition == LiquidMenuTransition.Attached) Modifier
+        if (transition != LiquidMenuTransition.Detached) Modifier
             .onPlaced { owner.foreground = it.boundsInWindow() }
             .drawWithContent {
                 foregroundLayer.record { this@drawWithContent.drawContent() }
@@ -243,7 +250,7 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
     val anchor = remember { currentAnchor }
     val surface = remember { currentSurface }
     val full = rendering == MenuRendering.Shader &&
-        owner.transition == LiquidMenuTransition.Attached && !surface.isEmpty && !owner.foreground.isEmpty
+        owner.transition != LiquidMenuTransition.Detached && !surface.isEmpty && !owner.foreground.isEmpty
     val startWindow = remember { window }
     val startRadius = when (val shape = owner.shape) {
         LiquidMenuAnchorShape.Capsule -> min(surface.width, surface.height) / 2
@@ -273,7 +280,7 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
             } else 9 * d
         }
     val naturalHeight = heights.sum() + 24 * d + max(0, entries.size - 1) * 2 * d
-    val target = if (full) menuDestination(anchor, Size(width, naturalHeight), safe)
+    val target = if (full) menuDestination(anchor, Size(width, naturalHeight), safe, owner.preferAboveAnchor)
         else menuDetachedDestination(anchor, Size(width, naturalHeight), safe, 8 * d)
     val scrollable = naturalHeight > target.height + .5f
     val progress = remember { Animatable(0f) }
@@ -327,6 +334,12 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
     }
     BackHandler { session.dismiss() }
     val raw = progress.value
+    val transientClose by androidx.compose.animation.core.animateFloatAsState(
+        if (!open && owner.transition == LiquidMenuTransition.Transient) 1f else 0f,
+        tween(80), label = "menu-transient-close",
+    )
+    val transientAlpha = menuTransientSurfaceAlpha(raw)
+    val tipAlpha = menuTransientTipAlpha(raw)
     val detachedOffset = Offset(0f, (if (target.center.y >= anchor.center.y) -8f else 8f) * d * (1f - raw))
     val blobs = if (full) menuBlobs(surface, target, raw, d, startRadius)
         else MenuBlobs(Rect.Zero, target.translate(detachedOffset), 0f, min(32 * d, min(target.width, target.height) / 2), 0f)
@@ -338,7 +351,8 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
     val deformation = liquidDragDeformation(blobs.body.size, dragAnimation.value, pressProgress, 4 * d)
     val half = Offset(blobs.body.width / 2 * deformation.scale.x, blobs.body.height / 2 * deformation.scale.y)
     val center = blobs.body.center + deformation.translation
-    val moved = blobs.copy(body = Rect(center - half, center + half))
+    val dragged = blobs.copy(body = Rect(center - half, center + half))
+    val moved = if (full) menuTransientCollapse(dragged, surface, raw, transientClose) else dragged
     val hoveredIndex = entries.indexOfFirst { it.id == hover }
     LaunchedEffect(hover, scrollable) {
         if (scrollable && hoveredIndex >= 0) {
@@ -417,15 +431,19 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                     }
                 }
         )
-        LiquidMenuSurface(
+        if (!moved.body.isEmpty || !moved.anchor.isEmpty) LiquidMenuSurface(
             owner.backdrop.value, moved, touch = touch, rendering = rendering,
-            opacity = if (full) 1f else raw.coerceIn(0f, 1f),
+            opacity = if (full) androidx.compose.ui.util.lerp(1f, tipAlpha, transientClose) else raw.coerceIn(0f, 1f),
         )
         if (full) {
-            val foregroundAlpha = menuForegroundAlpha(surface, moved.body)
+            val foregroundAlpha = androidx.compose.ui.util.lerp(
+                menuForegroundAlpha(surface, moved.body), 1f - transientAlpha, transientClose,
+            )
             val foreground = owner.foreground.translate(-host.origin)
-            val scale = min(moved.body.width / surface.width, moved.body.height / surface.height)
-            val topLeft = moved.body.center + (foreground.topLeft - surface.center) * scale
+            val movingScale = min(moved.body.width / surface.width, moved.body.height / surface.height)
+            val scale = androidx.compose.ui.util.lerp(movingScale, 1f, transientClose)
+            val movingTopLeft = moved.body.center + (foreground.topLeft - surface.center) * movingScale
+            val topLeft = androidx.compose.ui.geometry.lerp(movingTopLeft, foreground.topLeft, transientClose)
             val position = IntOffset(floor(topLeft.x).toInt(), floor(topLeft.y).toInt())
             Box(Modifier.offset { position }
                 .size(with(density) { foreground.width.toDp() }, with(density) { foreground.height.toDp() })

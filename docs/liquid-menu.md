@@ -47,6 +47,13 @@ foreground visibility: smooth fade from 35% error to full opacity at 5%. The clo
 spring can finish its undershoot with visible content before the original control takes
 over. Moving/removing the anchor or resizing the window cancels the session.
 
+`Transient` is for explicitly registered temporary surfaces on bare-icon triggers.
+It opens with the same fused shape as `Attached`, but closes by shrinking both blobs
+and their separation to zero at the anchor center. The recorded icon returns at its
+original size and position. A fade only at progress below 0.04 suppresses subpixel
+highlights; negative spring overshoot stays empty. A short continuous closing blend
+allows reversal without replacing the trigger layout or its interaction bounds.
+
 ## Rendering and interaction
 
 - Android 13/API 33+: two rounded shapes with a smooth SDF union, backdrop blur,
