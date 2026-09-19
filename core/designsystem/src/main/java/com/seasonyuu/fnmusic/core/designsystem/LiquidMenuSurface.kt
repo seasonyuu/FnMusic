@@ -127,7 +127,7 @@ internal fun LiquidMenuSurface(
                     { RectangleShape },
                     effects = {
                         colorControls(brightness = material.brightness, saturation = LiquidControlOptics.Saturation)
-                        blur(density.density * material.blurScale)
+                        blur(4f * density.density * material.blurScale)
                         runtimeShaderEffect("FnLiquidMenu:$shaderSource", shaderSource, "content") {
                             setFloatUniform(
                                 "anchor",
