@@ -72,6 +72,51 @@ class LiquidMenuInteractionTest {
     }
 
     @Test
+    fun highlightAppearsAtPressedRowSlidesOnlyWhileHeldAndFadesInPlace() {
+        var target by mutableStateOf<Offset?>(null)
+        lateinit var highlight: LiquidMenuHighlightState
+        compose.setContent {
+            highlight = remember { LiquidMenuHighlightState() }
+            LaunchedEffect(target) { highlight.update(target) }
+        }
+        compose.mainClock.autoAdvance = false
+        val bottom = Offset(240f, 64f)
+        compose.runOnIdle { target = bottom }
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnIdle { assertEquals(bottom, highlight.geometry.value) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle { assertEquals(.12f, highlight.alpha.value, .001f) }
+
+        val top = Offset(12f, 48f)
+        compose.runOnIdle { target = top }
+        compose.mainClock.advanceTimeBy(64)
+        compose.runOnIdle {
+            assertTrue(highlight.geometry.value.x > top.x)
+            assertTrue(highlight.geometry.value.x < bottom.x)
+        }
+        compose.mainClock.advanceTimeBy(200)
+        compose.runOnIdle { assertEquals(top, highlight.geometry.value) }
+
+        compose.runOnIdle { target = null }
+        compose.mainClock.advanceTimeBy(64)
+        compose.runOnIdle {
+            assertEquals(top, highlight.geometry.value)
+            assertTrue(highlight.alpha.value > 0f)
+        }
+        // A new press during fade-out must also jump directly to the new row.
+        compose.runOnIdle { target = bottom }
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnIdle { assertEquals(bottom, highlight.geometry.value) }
+        compose.runOnIdle { target = null }
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.runOnIdle {
+            assertEquals(bottom, highlight.geometry.value)
+            assertEquals(0f, highlight.alpha.value, .001f)
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
     fun selectionIsDeliveredOnceAndReopeningPreservesState() {
         fixture()
         open()

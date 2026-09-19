@@ -40,6 +40,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.*
 import com.kyant.backdrop.Backdrop
 import kotlin.math.*
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 
@@ -384,24 +386,12 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
             scroll.animateScrollTo(next.roundToInt().coerceIn(0, scroll.maxValue))
         }
     }
-    val highlightTop by
-        androidx.compose.animation.core.animateFloatAsState(
-            if (hoveredIndex < 0) 12 * d
-            else 12 * d + heights.take(hoveredIndex).sum() + hoveredIndex * 2 * d - scroll.value,
-            androidx.compose.animation.core.tween(150),
-            label = "menu-highlight-top",
-        )
-    val highlightHeight by
-        androidx.compose.animation.core.animateFloatAsState(
-            heights.getOrNull(hoveredIndex) ?: 48 * d,
-            androidx.compose.animation.core.tween(150),
-            label = "menu-highlight-height",
-        )
-    val highlightAlpha by
-        androidx.compose.animation.core.animateFloatAsState(
-            if (hoveredIndex >= 0) .12f else 0f,
-            label = "menu-highlight-alpha",
-        )
+    val highlight = remember { LiquidMenuHighlightState() }
+    val highlightTarget = if (hoveredIndex < 0) null else Offset(
+        12 * d + heights.take(hoveredIndex).sum() + hoveredIndex * 2 * d - scroll.value,
+        heights[hoveredIndex],
+    )
+    LaunchedEffect(highlightTarget) { highlight.update(highlightTarget) }
     val highlightColor = MaterialTheme.colorScheme.onSurface
     fun choose(id: String) {
         if (progress.value >= .8f && owner.expanded.value) session.select(id)
@@ -495,9 +485,9 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                     .clip(RoundedCornerShape(32.dp))
                     .drawBehind {
                         drawRoundRect(
-                            highlightColor.copy(alpha = highlightAlpha),
-                            Offset(12 * d, highlightTop),
-                            Size((target.width - 24 * d).coerceAtLeast(0f), highlightHeight),
+                            highlightColor.copy(alpha = highlight.alpha.value),
+                            Offset(12 * d, highlight.geometry.value.x),
+                            Size((target.width - 24 * d).coerceAtLeast(0f), highlight.geometry.value.y),
                             CornerRadius(24 * d),
                         )
                     }
@@ -696,6 +686,31 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                         }
                     }
                 })
+        }
+    }
+}
+
+/** Positions a new press before revealing it; only an ongoing selection slides between rows. */
+internal class LiquidMenuHighlightState {
+    val geometry = Animatable(Offset.Zero, Offset.VectorConverter)
+    val alpha = Animatable(0f)
+    private var active = false
+
+    suspend fun update(target: Offset?) {
+        val continuing = active
+        active = target != null
+        if (target == null) {
+            // Keep the last geometry while fading, including interrupted movement between rows.
+            alpha.animateTo(0f)
+        } else {
+            if (!continuing) {
+                alpha.snapTo(0f)
+                geometry.snapTo(target)
+            }
+            coroutineScope {
+                launch { alpha.animateTo(.12f) }
+                if (continuing) geometry.animateTo(target, tween(150))
+            }
         }
     }
 }
