@@ -654,7 +654,7 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
         }
         if (!open) {
             fun reopen() {
-                if (host.active !== session || owner.anchor != currentAnchor || owner.anchor.isEmpty ||
+                if (host.active !== session || owner.anchor.translate(-host.origin) != anchor || owner.anchor.isEmpty ||
                     owner.items.value.none { it is LiquidMenuItem && it.enabled }) return
                 session.reopenRequested = true
                 session.dismissed = false

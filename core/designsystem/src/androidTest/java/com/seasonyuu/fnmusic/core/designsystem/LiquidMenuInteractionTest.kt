@@ -25,10 +25,10 @@ class LiquidMenuInteractionTest {
     private val selected = mutableListOf<String>()
     private var dismissals = 0
 
-    private fun fixture(long: Boolean = false, transition: LiquidMenuTransition = LiquidMenuTransition.Attached) {
+    private fun fixture(long: Boolean = false, transition: LiquidMenuTransition = LiquidMenuTransition.Attached, hostInset: Int = 0) {
         compose.setContent {
             FnMusicTheme {
-                LiquidMenuHost {
+                LiquidMenuHost(Modifier.padding(top = hostInset.dp)) {
                     val backdrop = rememberLayerBackdrop()
                     Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(Color.DarkGray))
                     Box(
@@ -276,8 +276,8 @@ class LiquidMenuInteractionTest {
         compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
         compose.onNodeWithTag("trigger").assertExists()
     }
-    private fun reopenDuringClosing(transition: LiquidMenuTransition, waitForFinish: Boolean = true) {
-        fixture(transition = transition)
+    private fun reopenDuringClosing(transition: LiquidMenuTransition, waitForFinish: Boolean = true, hostInset: Int = 0) {
+        fixture(transition = transition, hostInset = hostInset)
         open()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithTag("liquid-menu-item-first").performClick()
@@ -302,6 +302,8 @@ class LiquidMenuInteractionTest {
 
     @Test fun attachedAnchorReopensOnANewTapDuringClosing() = reopenDuringClosing(LiquidMenuTransition.Attached)
     @Test fun transientAnchorReopensEvenAfterTheGlassDisappears() = reopenDuringClosing(LiquidMenuTransition.Transient)
+    @Test fun insetHostReopensUsingWindowToHostCoordinates() = reopenDuringClosing(LiquidMenuTransition.Transient, hostInset = 32)
+
     @Test fun detachedAnchorReopensDuringClosing() = reopenDuringClosing(LiquidMenuTransition.Detached)
 
     @Test fun canceledReopenTapDoesNotLeaveAnOverlay() {
