@@ -178,3 +178,19 @@ updated or treated as a passing assertion.
 Reopen hit validation converts the registered window bounds into Host coordinates
 before comparing with the frozen anchor. This also supports inset Hosts and
 pre-edge-to-edge Android windows; an interaction regression covers a 32dp Host offset.
+
+## Contextual menu tint
+
+`LocalLiquidMenuSurfaceColor` scopes an optional surface tint to all LiquidMenus.
+MusicShell supplies the same animated navigation surface produced by MusicPageHost
+that colors BottomTabs. This applies to both app-bar and track menus, and updates
+while a menu is open. An unspecified tint retains the theme surface. The shader,
+blur fallback and solid fallback all use this tint; global material opacity and
+menu blur settings are independent. Normal menu text/icons choose a contrasting
+foreground when a surface tint is supplied.
+
+Player headers override the page tint with a 250ms animated artwork tone, using
+the same dominant-color extraction and darkening as album navigation. The bitmap
+comes from the existing background CoverImage load (no additional image request).
+Missing/failed artwork uses the player theme surface. Artwork changes cancel stale
+extraction; tracks sharing an artwork URL retain the same tone.

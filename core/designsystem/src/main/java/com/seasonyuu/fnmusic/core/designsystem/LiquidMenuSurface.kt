@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.core.designsystem
 
+import androidx.compose.ui.graphics.takeOrElse
+
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -117,7 +119,7 @@ internal fun LiquidMenuSurface(
             .offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
             .size(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
             .graphicsLayer { alpha = opacity }
-    val tint = material.baseSurface
+    val tint = LocalLiquidMenuSurfaceColor.current.takeOrElse { material.baseSurface }
     if (full) {
         Box(
             base

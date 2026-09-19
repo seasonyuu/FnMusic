@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import android.graphics.Bitmap
+
 import androidx.compose.material3.pulltorefresh.*
 
 import androidx.compose.foundation.rememberScrollState
@@ -573,6 +575,7 @@ fun MusicShell(
             }
         }
         CompositionLocalProvider(
+            com.seasonyuu.fnmusic.core.designsystem.LocalLiquidMenuSurfaceColor provides navigationSurface,
             LocalAppBarBackdrop provides appBarBackdrop,
             LocalPlayerArtworkBackdrop provides playerArtworkBackdrop,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
@@ -2823,6 +2826,19 @@ private fun NowPlayingLyricsScreen(
     val lyricsListState = rememberLazyListState()
     val lyricsDragging by lyricsListState.interactionSource.collectIsDraggedAsState()
     val density = LocalDensity.current
+    var menuCoverBitmap by remember(highResolutionCoverUrl) { mutableStateOf<Bitmap?>(null) }
+    val fallbackMenuSurface = FnNavigationSurface
+    var menuCoverTone by remember(highResolutionCoverUrl, fallbackMenuSurface) {
+        mutableStateOf(fallbackMenuSurface)
+    }
+    LaunchedEffect(menuCoverBitmap, highResolutionCoverUrl, fallbackMenuSurface) {
+        val bitmap = menuCoverBitmap ?: return@LaunchedEffect
+        menuCoverTone = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            androidx.compose.ui.graphics.lerp(coverTone(bitmap), Color.Black, .16f)
+        }
+    }
+    val playerMenuSurface by androidx.compose.animation.animateColorAsState(
+        menuCoverTone, tween(250), label = "player-menu-tone")
     val playerBackgroundBackdrop = rememberLayerBackdrop()
     val artworkBackdrop = LocalPlayerArtworkBackdrop.current
     val playerMenuBackdrop = if (artworkBackdrop != null)
@@ -3083,6 +3099,7 @@ private fun NowPlayingLyricsScreen(
                     onToggleFavorite,
                     playerMenuBackdrop,
                     { moreMenuOpen = it },
+                    menuSurfaceColor = playerMenuSurface,
                     titleMaxLines = if (landscapeLayout) 1 else 2
                 )
             }
@@ -3150,6 +3167,7 @@ private fun NowPlayingLyricsScreen(
                     }
                     .blur(64.dp),
                 requestSizePx = 640,
+                onBitmapLoaded = { menuCoverBitmap = it },
             )
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)),
@@ -3415,6 +3433,7 @@ private fun NowPlayingLyricsScreen(
                             Spacer(Modifier.width(10.dp))
                             PlayerMoreMenu(
                                 current.track, playerMenuBackdrop,
+                                surfaceColor = playerMenuSurface,
                                 modifier = Modifier.size(if (inQueue) 40.dp else 46.dp).testTag("player-lyrics-more-action"),
                                 onOpenChange = { moreMenuOpen = it; revealControls() },
                             )
@@ -3916,6 +3935,7 @@ private fun PlayerTrackMetadata(
     onToggleFavorite: (Track) -> Unit,
     backdrop: com.kyant.backdrop.Backdrop,
     onMenuOpenChange: (Boolean) -> Unit,
+    menuSurfaceColor: Color,
     titleMaxLines: Int = 2,
 ) {
     Row(
@@ -3964,7 +3984,7 @@ private fun PlayerTrackMetadata(
             )
         }
         PlayerMoreMenu(track, backdrop,
-            Modifier.size(46.dp).testTag("player-more-action"), onMenuOpenChange)
+            Modifier.size(46.dp).testTag("player-more-action"), onMenuOpenChange, surfaceColor = menuSurfaceColor)
 
     }
 }

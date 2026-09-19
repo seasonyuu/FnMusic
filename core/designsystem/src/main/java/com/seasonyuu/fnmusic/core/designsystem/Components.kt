@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.core.designsystem
 
+import coil3.request.allowHardware
+import coil3.toBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -87,13 +89,15 @@ fun CoverImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     requestSizePx: Int? = null,
+    onBitmapLoaded: ((android.graphics.Bitmap) -> Unit)? = null,
 ) {
     Surface(modifier = modifier.clip(RoundedCornerShape(8.dp)), color = FnCard) {
         val placeholder = painterResource(R.drawable.cover_placeholder)
         val context = LocalContext.current
-        val model = remember(url, requestSizePx) {
+        val model = remember(url, requestSizePx, onBitmapLoaded != null) {
             ImageRequest.Builder(context)
                 .data(url)
+                .allowHardware(onBitmapLoaded == null)
                 .apply {
                     requestSizePx?.let { size(it, it) }
                 }
@@ -102,6 +106,7 @@ fun CoverImage(
         }
         AsyncImage(
             model = model,
+            onSuccess = { result -> onBitmapLoaded?.invoke(result.result.image.toBitmap()) },
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,

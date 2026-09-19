@@ -33,13 +33,15 @@ internal fun PlayerMoreMenu(
     backdrop: Backdrop,
     modifier: Modifier = Modifier.size(46.dp),
     onOpenChange: (Boolean) -> Unit = {},
+    surfaceColor: Color,
 ) = TrackMoreMenu(track, backdrop = backdrop, modifier = modifier,
-    preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange)
+    preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange, surfaceColor = surfaceColor)
 
 @Composable
 internal fun TrackMoreMenu(
     track: Track,
     sourcePlaylist: PlaylistId? = null,
+    surfaceColor: Color = LocalLiquidMenuSurfaceColor.current,
     backdrop: Backdrop? = LocalTrackMenuBackdrop.current,
     modifier: Modifier = Modifier.size(48.dp),
     icon: ImageVector = Icons.Rounded.MoreVert,
@@ -61,33 +63,35 @@ internal fun TrackMoreMenu(
             }
         }
         DisposableEffect(Unit) { onDispose { notify.value(false) } }
-        LiquidMenu(
-            expanded = expanded && enabled,
-            onDismissRequest = { expanded = false; onOpenChange(false) },
-            onExpandedChange = { expanded = it; onOpenChange(it) },
-            backdrop = backdrop ?: LocalAppBarBackdrop.current ?: rememberLayerBackdrop(),
-            transition = LiquidMenuTransition.Transient,
-            preferAboveAnchor = preferAboveAnchor,
-            items = actions.map { it.item },
-            onSelect = { id ->
-                val action = actions.firstOrNull { it.item.id == id && it.item.enabled }
-                if (action != null) {
-                    // Retire the selected session before navigation or a modal sheet takes focus.
-                    expanded = false
-                    if (action.retireSession) generation++
-                    onOpenChange(false)
-                    action.invoke()
-                }
-            },
-            trigger = { toggle ->
-                Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).then(surfaceModifier())
-                    .clip(CircleShape).clickable(enabled = enabled, role = Role.Button, onClick = toggle)
-                    .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.matchParentSize().then(foregroundModifier), contentAlignment = Alignment.Center) {
-                        Icon(icon, null, tint = tint)
+        CompositionLocalProvider(LocalLiquidMenuSurfaceColor provides surfaceColor) {
+            LiquidMenu(
+                expanded = expanded && enabled,
+                onDismissRequest = { expanded = false; onOpenChange(false) },
+                onExpandedChange = { expanded = it; onOpenChange(it) },
+                backdrop = backdrop ?: LocalAppBarBackdrop.current ?: rememberLayerBackdrop(),
+                transition = LiquidMenuTransition.Transient,
+                preferAboveAnchor = preferAboveAnchor,
+                items = actions.map { it.item },
+                onSelect = { id ->
+                    val action = actions.firstOrNull { it.item.id == id && it.item.enabled }
+                    if (action != null) {
+                        // Retire the selected session before navigation or a modal sheet takes focus.
+                        expanded = false
+                        if (action.retireSession) generation++
+                        onOpenChange(false)
+                        action.invoke()
                     }
-                }
-            },
-        )
+                },
+                trigger = { toggle ->
+                    Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).then(surfaceModifier())
+                        .clip(CircleShape).clickable(enabled = enabled, role = Role.Button, onClick = toggle)
+                        .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.matchParentSize().then(foregroundModifier), contentAlignment = Alignment.Center) {
+                            Icon(icon, null, tint = tint)
+                        }
+                    }
+                },
+            )
+        }
     }
 }

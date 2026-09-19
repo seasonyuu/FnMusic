@@ -1,5 +1,8 @@
 package com.seasonyuu.fnmusic.core.designsystem
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
@@ -39,6 +42,9 @@ import com.kyant.backdrop.Backdrop
 import kotlin.math.*
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
+
+/** Optional page/artwork tint; scoped to menus without changing other glass controls. */
+val LocalLiquidMenuSurfaceColor = compositionLocalOf { Color.Unspecified }
 
 enum class LiquidMenuTransition {
     Attached,
@@ -631,7 +637,9 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                         ) {
                             val color =
                                 if (entry.destructive) MaterialTheme.colorScheme.error
-                                else FnTextPrimary
+                                else LocalLiquidMenuSurfaceColor.current.let { surface ->
+                                    if (surface.isSpecified) contrastingForeground(surface) else FnTextPrimary
+                                }
                             CompositionLocalProvider(
                                 LocalContentColor provides
                                     color.copy(alpha = if (entry.enabled) 1f else .38f)

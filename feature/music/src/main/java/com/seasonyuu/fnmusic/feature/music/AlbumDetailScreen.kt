@@ -70,7 +70,7 @@ internal fun albumDurationLabel(tracks: List<Track>): String? {
 }
 
 /** Quantized dominant color, with luminance capped for white text even on white artwork. */
-private fun coverTone(bitmap: Bitmap): Color {
+internal fun coverTone(bitmap: Bitmap): Color {
     val sample = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
     try {
         val buckets = IntArray(4096)
