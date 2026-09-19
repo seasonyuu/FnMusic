@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -92,7 +93,6 @@ fun CoverImage(
     onBitmapLoaded: ((android.graphics.Bitmap) -> Unit)? = null,
 ) {
     Surface(modifier = modifier.clip(RoundedCornerShape(8.dp)), color = FnCard) {
-        val placeholder = painterResource(R.drawable.cover_placeholder)
         val context = LocalContext.current
         val model = remember(url, requestSizePx, onBitmapLoaded != null) {
             ImageRequest.Builder(context)
@@ -104,16 +104,27 @@ fun CoverImage(
                 .crossfade(true)
                 .build()
         }
-        AsyncImage(
-            model = model,
-            onSuccess = { result -> onBitmapLoaded?.invoke(result.result.image.toBitmap()) },
-            contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            placeholder = placeholder,
-            error = placeholder,
-            fallback = placeholder,
-        )
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Choose visual detail by viewport dp, independently of network resolution/density.
+            val coverSize = minOf(maxWidth, maxHeight)
+            val placeholder = painterResource(
+                when {
+                    coverSize <= 64.dp -> R.drawable.cover_placeholder_small
+                    coverSize <= 180.dp -> R.drawable.cover_placeholder_medium
+                    else -> R.drawable.cover_placeholder
+                },
+            )
+            AsyncImage(
+                model = model,
+                onSuccess = { result -> onBitmapLoaded?.invoke(result.result.image.toBitmap()) },
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = placeholder,
+                error = placeholder,
+                fallback = placeholder,
+            )
+        }
     }
 }
 
