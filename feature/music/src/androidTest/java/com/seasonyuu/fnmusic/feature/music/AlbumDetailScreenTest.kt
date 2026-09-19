@@ -4,7 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
+import com.seasonyuu.fnmusic.core.designsystem.*
+import androidx.compose.runtime.CompositionLocalProvider
 import com.seasonyuu.fnmusic.core.model.*
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -19,10 +20,10 @@ class AlbumDetailScreenTest {
         val restoration = StateRestorationTester(compose)
         var backs = 0
         restoration.setContent {
-            FnMusicTheme {
+            FnMusicTheme { LiquidMenuHost {
                 AlbumDetailScreen(album, MusicUiState(detailTracks = tracks), PlayerState(), { _, _ -> null },
-                    { _, _ -> }, {}, { backs++ }, {})
-            }
+                    { _, _ -> }, { backs++ }, {})
+            } }
         }
         val before = compose.onNodeWithTag("detail-app-bar").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("album-footer"))
@@ -38,15 +39,21 @@ class AlbumDetailScreenTest {
         var index = -1
         var more: Track? = null
         compose.setContent {
-            FnMusicTheme {
-                AlbumDetailScreen(album, MusicUiState(detailTracks = tracks), PlayerState(), { _, _ -> null },
-                    { queue, selected -> assertEquals(tracks, queue); index = selected }, { more = it }, {}, {})
-            }
+            FnMusicTheme { LiquidMenuHost {
+                CompositionLocalProvider(LocalTrackMenuActions provides { track, _ ->
+                    listOf(TrackMenuAction(LiquidMenuItem("next", "下一首播放")) { more = track })
+                }) {
+                    AlbumDetailScreen(album, MusicUiState(detailTracks = tracks), PlayerState(), { _, _ -> null },
+                        { queue, selected -> assertEquals(tracks, queue); index = selected }, {}, {})
+                }
+            } }
         }
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("album-track-12"))
         compose.onNodeWithTag("album-track-12").performClick()
         assertEquals(12, index)
         compose.onNodeWithContentDescription("歌曲 13更多操作").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertExists()
+        compose.onNodeWithText("下一首播放").performClick()
         assertEquals(tracks[12], more)
         assertEquals(12, index)
     }
@@ -54,10 +61,10 @@ class AlbumDetailScreenTest {
     @Test fun emptyAlbumDisablesPlaybackAndErrorCanRetry() {
         var retries = 0
         compose.setContent {
-            FnMusicTheme {
+            FnMusicTheme { LiquidMenuHost {
                 AlbumDetailScreen(album, MusicUiState(detailError = "加载失败"), PlayerState(), { _, _ -> null },
-                    { _, _ -> error("Empty album must not play") }, {}, {}, { retries++ })
-            }
+                    { _, _ -> error("Empty album must not play") }, {}, { retries++ })
+            } }
         }
         compose.onNodeWithTag("album-play").assertIsNotEnabled()
         compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("重试"))

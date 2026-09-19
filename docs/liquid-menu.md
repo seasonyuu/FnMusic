@@ -146,3 +146,35 @@ inspected. Regression comparisons allow at most 0.5% pixels with channel differe
 over 8/255, and always emit a difference image. Normal verification **never updates**
 these assets. A deliberate visual change requires rerunning the independent checks,
 reviewing the generated PNGs and diffs, and explicitly replacing the relevant assets.
+
+## Shared track action menus
+
+`TrackMoreMenu` adapts bare more icons in home cards, track/favorite/recent lists,
+artist and playlist details, album details, search results, and both player headers.
+Each instance owns its expanded state and is keyed by track and source playlist.
+The shared action factory reads current favorite overrides and busy state. Only an
+explicit playlist source enables the destructive remove-from-playlist action;
+player menus never inherit a playlist from the navigation underneath the player.
+
+List menus sample the recorded page scene, album menus the album list, search
+menus the search result layer, and player menus their existing combined backdrop.
+All bare icons use the transient opening surface and zero-size return. Selection
+keeps the normal return animation for favorite/queue operations; navigation, row
+removal, and opening the playlist picker retire the old session immediately so its
+modal overlay cannot remain above the next surface. Dismissing without selecting
+retains the existing tap-to-reopen behavior during return.
+
+The playlist picker remains a BottomSheet, including its create action and source
+playlist exclusion. Queue rows no longer have a long-press or accessibility more
+menu; playback, swipe removal, reorder handles, and accessible move/remove actions
+remain available. Confirmation dialogs and editors are unchanged.
+
+The verification script includes shared-entry lifecycle tests, album/search tests,
+selected MusicShell player and queue regressions, and the existing menu suites.
+Shader-only assumptions are reported separately on API 26/31. The API 33/36
+`contour-1.03` highlight baseline is still pending review; it is never automatically
+updated or treated as a passing assertion.
+
+Reopen hit validation converts the registered window bounds into Host coordinates
+before comparing with the frozen anchor. This also supports inset Hosts and
+pre-edge-to-edge Android windows; an interaction regression covers a 32dp Host offset.

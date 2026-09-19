@@ -39,7 +39,8 @@ def main():
     OUT = args.output.resolve()
     apis = [int(x) for x in args.apis.split(',')]
     OUT.mkdir(parents=True, exist_ok=True)
-    summary = {'requested_apis': apis, 'devices': [], 'status': 'incomplete'}
+    summary = {'requested_apis': apis, 'devices': [], 'status': 'incomplete',
+               'known_pending_review': ['API 33/36 contour-1.03 highlight baseline; failures remain failures']}
     def save():
         (OUT/'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2)+'\n')
     save()
@@ -74,7 +75,23 @@ def main():
         print(f'API {api}: {serial}', flush=True)
         runs = [
             ('core/designsystem', 'designsystem', CORE, [f'{CORE}.LiquidMenu{x}Test' for x in ('Rendering', 'Interaction', 'Compatibility', 'ReducedMotion', 'Anchor')]),
-            ('feature/music', 'music', FEATURE, [f'{FEATURE}.TrackSortLiquidMenuTest', f'{FEATURE}.AppBarLiquidMenuTest']),
+            ('feature/music', 'music', FEATURE, [f'{FEATURE}.TrackSortLiquidMenuTest', f'{FEATURE}.AppBarLiquidMenuTest',
+                f'{FEATURE}.TrackMoreLiquidMenuTest', f'{FEATURE}.AlbumDetailScreenTest', f'{FEATURE}.SearchScreenTest',
+                *[f'{FEATURE}.MusicShellTest#{method}' for method in (
+                    'trackMoreMenuDispatchesPlayNextAndUsesLiquidMenu',
+                    'playerMoreMorphsFromTransientSurfaceAndRestoresIcon',
+                    'playerLiquidMenuDeliversQueueAndFavoriteActionsOnce',
+                    'lyricsHeaderMoreActionUsesLiquidMenuAndStaysVisible',
+                    'playerAlbumNavigationCollapsesAndQualityIsCentered',
+                    'searchMoreUsesExistingFavoriteMenu',
+                    'trackCanBeAddedToAnExistingPlaylistFromLiquidMenu',
+                    'creatingAPlaylistFromTrackActionsKeepsThePendingTrack',
+                    'playlistTrackMenuUsesExplicitSourceAndBusyState',
+                    'playerMenuDoesNotInheritBackgroundPlaylist',
+                    'queueModeSelectsTracksAndDispatchesLocalReordering',
+                    'queueSwipeRevealsRemovalWithoutPlayingAndClosesOnScroll',
+                    'duplicateQueueEntriesRetainIdentityAfterDraggingAndRemoval',
+                )]]),
         ]
         if args.regressions:
             runs[1][3].extend([f'{FEATURE}.LiquidGlassRenderingTest', f'{FEATURE}.MusicAppBarTest'])
@@ -93,13 +110,16 @@ def main():
                           package+'.test/androidx.test.runner.AndroidJUnitRunner'], log=dest/f'{name}-tests.log', timeout=1800)
             success = result.returncode == 0 and bool(re.search(r'OK \(\d+ tests?\)', result.stdout)) and 'FAILURES!!!' not in result.stdout
             skipped = sum(result.stdout.count(f'INSTRUMENTATION_STATUS_CODE: {code}') for code in (-3, -4))
-            expected_skips = 4 if name == 'designsystem' and api < 33 else 0
+            expected_skips = (5 if name == 'designsystem' else 1) if api < 33 else 0
             record['suites'].append({'name': name, 'status': 'passed' if success and skipped == expected_skips else 'failed',
                                       'skipped': skipped, 'expected_shader_only_skips': expected_skips,
                                       'result': re.search(r'(OK \(\d+ tests?\)|Tests run:.*)', result.stdout).group(0) if re.search(r'(OK \(\d+ tests?\)|Tests run:.*)', result.stdout) else 'No result'})
             shutil.rmtree(dest/name, ignore_errors=True)
             run(['adb', '-s', serial, 'pull', f'/sdcard/Android/data/{package}.test/files/liquid-menu', str(dest/name)],
                 log=dest/f'{name}-artifacts.log')
+            if name == 'music':
+                run(['adb', '-s', serial, 'pull', f'/sdcard/Android/data/{package}.test/files/queue-screenshots',
+                     str(dest/'player-screenshots')], log=dest/'player-artifacts.log')
         artifacts = dest/'designsystem'
         record['artifacts_complete'] = api < 33 or (
             len(list(artifacts.glob('contour-*-diff.png'))) >= 8 and

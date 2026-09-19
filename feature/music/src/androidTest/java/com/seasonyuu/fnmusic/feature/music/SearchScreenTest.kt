@@ -40,7 +40,13 @@ class SearchScreenTest {
         state: SearchUiState, onSearch: (String) -> Unit = {}, onFilter: (SearchFilter) -> Unit = {},
         onSubmit: () -> Unit = {}, onRetry: () -> Unit = {}, onPlay: (List<Track>, Int) -> Unit = { _, _ -> },
         onMore: (Track) -> Unit = {}, onAlbum: (Album) -> Unit = {}, onArtist: (Artist) -> Unit = {}, onPlaylist: (Playlist) -> Unit = {},
-    ) = SearchScreen(state, { _, _ -> null }, onSearch, onFilter, onSubmit, onRetry, onPlay, onMore, onAlbum, onArtist, onPlaylist)
+    ) = LiquidMenuHost {
+        CompositionLocalProvider(LocalTrackMenuActions provides { track, _ ->
+            listOf(TrackMenuAction(LiquidMenuItem("next", "下一首播放")) { onMore(track) })
+        }) {
+            SearchScreen(state, { _, _ -> null }, onSearch, onFilter, onSubmit, onRetry, onPlay, onAlbum, onArtist, onPlaylist)
+        }
+    }
 
     @Test fun clearKeepsFocusAndImeSubmitsWithoutChangingQuery() {
         var state by mutableStateOf(SearchUiState())
@@ -133,6 +139,8 @@ class SearchScreenTest {
         compose.onNodeWithText("歌单示例").performClick()
         compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-row-track:1"))
         compose.onNodeWithContentDescription("更多操作：歌曲 1").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertExists()
+        compose.onNodeWithText("下一首播放").performClick()
         compose.runOnIdle { assertEquals(0, plays); assertEquals(tracks[1], more) }
         compose.onNodeWithTag("search-row-track:1").performClick()
         compose.runOnIdle { assertEquals(listOf("artist", "album", "playlist"), opened); assertEquals(1, plays); assertEquals(1, selectedIndex); assertEquals(tracks.take(2), queue) }

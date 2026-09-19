@@ -36,7 +36,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.anchoredDraggable
@@ -375,10 +374,6 @@ data class MusicUiState(
 
 private val LocalPlayerArtworkBackdrop = compositionLocalOf<com.kyant.backdrop.backdrops.LayerBackdrop?> { null }
 
-internal data class PlayerMenuAction(val item: LiquidMenuItem, val invoke: () -> Unit)
-internal val LocalPlayerMenuActions = compositionLocalOf<(Track) -> List<PlayerMenuAction>> { { emptyList() } }
-
-private val LocalTrackAction = compositionLocalOf<(Track) -> Unit> { {} }
 internal val LocalBottomOverlayPadding = compositionLocalOf { 0.dp }
 
 @Composable
@@ -504,8 +499,7 @@ fun MusicShell(
         var miniCoverBounds by remember { mutableStateOf<Rect?>(null) }
         val playerMorphProgress = remember { Animatable(0f) }
         val lyricsMorphProgress = remember { Animatable(0f) }
-        var actionTrack by remember { mutableStateOf<Track?>(null) }
-        var queueActionEntryId by remember { mutableStateOf<String?>(null) }
+        var pickerSourcePlaylist by remember { mutableStateOf<PlaylistId?>(null) }
         var playlistPickerTrack by remember { mutableStateOf<Track?>(null) }
         var deletePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
         var purgePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
@@ -584,9 +578,13 @@ fun MusicShell(
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassBlur provides state.liquidGlassBlur,
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidGlassEnabled provides state.liquidGlassEnabled,
             LocalContentColor provides FnTextPrimary,
-            LocalPlayerMenuActions provides { track ->
+            LocalTrackMenuActions provides { track, sourcePlaylist ->
                 fun action(id: String, label: String, icon: ImageVector, callback: () -> Unit) =
-                    PlayerMenuAction(LiquidMenuItem(id, label, icon = { Icon(icon, null) }), callback)
+                    TrackMenuAction(
+                        LiquidMenuItem(id, label, icon = { Icon(icon, null) }),
+                        retireSession = id in setOf("playlist", "album", "artist", "info", "remove-playlist"),
+                        invoke = callback,
+                    )
                 val favorite = state.favoriteOverrides[track.id] ?: track.isFavorite
                 buildList {
                     add(action("favorite", if (favorite) "取消收藏" else "收藏",
@@ -595,20 +593,17 @@ fun MusicShell(
                     })
                     add(action("next", "下一首播放", Icons.AutoMirrored.Rounded.PlaylistPlay) { onPlayNext(track) })
                     add(action("queue", "加入待播队列", Icons.AutoMirrored.Rounded.QueueMusic) { onAddToQueue(track) })
-                    add(action("playlist", "添加到歌单", Icons.AutoMirrored.Rounded.PlaylistAdd) { playlistPickerTrack = track })
+                    add(action("playlist", "添加到歌单", Icons.AutoMirrored.Rounded.PlaylistAdd) { pickerSourcePlaylist = sourcePlaylist; playlistPickerTrack = track })
                     track.album?.let { album -> add(action("album", "查看专辑", Icons.Rounded.Album) { pushDetail(LibraryDetail.AlbumPage(album)) }) }
                     track.artists.firstOrNull()?.let { artist -> add(action("artist", "查看歌手", Icons.Rounded.Person) { pushDetail(LibraryDetail.ArtistPage(artist)) }) }
-                    (detail as? LibraryDetail.PlaylistPage)?.playlist?.let { playlist ->
-                        add(action("remove-playlist", "从歌单移除", Icons.Rounded.RemoveCircleOutline) {
-                            onRemoveTracksFromPlaylist(playlist.id, listOf(track.id))
-                        })
+                    sourcePlaylist?.let { playlistId ->
+                        val remove = action("remove-playlist", "从歌单移除", Icons.Rounded.RemoveCircleOutline) {
+                            onRemoveTracksFromPlaylist(playlistId, listOf(track.id))
+                        }
+                        add(remove.copy(item = remove.item.copy(destructive = true, enabled = !state.playlistBusy)))
                     }
                     add(action("info", "歌曲信息", Icons.Rounded.Info) { pushDetail(LibraryDetail.TrackPage(track)) })
                 }
-            },
-            LocalTrackAction provides { track ->
-                queueActionEntryId = null
-                actionTrack = track
             },
         ) {
             val collectionPage = navigation.current.page in setOf(
@@ -709,6 +704,7 @@ fun MusicShell(
                                 val sceneBackdrop = LocalFnBackdrop.current
                                 CompositionLocalProvider(
                                     LocalBottomOverlayPadding provides padding.calculateBottomPadding(),
+                                    LocalTrackMenuBackdrop provides sceneBackdrop,
                                 ) {
                                     Box(
                                         Modifier
@@ -770,7 +766,6 @@ fun MusicShell(
                                                             playerState = playerState,
                                                             coverUrl = coverUrl,
                                                             onPlay = onPlay,
-                                                            onMore = LocalTrackAction.current,
                                                             onBack = { popPage() },
                                                             onRetry = { onLoadAlbum(selected.album.id) },
                                                         ) }
@@ -854,7 +849,7 @@ fun MusicShell(
                                                         )
                                                         MusicDestination.Library -> LibraryMenu(::openPage)
                                                         MusicDestination.Search -> SearchScreen(
-                                                            state.search, coverUrl, onSearch, onSearchType, onSubmitSearch, onRetrySearch, onPlay, LocalTrackAction.current,
+                                                            state.search, coverUrl, onSearch, onSearchType, onSubmitSearch, onRetrySearch, onPlay,
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
                                                             { pushDetail(LibraryDetail.ArtistPage(it)) },
                                                             { pushDetail(LibraryDetail.PlaylistPage(it)) },
@@ -947,10 +942,6 @@ fun MusicShell(
                                         onClearPlaybackHistory = onClearPlaybackHistory,
                                         onMoveQueueItem = onMoveQueueItem,
                                         onRemoveQueueItemDirect = onRemoveFromQueue,
-                                        onRemoveQueueItem = { index, track ->
-                                            queueActionEntryId = playerState.queue.getOrNull(index)?.queueEntryId
-                                            actionTrack = track
-                                        },
                                     )
                                 }
                             }
@@ -959,51 +950,11 @@ fun MusicShell(
                     }
                 }
             }
-            actionTrack?.let { track ->
-                TrackActionSheet(
-                    track = track,
-                    coverUrl = coverUrl(track.coverId, 160),
-                    showTrackHeader = !(playerComposed && queueActionEntryId == null && track.id == playerState.current?.track?.id),
-                onDismiss = {
-                    actionTrack = null
-                    queueActionEntryId = null
-                },
-                    onToggleFavorite = {
-                        onToggleFavorite(track.copy(isFavorite = state.favoriteOverrides[track.id] ?: track.isFavorite))
-                        actionTrack = null
-                    },
-                    favorite = state.favoriteOverrides[track.id] ?: track.isFavorite,
-                    onPlayNext = { onPlayNext(track); actionTrack = null },
-                    onAddToQueue = { onAddToQueue(track); actionTrack = null },
-                    onAddToPlaylist = { playlistPickerTrack = track; actionTrack = null },
-                    onRemoveFromPlaylist = (detail as? LibraryDetail.PlaylistPage)?.playlist?.let { playlist ->
-                        { onRemoveTracksFromPlaylist(playlist.id, listOf(track.id)); actionTrack = null }
-                    },
-                    onAlbum = track.album?.let { album ->
-                        { pushDetail(LibraryDetail.AlbumPage(album)); actionTrack = null }
-                    },
-                    onArtist = track.artists.firstOrNull()?.let { artist ->
-                        { pushDetail(LibraryDetail.ArtistPage(artist)); actionTrack = null }
-                    },
-                    onInfo = {
-                        pushDetail(LibraryDetail.TrackPage(track))
-                        actionTrack = null
-                    },
-                    onRemoveFromQueue = queueActionEntryId?.let { entryId ->
-                        {
-                            playerState.queue.indexOfFirst { it.queueEntryId == entryId }
-                                .takeIf { it >= 0 && it != playerState.currentIndex }?.let(onRemoveFromQueue)
-                            actionTrack = null
-                            queueActionEntryId = null
-                        }
-                    },
-                )
-            }
             playlistPickerTrack?.let { track ->
                 PlaylistPickerSheet(
                     track = track,
                     playlists = state.playlists,
-                    disabledPlaylistId = (detail as? LibraryDetail.PlaylistPage)?.playlist?.id,
+                    disabledPlaylistId = pickerSourcePlaylist,
                     busy = state.playlistBusy,
                     onDismiss = { playlistPickerTrack = null },
                     onSelect = { playlist ->
@@ -1191,7 +1142,6 @@ private fun RecentTracksGrid(
     ) {
         items(tracks, key = { it.id.value }) { track ->
             val favorite = state.favoriteOverrides[track.id] ?: track.isFavorite
-            val onMore = LocalTrackAction.current
             Card(
                 onClick = { onPlay(track) },
                 modifier = Modifier.width(cardWidth).height(68.dp),
@@ -1224,12 +1174,7 @@ private fun RecentTracksGrid(
                             tint = if (favorite) FnAccentIcon else FnTextSecondary,
                         )
                     }
-                    IconButton(
-                        onClick = { onMore(track) },
-                        modifier = Modifier.size(44.dp),
-                    ) {
-                        Icon(Icons.Rounded.MoreVert, "更多操作", tint = FnTextSecondary)
-                    }
+                    TrackMoreMenu(track = track)
                 }
             }
         }
@@ -1531,6 +1476,7 @@ private fun FavoriteTrackRow(
     coverUrl: (String?, Int) -> String?,
     onPlay: () -> Unit,
     onToggleFavorite: (Track) -> Unit,
+    sourcePlaylist: PlaylistId? = null,
 ) {
     val favorite = state.favoriteOverrides[track.id] ?: track.isFavorite
     TrackRow(track, coverUrl(track.coverId, 120), onPlay) {
@@ -1538,10 +1484,7 @@ private fun FavoriteTrackRow(
             IconButton(onClick = { onToggleFavorite(track.copy(isFavorite = favorite)) }) {
                 Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "收藏", tint = if (favorite) FnAccentIcon else FnTextSecondary)
             }
-            val onMore = LocalTrackAction.current
-            IconButton(onClick = { onMore(track) }) {
-                Icon(Icons.Rounded.MoreVert, "更多操作", tint = FnTextSecondary)
-            }
+            TrackMoreMenu(track = track, sourcePlaylist = sourcePlaylist)
         }
     }
 }
@@ -2062,62 +2005,6 @@ private fun PlaylistPickerSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TrackActionSheet(
-    track: Track,
-    coverUrl: String?,
-    showTrackHeader: Boolean,
-    favorite: Boolean,
-    onToggleFavorite: () -> Unit,
-    onDismiss: () -> Unit,
-    onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
-    onRemoveFromPlaylist: (() -> Unit)?,
-    onRemoveFromQueue: (() -> Unit)?,
-    onAlbum: (() -> Unit)?,
-    onArtist: (() -> Unit)?,
-    onInfo: () -> Unit,
-) {
-    val rippleConfiguration = LocalRippleConfiguration.current
-    CompositionLocalProvider(LocalRippleConfiguration provides null) {
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            containerColor = com.seasonyuu.fnmusic.core.designsystem.FnSurface,
-            contentColor = FnTextPrimary,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        ) {
-            CompositionLocalProvider(LocalRippleConfiguration provides rippleConfiguration) {
-                if (showTrackHeader) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        CoverImage(coverUrl, track.title, Modifier.size(64.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(track.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-                ActionSheetRow(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    if (favorite) "取消收藏" else "收藏", onToggleFavorite)
-                ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放", onPlayNext)
-                ActionSheetRow(Icons.AutoMirrored.Rounded.QueueMusic, "加入待播队列", onAddToQueue)
-                ActionSheetRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "添加到歌单", onAddToPlaylist)
-                onAlbum?.let { ActionSheetRow(Icons.Rounded.Album, "查看专辑", it) }
-                onArtist?.let { ActionSheetRow(Icons.Rounded.Person, "查看歌手", it) }
-                onRemoveFromPlaylist?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从歌单移除", it) }
-                onRemoveFromQueue?.let { ActionSheetRow(Icons.Rounded.RemoveCircleOutline, "从待播队列移除", it) }
-                ActionSheetRow(Icons.Rounded.Info, "歌曲信息", onInfo)
-                Spacer(Modifier.height(24.dp))
-            }
-        }
-    }
-}
-
 @Composable
 private fun ActionSheetRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
@@ -2457,6 +2344,7 @@ private fun LibraryDetailScreen(
                                             }
                                         },
                                         onToggleFavorite = onToggleFavorite,
+                                        sourcePlaylist = managedPlaylist?.id,
                                     )
                                 }
                             }
@@ -2883,7 +2771,6 @@ private fun NowPlayingLyricsScreen(
     onSelectHistoryItem: (Int) -> Unit,
     onClearPlaybackHistory: () -> Unit,
     onMoveQueueItem: (Int, Int) -> Unit,
-    onRemoveQueueItem: (Int, Track) -> Unit,
     onRemoveQueueItemDirect: (Int) -> Unit,
 ) {
     val current = state.current ?: return
@@ -3593,7 +3480,6 @@ private fun NowPlayingLyricsScreen(
                             },
                             onMove = onMoveQueueItem,
                             onRemove = onRemoveQueueItemDirect,
-                            onMore = onRemoveQueueItem,
                             onToggleShuffle = {
                                 revealControls()
                                 onToggleShuffle()
@@ -4020,41 +3906,6 @@ private fun PlayerLyricsPane(
                 )
             }
         }
-    }
-}
-
-@Composable
-internal fun PlayerMoreMenu(
-    track: Track,
-    backdrop: com.kyant.backdrop.Backdrop,
-    modifier: Modifier = Modifier.size(46.dp),
-    onOpenChange: (Boolean) -> Unit = {},
-) {
-    androidx.compose.runtime.key(track.id) {
-        var expanded by remember { mutableStateOf(false) }
-        val actions = LocalPlayerMenuActions.current(track)
-        val notify = rememberUpdatedState(onOpenChange)
-        DisposableEffect(Unit) { onDispose { notify.value(false) } }
-        com.seasonyuu.fnmusic.core.designsystem.LiquidMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false; onOpenChange(false) },
-            onExpandedChange = { expanded = it; onOpenChange(it) },
-            backdrop = backdrop,
-            transition = com.seasonyuu.fnmusic.core.designsystem.LiquidMenuTransition.Transient,
-            preferAboveAnchor = true,
-            items = actions.map { it.item },
-            onSelect = { id -> actions.firstOrNull { it.item.id == id }?.invoke?.invoke() },
-            trigger = { toggle ->
-                // The resting icon has no surface. This explicitly registered circle exists
-                // only during the morph, matching the player's transient glass press surface.
-                Box(modifier.then(surfaceModifier()).clip(CircleShape).clickable(onClick = toggle)
-                    .semantics { contentDescription = "更多操作" }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.matchParentSize().then(foregroundModifier), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.MoreVert, null, tint = FnTextPrimary.copy(alpha = .82f))
-                    }
-                }
-            },
-        )
     }
 }
 
@@ -4685,7 +4536,6 @@ private fun QueuePlayerContent(
     currentHeader: @Composable () -> Unit,
     onMove: (Int, Int) -> Unit,
     onRemove: (Int) -> Unit,
-    onMore: (Int, Track) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeatMode: () -> Unit,
 ) {
@@ -4992,10 +4842,6 @@ private fun QueuePlayerContent(
                         revealedKey = null
                         queueIndex(entry).takeIf { it >= 0 }?.let(onRemove)
                     },
-                    onMore = {
-                        revealedKey = null
-                        queueIndex(entry).takeIf { it >= 0 }?.let { onMore(it, entry.item.track) }
-                    },
                     onMoveUp = if (index > 0) ({ latestMove(queueIndex(entry), queueIndex(displayedQueue[index - 1])) }) else null,
                     onMoveDown = if (index < displayedQueue.lastIndex) ({ latestMove(queueIndex(entry), queueIndex(displayedQueue[index + 1])) }) else null,
                     dragModifier = Modifier
@@ -5099,7 +4945,6 @@ private fun QueueTrackRow(
     onReveal: (Boolean) -> Unit,
     onClick: () -> Unit,
     onRemove: () -> Unit,
-    onMore: () -> Unit,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     dragModifier: Modifier,
@@ -5139,7 +4984,6 @@ private fun QueueTrackRow(
             .semantics {
                 customActions = buildList {
                     add(CustomAccessibilityAction("从待播队列移除") { onRemove(); true })
-                    add(CustomAccessibilityAction("更多操作") { onMore(); true })
                     onMoveUp?.let { action -> add(CustomAccessibilityAction("上移") { action(); true }) }
                     onMoveDown?.let { action -> add(CustomAccessibilityAction("下移") { action(); true }) }
                 }
@@ -5179,11 +5023,10 @@ private fun QueueTrackRow(
         ) {
             val trackInteraction = remember { MutableInteractionSource() }
             Row(
-                Modifier.weight(1f).combinedClickable(
+                Modifier.weight(1f).clickable(
                     interactionSource = trackInteraction,
                     indication = null,
                     onClick = onClick,
-                    onLongClick = onMore,
                 ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

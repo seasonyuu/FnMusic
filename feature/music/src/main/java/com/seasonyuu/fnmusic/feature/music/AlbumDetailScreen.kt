@@ -99,7 +99,6 @@ internal fun AlbumDetailScreen(
     playerState: PlayerState,
     coverUrl: (String?, Int) -> String?,
     onPlay: (List<Track>, Int) -> Unit,
-    onMore: (Track) -> Unit,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
@@ -212,9 +211,9 @@ internal fun AlbumDetailScreen(
                                 else Text(albumTrackNumber(track, index), color = Color.White.copy(alpha = .75f), fontSize = 15.sp)
                             }
                             Text(track.title, Modifier.weight(1f).padding(vertical = 14.dp), color = Color.White, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            IconButton(onClick = { onMore(track) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Rounded.MoreHoriz, "${track.title}更多操作", tint = Color.White.copy(alpha = .8f))
-                            }
+                            TrackMoreMenu(track, backdrop = backdrop, enabled = enabled,
+                                icon = Icons.Rounded.MoreHoriz, description = "${track.title}更多操作",
+                                tint = Color.White.copy(alpha = .8f))
                         }
                         HorizontalDivider(Modifier.padding(start = horizontal + 30.dp, end = horizontal), color = Color.White.copy(alpha = .15f))
                     }

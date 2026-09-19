@@ -74,7 +74,6 @@ internal fun SearchScreen(
     onSubmit: () -> Unit,
     onRetry: () -> Unit,
     onPlay: (List<Track>, Int) -> Unit,
-    onMore: (Track) -> Unit,
     onAlbum: (Album) -> Unit,
     onArtist: (Artist) -> Unit,
     onPlaylist: (Playlist) -> Unit,
@@ -198,7 +197,7 @@ internal fun SearchScreen(
                                 item,
                                 coverUrl,
                                 { open(item) },
-                                onMore,
+                                headerBackdrop,
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = tween(durationMillis = 220),
                                     placementSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -214,7 +213,7 @@ internal fun SearchScreen(
                                     item,
                                     coverUrl,
                                     { open(item) },
-                                    onMore,
+                                    headerBackdrop,
                                     modifier = Modifier.animateItem(
                                         fadeInSpec = tween(durationMillis = 220),
                                         placementSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -423,7 +422,7 @@ private fun SearchResultRow(
     item: SearchItem,
     coverUrl: (String?, Int) -> String?,
     onClick: () -> Unit,
-    onMore: (Track) -> Unit,
+    menuBackdrop: com.kyant.backdrop.Backdrop,
     modifier: Modifier = Modifier,
 ) {
     val title: String
@@ -480,9 +479,8 @@ private fun SearchResultRow(
                 Text(subtitle, fontSize = 13.sp, color = FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (item is SearchItem.TrackItem) {
-                IconButton(onClick = { onMore(item.value) }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.MoreHoriz, "更多操作：$title", tint = FnTextSecondary)
-                }
+                TrackMoreMenu(item.value, backdrop = menuBackdrop, icon = Icons.Rounded.MoreHoriz,
+                    description = "更多操作：$title")
             } else {
                 Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)

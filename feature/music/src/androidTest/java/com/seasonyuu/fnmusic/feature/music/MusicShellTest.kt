@@ -1,8 +1,11 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toPixelMap
@@ -1660,6 +1663,11 @@ class MusicShellTest {
         compose.waitUntil(timeoutMillis = 2_000) {
             compose.onAllNodesWithText("待播队列", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onNodeWithText("队列曲目 2", useUnmergedTree = true).performTouchInput { longClick() }
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        val actions = compose.onNodeWithTag("player-queue-row-queue-2").fetchSemanticsNode()
+            .config.getOrElse(androidx.compose.ui.semantics.SemanticsActions.CustomActions) { emptyList() }
+        org.junit.Assert.assertFalse(actions.any { it.label == "更多操作" })
         compose.onNodeWithText("队列曲目 2", useUnmergedTree = true).performClick()
         org.junit.Assert.assertEquals(1, selected)
 
@@ -3083,7 +3091,7 @@ class MusicShellTest {
     }
 
     @Test
-    fun trackMoreMenuDispatchesPlayNextAndUsesACommandSheet() {
+    fun trackMoreMenuDispatchesPlayNextAndUsesLiquidMenu() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         var playedNext: Track? = null
         setContent(
@@ -3092,7 +3100,9 @@ class MusicShellTest {
         )
 
         compose.onNodeWithContentDescription("更多操作").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertExists()
         compose.onNodeWithText("下一首播放").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("liquid-menu-dismiss").assertDoesNotExist()
 
         org.junit.Assert.assertEquals(track.id, playedNext?.id)
     }
@@ -3396,7 +3406,7 @@ class MusicShellTest {
     }
 
     @Test
-    fun trackCanBeAddedToAnExistingPlaylistFromItsCommandSheet() {
+    fun trackCanBeAddedToAnExistingPlaylistFromLiquidMenu() {
         val track = Track(TrackId("track-placeholder"), "测试曲目")
         val playlist = Playlist(PlaylistId("playlist-placeholder"), "通勤歌单", trackCount = 2)
         var target: Pair<PlaylistId, TrackId>? = null
@@ -3925,6 +3935,46 @@ class MusicShellTest {
         compose.onNodeWithText("编辑").performClick()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithTag("library-detail-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun playlistTrackMenuUsesExplicitSourceAndBusyState() {
+        val track = Track(TrackId("source-track"), "来源歌曲")
+        val playlist = Playlist(PlaylistId("source-list"), "来源歌单", trackCount = 1)
+        var state by androidx.compose.runtime.mutableStateOf(MusicUiState(loading = false,
+            playlists = listOf(playlist), detailTracks = listOf(track), playlistBusy = true,
+            detailKey = DetailRequestKey("playlist", playlist.id.value)))
+        val removed = mutableListOf<Pair<PlaylistId, List<TrackId>>>()
+        setContent(stateProvider = { state }, onRemoveTracksFromPlaylist = { id, ids -> removed += id to ids })
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        compose.onNodeWithText("来源歌单").performClick()
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasText("来源歌曲"))
+        compose.onNodeWithContentDescription("更多操作").performClick()
+        compose.onNodeWithTag("liquid-menu-item-remove-playlist").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(playlistBusy = false) }
+        compose.onNodeWithTag("liquid-menu-item-remove-playlist").assertIsEnabled().performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        assertEquals(listOf(playlist.id to listOf(track.id)), removed)
+    }
+
+    @Test
+    fun playerMenuDoesNotInheritBackgroundPlaylist() {
+        val track = Track(TrackId("player-source"), "播放来源歌曲")
+        val playlist = Playlist(PlaylistId("background-list"), "后台歌单", trackCount = 1)
+        setContent(state = MusicUiState(loading = false, playlists = listOf(playlist), detailTracks = listOf(track)),
+            playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0))
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("歌单").performClick()
+        compose.onNodeWithText("后台歌单").performClick()
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        compose.onNodeWithTag("player-more-action").performClick()
+        compose.onNodeWithTag("liquid-menu-item-remove-playlist").assertDoesNotExist()
+        compose.onNodeWithTag("liquid-menu-item-album").assertDoesNotExist()
+        compose.onNodeWithTag("liquid-menu-item-artist").assertDoesNotExist()
+        compose.onNodeWithTag("liquid-menu-item-playlist").performClick()
+        compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+        compose.onNodeWithContentDescription("添加到歌单：后台歌单").assertIsEnabled()
     }
 
     private fun setContent(
