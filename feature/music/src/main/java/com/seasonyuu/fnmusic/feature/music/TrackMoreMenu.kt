@@ -35,12 +35,14 @@ internal fun PlayerMoreMenu(
     onOpenChange: (Boolean) -> Unit = {},
     surfaceColor: Color,
 ) = TrackMoreMenu(track, backdrop = backdrop, modifier = modifier,
-    preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange, surfaceColor = surfaceColor)
+    preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange, surfaceColor = surfaceColor,
+    actionIds = listOf("artist", "album", "playlist", "info"))
 
 @Composable
 internal fun TrackMoreMenu(
     track: Track,
     sourcePlaylist: PlaylistId? = null,
+    actionIds: List<String>? = null,
     surfaceColor: Color = LocalLiquidMenuSurfaceColor.current,
     backdrop: Backdrop? = LocalTrackMenuBackdrop.current,
     modifier: Modifier = Modifier.size(48.dp),
@@ -54,7 +56,9 @@ internal fun TrackMoreMenu(
     var generation by remember(track.id, sourcePlaylist) { mutableStateOf(0) }
     androidx.compose.runtime.key(track.id, sourcePlaylist, generation) {
         var expanded by remember { mutableStateOf(false) }
-        val actions = LocalTrackMenuActions.current(track, sourcePlaylist)
+        val availableActions = LocalTrackMenuActions.current(track, sourcePlaylist)
+        val actions = actionIds?.mapNotNull { id -> availableActions.firstOrNull { it.item.id == id } }
+            ?: availableActions
         val notify = rememberUpdatedState(onOpenChange)
         LaunchedEffect(enabled) {
             if (!enabled && expanded) {

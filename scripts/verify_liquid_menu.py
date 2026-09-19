@@ -80,7 +80,8 @@ def main():
                 *[f'{FEATURE}.MusicShellTest#{method}' for method in (
                     'trackMoreMenuDispatchesPlayNextAndUsesLiquidMenu',
                     'playerMoreMorphsFromTransientSurfaceAndRestoresIcon',
-                    'playerLiquidMenuDeliversQueueAndFavoriteActionsOnce',
+                    'trackLiquidMenuDeliversQueueAndFavoriteActionsOnce',
+                    'playerMenuContainsOnlyFourActionsInRequestedOrder',
                     'lyricsHeaderMoreActionUsesLiquidMenuAndStaysVisible',
                     'playerAlbumNavigationCollapsesAndQualityIsCentered',
                     'searchMoreUsesExistingFavoriteMenu',

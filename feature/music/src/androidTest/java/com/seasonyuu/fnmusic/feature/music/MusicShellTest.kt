@@ -2492,7 +2492,8 @@ class MusicShellTest {
         }
 
         compose.onNodeWithTag("player-lyrics-more-action", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("下一首播放").assertIsDisplayed()
+        compose.onNodeWithText("添加到歌单").assertIsDisplayed()
+        compose.onNodeWithText("下一首播放").assertDoesNotExist()
         compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
         compose.mainClock.advanceTimeBy(4_000)
         compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
@@ -3233,22 +3234,38 @@ class MusicShellTest {
     }
 
     @Test
-    fun playerLiquidMenuDeliversQueueAndFavoriteActionsOnce() {
+    fun trackLiquidMenuDeliversQueueAndFavoriteActionsOnce() {
         val track = Track(TrackId("menu-current"), "当前歌曲")
         val calls = mutableListOf<String>()
-        setContent(playerState = PlayerState(
+        setContent(state = MusicUiState(loading = false, tracks = listOf(track)), playerState = PlayerState(
             queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0),
             onToggleFavorite = { calls += "favorite:${it.id.value}" },
             onPlayNext = { calls += "next:${it.id.value}" },
             onAddToQueue = { calls += "queue:${it.id.value}" })
-        compose.onNodeWithTag("dynamic-mini-player").performClick()
         for (id in listOf("favorite", "next", "queue")) {
-            compose.onNodeWithTag("player-more-action").performClick()
+            compose.onNodeWithContentDescription("更多操作").performClick()
             compose.onNodeWithTag("liquid-menu-content").assertIsDisplayed()
             compose.onNodeWithTag("liquid-menu-item-$id").performClick()
             compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
         }
         assertEquals(listOf("favorite:menu-current", "next:menu-current", "queue:menu-current"), calls)
+    }
+
+    @Test
+    fun playerMenuContainsOnlyFourActionsInRequestedOrder() {
+        val track = Track(TrackId("player-menu-order"), "菜单顺序",
+            artists = listOf(Artist(ArtistId("menu-artist"), "测试歌手")),
+            album = Album(AlbumId("menu-album"), "测试专辑"))
+        setContent(playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/stream")), currentIndex = 0))
+        compose.onNodeWithTag("dynamic-mini-player").performClick()
+        compose.onNodeWithTag("player-more-action").performClick()
+        val tops = listOf("artist", "album", "playlist", "info").map { id ->
+            compose.onNodeWithTag("liquid-menu-item-$id").assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        }
+        assertTrue(tops.zipWithNext().all { (previous, next) -> previous < next })
+        for (id in listOf("favorite", "next", "queue", "remove-playlist")) {
+            compose.onNodeWithTag("liquid-menu-item-$id").assertDoesNotExist()
+        }
     }
 
     @Test
