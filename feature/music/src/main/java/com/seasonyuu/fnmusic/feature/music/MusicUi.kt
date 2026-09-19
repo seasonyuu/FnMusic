@@ -4817,10 +4817,6 @@ private fun QueuePlayerContent(
             }
             itemsIndexed(displayedQueue, key = { _, item -> item.key }) { index, entry ->
                 val dragging = draggedKey == entry.key
-                val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
-                val translation = if (dragging && itemInfo != null) {
-                    draggedCenterY - itemInfo.offset - itemInfo.size / 2f
-                } else 0f
                 val dragState = rememberDraggableState { delta ->
                     if (draggedKey == entry.key) {
                         draggedCenterY += delta
@@ -4831,7 +4827,15 @@ private fun QueuePlayerContent(
                     item = entry.item,
                     current = false,
                     dragging = dragging,
-                    dragOffsetY = translation,
+                    dragOffsetY = {
+                        // Read after LazyColumn has measured the new order. A value
+                        // captured in composition still uses the previous row offset
+                        // for one frame, making the lifted row jump on every swap.
+                        val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
+                        if (draggedKey == entry.key && itemInfo != null) {
+                            draggedCenterY - itemInfo.offset - itemInfo.size / 2f
+                        } else 0f
+                    },
                     modifier = (if (dragging) Modifier else Modifier.animateItem()).drawWithContent {
                         val header = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "queue-modes" }
                         val row = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == entry.key }
@@ -4959,7 +4963,7 @@ private fun QueueTrackRow(
     item: PlayableTrack,
     current: Boolean,
     dragging: Boolean,
-    dragOffsetY: Float,
+    dragOffsetY: () -> Float,
     modifier: Modifier = Modifier,
     revealed: Boolean,
     onReveal: (Boolean) -> Unit,
@@ -4993,7 +4997,7 @@ private fun QueueTrackRow(
             .fillMaxWidth()
             .zIndex(if (dragging) 2f else 0f)
             .graphicsLayer {
-                translationY = dragOffsetY
+                translationY = dragOffsetY()
                 scaleX = if (dragging) 1.025f else 1f
                 scaleY = if (dragging) 1.025f else 1f
                 shape = rowShape
