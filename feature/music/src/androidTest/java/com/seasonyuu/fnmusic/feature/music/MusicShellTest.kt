@@ -1681,6 +1681,72 @@ class MusicShellTest {
     }
 
     @Test
+    fun draggedQueueRowFollowsPointerAcrossReordering() {
+        val tracks = (1..6).map {
+            PlayableTrack(Track(TrackId("drag-frame-$it"), "逐帧拖动 $it"), "https://music.invalid/$it")
+        }
+        val moves = mutableListOf<Pair<Int, Int>>()
+        setContent(
+            playerState = PlayerState(queue = tracks, currentIndex = 0),
+            onMoveQueueItem = { from, to -> moves += from to to },
+        )
+        compose.onNodeWithText("逐帧拖动 1").performClick()
+        compose.onNodeWithContentDescription("打开待播队列").performClick()
+        compose.waitForIdle()
+        val handle = compose.onNodeWithContentDescription("长按拖动排序：逐帧拖动 3")
+            .fetchSemanticsNode()
+        val coordinates = handle.layoutInfo.coordinates
+        val localCenter = Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
+        val start = coordinates.localToRoot(localCenter)
+        val rowHeight = compose.onNodeWithTag("player-queue-row-drag-frame-3")
+            .fetchSemanticsNode().boundsInRoot.height
+        val drawnCenters = mutableListOf<Float>()
+        lateinit var decor: android.view.View
+        val listener = android.view.ViewTreeObserver.OnDrawListener {
+            if (coordinates.isAttached) drawnCenters += coordinates.localToRoot(localCenter).y
+        }
+        compose.mainClock.autoAdvance = false
+        compose.onRoot().performTouchInput { down(start) }
+        compose.mainClock.advanceTimeBy(48)
+        compose.waitForIdle()
+        compose.runOnUiThread {
+            decor = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).single().window.decorView
+            decor.viewTreeObserver.addOnDrawListener(listener)
+        }
+        var previousY = start.y
+        try {
+            // Cross the upper neighbour, then move back down across two rows.
+            // Sample native draw passes as well as the final reorder callback.
+            // Allow the small displacement from the lifted row's 1.025x scale.
+            val steps = (1..10).map { -it / 10f } + (1..20).map { -1f + it / 10f }
+            for (step in steps) {
+                val targetY = start.y + rowHeight * step
+                compose.runOnUiThread { drawnCenters.clear() }
+                compose.onRoot().performTouchInput { moveTo(Offset(start.x, targetY), delayMillis = 32) }
+                repeat(3) {
+                    compose.mainClock.advanceTimeByFrame()
+                    compose.waitForIdle()
+                }
+                compose.runOnUiThread {
+                    assertTrue("Must inspect at least one draw at step $step", drawnCenters.isNotEmpty())
+                    val minimum = minOf(previousY, targetY) - rowHeight * .06f
+                    val maximum = maxOf(previousY, targetY) + rowHeight * .06f
+                    assertTrue("Row jumped away from pointer at step $step: $drawnCenters, expected $minimum..$maximum",
+                        drawnCenters.all { it in minimum..maximum })
+                }
+                previousY = targetY
+            }
+        } finally {
+            compose.runOnUiThread { decor.viewTreeObserver.removeOnDrawListener(listener) }
+            compose.onRoot().performTouchInput { up() }
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+        }
+        assertEquals(listOf(2 to 3), moves)
+    }
+
+    @Test
     fun shuffledQueueDisplaysAndEditsActualPlaybackOrder() {
         val tracks = (0..4).map { PlayableTrack(Track(TrackId("shuffle-$it"), "随机曲目 $it"), "https://music.invalid/$it") }
         val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 4, shuffleEnabled = true,
