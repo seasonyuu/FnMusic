@@ -174,23 +174,30 @@ class LiquidMenuAnchorTest {
         assertEquals(4, dismissals)
     }
 
-    @Test fun attachedFallbackKeepsItsOriginalForegroundVisible() {
+    @Test fun attachedFallbackMorphsAndRestoresItsForeground() {
         glass = false
         fixture(attached = true)
         for (enabled in if (Build.VERSION.SDK_INT < 33) listOf(false, true) else listOf(false)) {
             compose.runOnIdle { glass = enabled }
             val original = foregroundPixels()
+            val surfaceTag = if (enabled && Build.VERSION.SDK_INT >= 31) "liquid-menu-blur" else "liquid-menu-solid"
             compose.mainClock.autoAdvance = false
             compose.onNodeWithTag("trigger").performClick()
             compose.mainClock.advanceTimeBy(80)
-            assertEquals(original, foregroundPixels())
-            compose.onNodeWithTag("liquid-menu-foreground").assertDoesNotExist()
-            compose.mainClock.advanceTimeBy(240)
+            compose.onNodeWithTag("liquid-menu-foreground").assertExists()
+            val opening = compose.onNodeWithTag(surfaceTag).fetchSemanticsNode().boundsInRoot
+            compose.mainClock.advanceTimeBy(2_000)
+            val opened = compose.onNodeWithTag(surfaceTag).fetchSemanticsNode().boundsInRoot
+            assertTrue("Fallback expands from the anchor", opening.width < opened.width)
+            assertEquals(0, foregroundPixels())
             compose.runOnIdle { expanded = false }
-            compose.mainClock.advanceTimeBy(80)
-            assertEquals(original, foregroundPixels())
+            compose.mainClock.advanceTimeBy(160)
+            val closing = compose.onNodeWithTag(surfaceTag).fetchSemanticsNode().boundsInRoot
+            assertTrue("Fallback contracts toward the anchor", closing.width < opened.width)
+            compose.onNodeWithTag("liquid-menu-foreground").assertExists()
             compose.mainClock.autoAdvance = true
             compose.onNodeWithTag("liquid-menu-overlay").assertDoesNotExist()
+            assertEquals(original, foregroundPixels())
         }
     }
 

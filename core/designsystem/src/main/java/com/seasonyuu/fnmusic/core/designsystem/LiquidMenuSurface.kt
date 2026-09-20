@@ -168,7 +168,7 @@ internal fun LiquidMenuSurface(
                 )
         )
     } else {
-        val shape = RoundedCornerShape(32.dp)
+        val shape = RoundedCornerShape(with(density) { blobs.radius.toDp() })
         val glass = rendering == MenuRendering.Blur
         Box(
             base

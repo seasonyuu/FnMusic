@@ -265,8 +265,8 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
     // Freeze geometry during a session; moving anchors close instead of being chased.
     val anchor = remember { currentAnchor }
     val surface = remember { currentSurface }
-    val full = rendering == MenuRendering.Shader &&
-        owner.transition != LiquidMenuTransition.Detached && !surface.isEmpty && !owner.foreground.isEmpty
+    // Motion depends on the anchor contract, not on glass/shader availability.
+    val full = owner.transition != LiquidMenuTransition.Detached && !surface.isEmpty && !owner.foreground.isEmpty
     val startWindow = remember { window }
     val startRadius = when (val shape = owner.shape) {
         LiquidMenuAnchorShape.Capsule -> min(surface.width, surface.height) / 2
