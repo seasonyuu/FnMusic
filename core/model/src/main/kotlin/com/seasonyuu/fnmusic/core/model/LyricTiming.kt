@@ -49,7 +49,7 @@ private fun String.isTimedCharacter(range: IntRange): Boolean {
 fun resolveLyricTimeline(lines: List<LyricLine>, index: Int, durationMs: Long): LyricTimeline? {
     val line = lines.getOrNull(index) ?: return null
     val start = line.timeMs ?: return null
-    if (line.text.isBlank()) return null
+    if (line.text.isBlank() || line.timingSource == LyricTimingSource.Line) return null
     val ranges = lyricCharacterRanges(line.text)
     val boundaries = ranges.map { it.first }.toSet() + line.text.length
     val supplied = line.segments
@@ -61,7 +61,7 @@ fun resolveLyricTimeline(lines: List<LyricLine>, index: Int, durationMs: Long): 
         } && supplied.zipWithNext().all { (a, b) -> a.endOffset == b.startOffset && a.endMs <= b.startMs }
     ) return LyricTimeline(LyricTimingSource.Accurate, supplied)
 
-    val end = lines.drop(index + 1).mapNotNull { it.timeMs }.firstOrNull { it > start }
+    val end = line.endTimeMs?.takeIf { it > start } ?: lines.drop(index + 1).mapNotNull { it.timeMs }.firstOrNull { it > start }
         ?: durationMs.takeIf { it > start } ?: return null
     val timed = ranges.filter { line.text.isTimedCharacter(it) }
     if (timed.isEmpty()) return null

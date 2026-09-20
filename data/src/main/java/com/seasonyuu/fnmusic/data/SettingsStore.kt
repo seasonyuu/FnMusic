@@ -26,6 +26,22 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         context.applicationContext.preferencesDataStoreFile("settings")
     })
 
+    val amllEnabled: Flow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("amll_enabled")] ?: true }
+
+    suspend fun setAmllEnabled(enabled: Boolean) {
+        dataStore.edit { it[booleanPreferencesKey("amll_enabled")] = enabled }
+    }
+
+    val lyricsSource: Flow<com.seasonyuu.fnmusic.core.model.LyricsFetchSource> = dataStore.data.map { values ->
+        com.seasonyuu.fnmusic.core.model.LyricsFetchSource.entries.firstOrNull {
+            it.name == values[stringPreferencesKey("lyrics_source")]
+        } ?: com.seasonyuu.fnmusic.core.model.LyricsFetchSource.Bikonoo
+    }
+
+    suspend fun setLyricsSource(source: com.seasonyuu.fnmusic.core.model.LyricsFetchSource) {
+        dataStore.edit { it[stringPreferencesKey("lyrics_source")] = source.name }
+    }
+
     val themeColor: Flow<com.seasonyuu.fnmusic.core.model.ThemeColorPreference> = dataStore.data.map {
         com.seasonyuu.fnmusic.core.model.ThemeColorPreference.fromId(it[stringPreferencesKey("theme_color")])
     }

@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -16,6 +17,8 @@ android {
 dependencies {
     api(project(":core:model"))
     implementation(project(":core:network"))
+    implementation(project(":accompanist-lyrics-core"))
+    implementation(libs.okhttp)
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

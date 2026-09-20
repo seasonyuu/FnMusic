@@ -173,10 +173,11 @@ data class LyricLine(
     val translation: String? = null,
     val segments: List<LyricSegment> = emptyList(),
     val timingSource: LyricTimingSource? = null,
+    val endTimeMs: Long? = null,
 )
 
 @Serializable
-enum class LyricTimingSource { Accurate, Estimated }
+enum class LyricTimingSource { Accurate, Estimated, Line }
 
 /** UTF-16 text range [startOffset, endOffset), with absolute media times in milliseconds. */
 @Serializable
