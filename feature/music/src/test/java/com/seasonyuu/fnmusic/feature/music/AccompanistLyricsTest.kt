@@ -30,6 +30,13 @@ class AccompanistLyricsTest {
         assertFalse(syllable.progress(1000).isNaN())
     }
 
+    @Test fun negativeOffsetKeepsCompletedSyllablesFilledAtStart() {
+        val timeline = LyricTimeline(LyricTimingSource.Accurate, listOf(LyricSegment(0, 1, -500, -100)))
+        val syllable = timeline.toKaraokeLine("字").syllables.single()
+        assertEquals(-500, syllable.start)
+        assertEquals(1f, syllable.progress(0), 0f)
+    }
+
     @Test fun clampsLongMediaTimesWithoutOverflow() {
         val timeline = LyricTimeline(LyricTimingSource.Accurate, listOf(LyricSegment(0, 1, Long.MAX_VALUE - 1, Long.MAX_VALUE)))
         val line = timeline.toKaraokeLine("字")
