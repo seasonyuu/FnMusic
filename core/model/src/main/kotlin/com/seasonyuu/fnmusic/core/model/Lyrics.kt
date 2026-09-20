@@ -13,6 +13,12 @@ enum class LyricsFetchSource(val label: String, val baseUrl: String) {
 }
 
 @Serializable
+enum class OnlineLyricsSource(val label: String) { Netease("网易云音乐"), QQ("QQ 音乐"), Kugou("酷狗音乐") }
+
+@Serializable
+data class OnlineLyricsPreference(val enabled: Boolean = true, val sources: Set<OnlineLyricsSource> = OnlineLyricsSource.entries.toSet())
+
+@Serializable
 data class LyricsCandidate(
     val rawFile: String,
     val titles: List<String>,
@@ -20,15 +26,19 @@ data class LyricsCandidate(
     val albums: List<String> = emptyList(),
     val platformIds: Map<String, List<String>> = emptyMap(),
     val authors: List<String> = emptyList(),
+    val onlineSource: OnlineLyricsSource? = null,
+    val songId: String = "",
+    val durationMs: Long = 0,
+    val downloadMetadata: Map<String, String> = emptyMap(),
 ) {
-    fun availableFrom(source: LyricsFetchSource): Boolean = source != LyricsFetchSource.Dimeta ||
+    fun availableFrom(source: LyricsFetchSource): Boolean = onlineSource != null || source != LyricsFetchSource.Dimeta ||
         listOf("ncmMusicId", "qqMusicId", "appleMusicId", "spotifyId").any { key ->
             platformIds[key].orEmpty().any { it.matches(Regex("[A-Za-z0-9_-]+")) }
         }
 }
 
 @Serializable
-enum class LyricsChoiceMode { Automatic, Amll, FnMusic }
+enum class LyricsChoiceMode { Automatic, Amll, FnMusic, Online }
 
 @Serializable
 data class LyricsChoice(
@@ -37,7 +47,7 @@ data class LyricsChoice(
     val offsetMs: Long = 0,
 )
 
-enum class LyricsOrigin { Amll, FnMusic }
+enum class LyricsOrigin { Amll, FnMusic, Netease, QQ, Kugou }
 data class LyricsDocument(
     val lines: List<LyricLine>,
     val origin: LyricsOrigin,
@@ -59,6 +69,11 @@ data class LyricsCacheUsage(val count: Int = 0, val bytes: Long = 0)
 /** UI boundary; track identity is explicit so a dialog cannot modify the next playing song. */
 interface LyricsActions {
     val accountKey: String get() = ""
+    val onlinePreference: Flow<OnlineLyricsPreference>
+    val onlineCacheUsage: StateFlow<LyricsCacheUsage>
+    suspend fun setOnlinePreference(preference: OnlineLyricsPreference)
+    suspend fun clearOnlineCache()
+    suspend fun searchOnline(source: OnlineLyricsSource, query: String): List<LyricsCandidate>
     val amllEnabled: Flow<Boolean>
     suspend fun setAmllEnabled(enabled: Boolean)
     val index: StateFlow<LyricsIndexState>
@@ -70,4 +85,15 @@ interface LyricsActions {
     suspend fun preview(candidate: LyricsCandidate): LyricsDocument
     fun choice(track: Track): Flow<LyricsChoice>
     suspend fun choose(track: Track, choice: LyricsChoice)
+}
+
+val LyricsDocument.hasAccurateWords: Boolean
+    get() = lines.any { it.timingSource == LyricTimingSource.Accurate && it.segments.isNotEmpty() }
+
+val LyricsOrigin.label: String get() = when (this) {
+    LyricsOrigin.Amll -> "AMLL TTML DB"
+    LyricsOrigin.FnMusic -> "飞牛音乐"
+    LyricsOrigin.Netease -> "网易云音乐"
+    LyricsOrigin.QQ -> "QQ 音乐"
+    LyricsOrigin.Kugou -> "酷狗音乐"
 }

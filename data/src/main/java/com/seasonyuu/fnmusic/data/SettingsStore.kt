@@ -26,6 +26,21 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         context.applicationContext.preferencesDataStoreFile("settings")
     })
 
+    val onlineLyricsPreference: Flow<com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference> = dataStore.data.map { values ->
+        val sources = values[stringPreferencesKey("online_lyrics_sources")]?.split(',')?.mapNotNull { name ->
+            com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.firstOrNull { it.name == name }
+        }?.toSet()?.takeIf { it.isNotEmpty() } ?: com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.toSet()
+        com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference(values[booleanPreferencesKey("online_lyrics_enabled")] ?: true, sources)
+    }
+
+    suspend fun setOnlineLyricsPreference(value: com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference) {
+        require(value.sources.isNotEmpty()) { "请至少选择一个来源" }
+        dataStore.edit {
+            it[booleanPreferencesKey("online_lyrics_enabled")] = value.enabled
+            it[stringPreferencesKey("online_lyrics_sources")] = value.sources.sortedBy { source -> source.ordinal }.joinToString(",") { source -> source.name }
+        }
+    }
+
     val amllEnabled: Flow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("amll_enabled")] ?: true }
 
     suspend fun setAmllEnabled(enabled: Boolean) {
