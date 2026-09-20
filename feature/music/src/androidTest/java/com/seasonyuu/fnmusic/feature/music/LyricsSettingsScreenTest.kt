@@ -125,7 +125,7 @@ class LyricsSettingsScreenTest {
         compose.waitForIdle()
         compose.runOnIdle { assertTrue(actions.searches > initialSearches) }
         compose.onNodeWithText("Candidate").performScrollTo().performClick()
-        compose.onNodeWithText("返回结果").performClick()
+        compose.onNodeWithContentDescription("返回结果").performClick()
         compose.onNodeWithTag("lyrics-search-query").assertTextContains("Other")
         compose.onNodeWithText("Candidate").performScrollTo().performClick()
         compose.onNodeWithTag("lyrics-preview-apply").performClick()

@@ -576,12 +576,13 @@ fun MusicShell(
                 }
             }
         }
+        var lyricsSheetVisual by remember { mutableStateOf<Pair<TrackId, LyricsSheetVisual>?>(null) }
         var lyricsPickerTrack by remember { mutableStateOf<Track?>(null) }
         LaunchedEffect(playerState.current?.track?.id, lyricsActions?.accountKey) { lyricsPickerTrack = null }
         lyricsPickerTrack?.let { track ->
             lyricsActions?.let { actions ->
                 androidx.compose.runtime.key(track.id, lyricsActions.accountKey) {
-                    LyricsPickerDialog(track, actions, state.lyricsState.takeIf { playerState.current?.track?.id == track.id }, { lyricsPickerTrack = null })
+                    LyricsPickerDialog(track, actions, state.lyricsState.takeIf { playerState.current?.track?.id == track.id }, { lyricsPickerTrack = null }, visual = lyricsSheetVisual?.takeIf { it.first == track.id }?.second ?: LyricsSheetVisual(FnNavigationSurface))
                 }
             }
         }
@@ -929,6 +930,7 @@ fun MusicShell(
                                     PlayerPage.NowPlaying, PlayerPage.Lyrics, PlayerPage.Queue -> NowPlayingLyricsScreen(
                                         state = playerState,
                                         musicState = state,
+                                        onLyricsVisual = { id, visual -> lyricsSheetVisual = id to visual },
                                         highResolutionCoverUrl = coverUrl(playerState.current?.track?.coverId, 640)
                                             ?: playerState.current?.coverUrl,
                                         wideLayout = widePlayer,
@@ -2761,6 +2763,7 @@ private fun morphInterval(value: Float, start: Float, end: Float): Float =
 @Composable
 private fun NowPlayingLyricsScreen(
     state: PlayerState,
+    onLyricsVisual: (TrackId, LyricsSheetVisual) -> Unit,
     musicState: MusicUiState,
     highResolutionCoverUrl: String?,
     wideLayout: Boolean,
@@ -2854,6 +2857,7 @@ private fun NowPlayingLyricsScreen(
     }
     val playerMenuSurface by androidx.compose.animation.animateColorAsState(
         menuCoverTone, tween(250), label = "player-menu-tone")
+    SideEffect { onLyricsVisual(current.track.id, LyricsSheetVisual(playerMenuSurface, menuCoverBitmap)) }
     val playerBackgroundBackdrop = rememberLayerBackdrop()
     val artworkBackdrop = LocalPlayerArtworkBackdrop.current
     val playerMenuBackdrop = if (artworkBackdrop != null)
