@@ -30,6 +30,7 @@ class LyricsRepository(
     private val client: OkHttpClient = OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build(),
     private val baseUrl: (LyricsFetchSource) -> String = { it.baseUrl },
     private val now: () -> Long = System::currentTimeMillis,
+    private val online: OnlineLyricsRepository? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutableIndex = MutableStateFlow(LyricsIndexState())
@@ -56,14 +57,16 @@ class LyricsRepository(
             combine(settings.lyricsSource, settings.amllEnabled) { selected, enabled -> selected to enabled }
                 .distinctUntilChanged().collectLatest { (selected, enabled) ->
                 val switched = source.value != null
-                synchronized(lock) {
+                val changedSource = source.value != selected
+                if (changedSource) synchronized(lock) {
                     sourceEpoch++
                     indexCalls.forEach(Call::cancel); lyricCalls.forEach(Call::cancel)
                     rows = emptyList(); manifest = null
                     mutableIndex.value = LyricsIndexState(source = selected)
                     source.value = selected
                 }
-                loadIndex(selected)
+                if (changedSource) loadIndex(selected)
+                if (!enabled) synchronized(lock) { indexCalls.forEach(Call::cancel) }
                 if (enabled) updateIndex(force = switched)
             }
         }
@@ -199,7 +202,7 @@ class LyricsRepository(
         it?.let { row -> runCatching { json.decodeFromString<LyricsChoice>(row.choiceJson) }.getOrNull() } ?: LyricsChoice()
     }
     suspend fun choose(scope: String, track: Track, value: LyricsChoice) {
-        require(value.mode != LyricsChoiceMode.Amll || value.candidate != null)
+        require(value.mode !in setOf(LyricsChoiceMode.Amll, LyricsChoiceMode.Online) || value.candidate != null)
         choices.save(LyricsChoiceEntity(scope, track.id.value, json.encodeToString(value.copy(offsetMs = value.offsetMs.coerceIn(-600_000, 600_000)))))
     }
 
@@ -208,6 +211,7 @@ class LyricsRepository(
     }
 
     suspend fun preview(candidate: LyricsCandidate): LyricsDocument = withContext(Dispatchers.IO) {
+        if (candidate.onlineSource != null) return@withContext requireNotNull(online).preview(candidate)
         val selected = source.filterNotNull().first()
         val (epoch, cacheGeneration) = synchronized(lock) { sourceEpoch to cacheEpoch }
         val path = AmllIndex.path(selected, candidate) ?: error("此获取源无法获取该歌词")
@@ -233,55 +237,57 @@ class LyricsRepository(
         LyricsDocument(lines, LyricsOrigin.Amll, candidate)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    private data class Observation(val source: LyricsFetchSource, val choice: LyricsChoice, val amll: Boolean, val online: OnlineLyricsPreference)
+
     fun observe(scope: String, track: Track): Flow<LyricsState> = channelFlow {
-        var last: LyricsDocument? = null
-        var lastSource: LyricsFetchSource? = null
-        var lastChoice: LyricsChoice? = null
-        combine(source.filterNotNull(), revision, choice(scope, track), settings.amllEnabled) { s, _, c, enabled -> Triple(s, c, enabled) }
-            .collectLatest { (selected, selectedChoice, enabled) ->
-                val keep = enabled && selected == lastSource && selectedChoice == lastChoice && last?.origin == LyricsOrigin.Amll
-                if (keep) return@collectLatest
-                lastSource = selected; lastChoice = selectedChoice
-                send(LyricsState(loading = true))
-                // A slow NAS must not delay a cached/downloaded AMLL result.
-                coroutineScope {
-                    val displayLock = Any()
-                    var amllShown = false
-                    val nas = async { latestFnDocument(track) }
-                    val nasDisplay = launch {
-                        val fallback = nas.await()
-                        synchronized(displayLock) {
-                            if (!amllShown) trySend(LyricsState(fallback, loading = enabled && selectedChoice.mode != LyricsChoiceMode.FnMusic))
-                        }
-                    }
-                    if (!enabled || selectedChoice.mode == LyricsChoiceMode.FnMusic) {
-                        nasDisplay.join(); last = null
-                        return@coroutineScope
-                    }
-                    try {
-                        if (synchronized(lock) { manifest == null }) updateIndex(false)
-                        else launch { updateIndex(false) }
-                        val candidate = if (selectedChoice.mode == LyricsChoiceMode.Amll) selectedChoice.candidate
-                            else AmllIndex.match(synchronized(lock) { rows }, track)
-                        if (candidate == null) {
-                            nasDisplay.join(); last = null
-                            send(LyricsState(nas.await(), error = index.value.error))
-                        } else {
-                            val document = preview(candidate).shifted(selectedChoice.offsetMs)
-                            synchronized(displayLock) {
-                                amllShown = true; last = document
-                                trySend(LyricsState(document))
-                            }
-                            nasDisplay.cancel(); nas.cancel()
-                        }
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) {
-                        nasDisplay.join(); last = null
-                        send(LyricsState(nas.await(), error = error.message ?: "AMLL 不可用，已使用飞牛歌词"))
-                    }
+        var completed: Observation? = null
+        var completedDocument: LyricsDocument? = null
+        combine(source.filterNotNull(), revision, choice(scope, track), settings.amllEnabled, settings.onlineLyricsPreference) { selected, _, choice, enabled, preference ->
+            Observation(selected, choice, enabled, preference)
+        }.collectLatest { request ->
+            val manual = request.choice.mode != LyricsChoiceMode.Automatic
+            val old = completed
+            if (old != null && old.choice == request.choice && old.source == request.source &&
+                (manual || (old == request && completedDocument?.origin != LyricsOrigin.FnMusic))) return@collectLatest
+            send(LyricsState(loading = true))
+            coroutineScope {
+                val nas = async { latestFnDocument(track) }
+                var finalShown = false
+                val displayLock = Any()
+                val showNas = launch {
+                    val document = nas.await()
+                    synchronized(displayLock) { if (!finalShown) trySend(LyricsState(document, loading = request.choice.mode != LyricsChoiceMode.FnMusic)) }
                 }
+                var error: String? = null
+                val result = try {
+                    when (request.choice.mode) {
+                        LyricsChoiceMode.FnMusic -> nas.await()
+                        LyricsChoiceMode.Amll, LyricsChoiceMode.Online -> preview(requireNotNull(request.choice.candidate)).shifted(request.choice.offsetMs)
+                        LyricsChoiceMode.Automatic -> {
+                            val options = online?.automatic(track, request.online).orEmpty()
+                            val words = options.firstOrNull { it.hasAccurateWords }
+                            val amll = if (words == null && request.amll) {
+                                if (synchronized(lock) { manifest == null }) updateIndex(false)
+                                else launch { updateIndex(false) }
+                                val candidate = AmllIndex.match(synchronized(lock) { rows }, track)
+                                try { candidate?.let { preview(it) }?.takeIf { it.hasAccurateWords } }
+                                catch (e: CancellationException) { throw e }
+                                catch (_: Exception) { null }
+                            } else null
+                            (words ?: amll ?: options.firstOrNull())?.shifted(request.choice.offsetMs) ?: nas.await()
+                        }
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { error = e.message; nas.await() }
+                ensureActive()
+                synchronized(displayLock) {
+                    finalShown = true
+                    completed = request; completedDocument = result
+                    trySend(LyricsState(result, error = error))
+                }
+                showNas.cancel(); nas.cancel()
             }
+        }
     }.flowOn(Dispatchers.IO)
 
     private suspend fun latestFnDocument(track: Track): LyricsDocument {

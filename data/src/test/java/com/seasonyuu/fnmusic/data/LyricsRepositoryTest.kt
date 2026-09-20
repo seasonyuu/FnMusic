@@ -35,7 +35,7 @@ class LyricsRepositoryTest {
     }
     @Test fun disabledAmllSkipsStartupAndPlaybackRequestsAndKeepsChoice() = runBlocking {
         store.setAmllEnabled(false)
-        val choice = LyricsChoice(LyricsChoiceMode.Amll, AmllIndex.parse(indexRow()).single(), 100)
+        val choice = LyricsChoice(offsetMs = 100)
         repository.choose("account", song(), choice)
         repository.start(scope)
         val result = withTimeout(5000) { repository.observe("account", song()).first { it.document?.origin == LyricsOrigin.FnMusic && !it.loading } }
@@ -194,6 +194,45 @@ class LyricsRepositoryTest {
         assertNotNull(result.error)
         assertEquals(choice, repository.choice("account", song()).first())
     }
+    @Test fun automaticPriorityPrefersOnlineWordsThenAmllThenOnlineLinesThenNas() = runBlocking {
+        var onlineLines = listOf(LyricLine(0, "Online line", timingSource = LyricTimingSource.Line))
+        val provider = object : LyricsProvider {
+            override val source = OnlineLyricsSource.Netease
+            override suspend fun search(query: String) = listOf(AmllIndex.parse(indexRow()).single().copy(rawFile = "", onlineSource = source, songId = "123"))
+            override suspend fun load(candidate: LyricsCandidate) = onlineLines
+        }
+        val online = OnlineLyricsRepository(File(temporary.root, "online"), listOf(provider))
+        repository = LyricsRepository(File(temporary.root, "cache"), store, dao, { listOf(LyricLine(0, "NAS")) },
+            baseUrl = { server.url("/${it.name}/").toString() }, online = online)
+        store.setOnlineLyricsPreference(OnlineLyricsPreference(sources = setOf(provider.source)))
+        ready(); server.takeRequest()
+        server.enqueue(MockResponse().setBody(lyricFixture))
+        suspend fun result() = withTimeout(5000) { repository.observe("account", song()).first { it.document != null && !it.loading } }.document!!
+        assertEquals(LyricsOrigin.Amll, result().origin)
+        store.setAmllEnabled(false)
+        assertEquals(LyricsOrigin.Netease, result().origin)
+        online.clearCache()
+        onlineLines = listOf(LyricLine(0, "Word", segments = listOf(LyricSegment(0, 4, 0, 1000)), timingSource = LyricTimingSource.Accurate))
+        server.enqueue(MockResponse().setResponseCode(304))
+        store.setAmllEnabled(true)
+        assertEquals(LyricsOrigin.Netease, result().origin)
+        store.setOnlineLyricsPreference(OnlineLyricsPreference(false, setOf(provider.source)))
+        store.setAmllEnabled(false)
+        assertEquals(LyricsOrigin.FnMusic, result().origin)
+    }
+
+    @Test fun pinnedAmllStillLoadsWhenAutomaticAmllIsDisabled() = runBlocking {
+        store.setAmllEnabled(false)
+        val candidate = AmllIndex.parse(indexRow()).single()
+        repository.choose("account", song(), LyricsChoice(LyricsChoiceMode.Amll, candidate, 100))
+        server.enqueue(MockResponse().setBody(lyricFixture))
+        repository.start(scope)
+        val document = withTimeout(5000) { repository.observe("account", song()).first { it.document?.origin == LyricsOrigin.Amll && !it.loading } }.document!!
+        assertEquals(100L, document.offsetMs)
+        assertEquals("/Bikonoo/raw-lyrics/${candidate.rawFile}", server.takeRequest().path)
+        assertEquals(1, server.requestCount)
+    }
+
     private class MemoryChoices : LyricsChoiceDao {
         private val values = MutableStateFlow<Map<Pair<String, String>, LyricsChoiceEntity>>(emptyMap())
         override fun observe(scope: String, trackGuid: String) = values.map { it[scope to trackGuid] }

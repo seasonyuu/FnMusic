@@ -18,6 +18,51 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class LyricsIntegrationTest {
+    @Test fun onlineBindingRestoresAndWorksWithAutomaticSourcesDisabled() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val folder = File(context.cacheDir, "online-lyrics-integration-${System.nanoTime()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) {
+            override fun getApplicationContext(): Context = this
+            override fun getFilesDir(): File = folder
+        }
+        val databaseName = "online-choice-${System.nanoTime()}.db"
+        var db = Room.databaseBuilder(context, FnMusicDatabase::class.java, databaseName).build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = SettingsStore(isolated)
+            store.setAmllEnabled(false)
+            store.setOnlineLyricsPreference(OnlineLyricsPreference(false, setOf(OnlineLyricsSource.QQ)))
+            var loads = 0
+            val provider = object : LyricsProvider {
+                override val source = OnlineLyricsSource.Netease
+                override suspend fun search(query: String): List<LyricsCandidate> = error("Automatic search must be disabled")
+                override suspend fun load(candidate: LyricsCandidate): List<LyricLine> {
+                    loads++
+                    return listOf(LyricLine(1000, "Test", segments = listOf(LyricSegment(0, 4, 1000, 2000)), timingSource = LyricTimingSource.Accurate))
+                }
+            }
+            val online = OnlineLyricsRepository(File(folder, "online"), listOf(provider))
+            val candidate = LyricsCandidate("", listOf("Song"), listOf("Artist"), onlineSource = provider.source, songId = "123")
+            val track = Track(TrackId("song"), "Song")
+            val choice = LyricsChoice(LyricsChoiceMode.Online, candidate, -100)
+            var repository = LyricsRepository(File(folder, "amll"), store, db.lyricsChoices(), { listOf(LyricLine(0, "NAS")) }, online = online)
+            repository.choose("account", track, choice)
+            db.close()
+            db = Room.databaseBuilder(context, FnMusicDatabase::class.java, databaseName).build()
+            repository = LyricsRepository(File(folder, "amll"), store, db.lyricsChoices(), { listOf(LyricLine(0, "NAS")) }, online = online)
+            repository.start(scope)
+            val document = withTimeout(5000) { repository.observe("account", track).first { it.document?.origin == LyricsOrigin.Netease && !it.loading } }.document!!
+            assertEquals(900L, document.lines.single().timeMs)
+            assertEquals(choice, repository.choice("account", track).first())
+            assertEquals(LyricsChoice(), repository.choice("other", track).first())
+            online.preview(candidate)
+            assertEquals(1, loads)
+            online.clearCache()
+            assertEquals(0, online.cacheUsage.value.count)
+            assertEquals(choice, repository.choice("account", track).first())
+        } finally { scope.cancel(); db.close(); context.deleteDatabase(databaseName); folder.deleteRecursively() }
+    }
+
     @Test fun androidParserPersistenceAndOfflineCacheWorkTogether() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val folder = File(context.cacheDir, "amll-integration-${System.nanoTime()}").apply { mkdirs() }

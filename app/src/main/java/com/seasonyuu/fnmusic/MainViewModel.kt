@@ -97,6 +97,11 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     val lyricsActions: LyricsActions = object : LyricsActions {
         override val accountKey: String get() = (session.value as? SessionState.Ready)?.profile?.lyricsScope().orEmpty()
+        override val onlinePreference = graph.settings.onlineLyricsPreference
+        override val onlineCacheUsage = graph.onlineLyrics.cacheUsage
+        override suspend fun setOnlinePreference(preference: OnlineLyricsPreference) = graph.settings.setOnlineLyricsPreference(preference)
+        override suspend fun clearOnlineCache() = graph.onlineLyrics.clearCache()
+        override suspend fun searchOnline(source: OnlineLyricsSource, query: String) = graph.onlineLyrics.search(source, query)
         override val amllEnabled = graph.settings.amllEnabled
         override suspend fun setAmllEnabled(enabled: Boolean) = graph.settings.setAmllEnabled(enabled)
         override val index = graph.lyrics.index
@@ -211,6 +216,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                 mutableMusic.value = mutableMusic.value.copy(favoriteOverrides = overrides)
             }
         }
+        viewModelScope.launch { graph.onlineLyrics.start() }
         graph.lyrics.start(viewModelScope)
         viewModelScope.launch {
             combine(player.map { it.current?.track }.distinctUntilChanged(), session.map { (it as? SessionState.Ready)?.profile }.distinctUntilChanged()) { track, profile -> track to profile }

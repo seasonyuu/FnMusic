@@ -32,8 +32,9 @@ class AppGraph(context: Context) {
         .addMigrations(FnMusicDatabase.MIGRATION_2_3)
         .addMigrations(FnMusicDatabase.MIGRATION_3_4)
         .build()
+    val onlineLyrics = com.seasonyuu.fnmusic.data.OnlineLyricsRepository(java.io.File(context.filesDir, "online-lyrics"))
     val lyrics = com.seasonyuu.fnmusic.data.LyricsRepository(
-        java.io.File(context.filesDir, "amll"), settings, database.lyricsChoices(), catalog::lyrics,
+        java.io.File(context.filesDir, "amll"), settings, database.lyricsChoices(), catalog::lyrics, online = onlineLyrics,
     )
     val player = Media3PlayerController(context)
 
