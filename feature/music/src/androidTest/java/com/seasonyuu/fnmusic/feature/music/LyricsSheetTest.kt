@@ -24,6 +24,18 @@ class LyricsSheetTest {
         }
     }
     private fun openSearch() { compose.onNodeWithTag("lyrics-manual-search").performScrollTo().performClick(); compose.waitForIdle() }
+    @Test fun savingModeWaitsForHideAnimationBeforeDismissal() {
+        val actions = Fake()
+        var dismissed = false
+        compose.setContent { FnMusicTheme { Surface { LyricsPickerDialog(track, actions, null, { dismissed = true }) } } }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("使用飞牛歌词").performClick()
+        compose.runOnIdle { assertFalse(dismissed); assertEquals(LyricsChoiceMode.FnMusic, actions.chosen.value.mode) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.runOnIdle { assertTrue(dismissed) }
+        compose.mainClock.autoAdvance = true
+    }
     @Test fun tabsLoadOnDemandAndUseSubmittedQuery() {
         val actions = Fake(); show(actions); openSearch()
         compose.runOnIdle { assertEquals(listOf(OnlineLyricsSource.Netease to "Song"), actions.requests) }

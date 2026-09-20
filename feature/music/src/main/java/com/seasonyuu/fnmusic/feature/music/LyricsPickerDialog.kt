@@ -66,6 +66,25 @@ private fun LyricsSheetTheme(visual: LyricsSheetVisual, content: @Composable () 
         secondaryContainer = Color.White.copy(alpha = .12f), onSecondaryContainer = Color.White), content = content)
 }
 
+/** Disable the framework's clickable handle ripple without changing content feedback. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LyricsBottomSheet(
+    onDismissRequest: () -> Unit,
+    sheetState: SheetState,
+    surface: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val contentRipple = LocalRippleConfiguration.current
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState,
+            containerColor = surface, contentColor = Color.White, shape = SheetShape, modifier = modifier) {
+            CompositionLocalProvider(LocalRippleConfiguration provides contentRipple) { content() }
+        }
+    }
+}
+
 @Composable
 private fun SheetRow(title: String, subtitle: String? = null, icon: ImageVector, selected: Boolean = false,
     enabled: Boolean = true, tag: String = "", onClick: () -> Unit) {
@@ -95,6 +114,7 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
     var offsetExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val openedAccount = remember { actions.accountKey }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     fun save(value: LyricsChoice, close: Boolean) {
         if (saving) return
         saving = true
@@ -102,7 +122,10 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
             try {
                 check(openedAccount == actions.accountKey) { "账号已切换" }
                 actions.choose(track, value); error = null
-                if (close) onDismiss()
+                if (close) {
+                    sheetState.hide()
+                    onDismiss()
+                }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { error = "歌词选择保存失败，请重试" }
             finally { saving = false }
@@ -110,13 +133,12 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
     }
     LyricsSheetTheme(visual) {
         if (searching) {
-            LyricsSearchSheet(track, actions, visual, saving, error, onBack = { searching = false }, onApply = { candidate ->
+            LyricsSearchSheet(track, actions, visual, sheetState, saving, error, onBack = { searching = false }, onApply = { candidate ->
                 save(choice.copy(mode = if (candidate.onlineSource == null) LyricsChoiceMode.Amll else LyricsChoiceMode.Online, candidate = candidate), true)
             })
         } else {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = visual.surface, contentColor = Color.White,
-                shape = SheetShape, modifier = Modifier.testTag("lyrics-picker")) {
+            LyricsBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, surface = visual.surface,
+                modifier = Modifier.testTag("lyrics-picker")) {
                 LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item { Text("选择歌词", style = MaterialTheme.typography.titleLarge) }
                     item {
@@ -194,7 +216,7 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: LyricsSheetVisual,
+private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: LyricsSheetVisual, sheetState: SheetState,
     saving: Boolean, saveError: String?, onBack: () -> Unit, onApply: (LyricsCandidate) -> Unit) {
     val index by actions.index.collectAsState()
     val scope = rememberCoroutineScope()
@@ -213,7 +235,6 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
     var previewing by remember { mutableStateOf(false) }
     var previewAttempt by remember { mutableIntStateOf(0) }
     var closing by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     fun cancelSearch() {
         job?.cancel(); generation++
         results = results.filterValues { !it.loading }
@@ -282,8 +303,8 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
         finally { previewing = false }
     }
     fun back() { if (selected != null) selected = null else close() }
-    ModalBottomSheet(onDismissRequest = { cancelSearch(); onBack() }, sheetState = sheetState,
-        containerColor = visual.surface, contentColor = Color.White, shape = SheetShape, modifier = Modifier.testTag("lyrics-search-sheet")) {
+    LyricsBottomSheet(onDismissRequest = { cancelSearch(); onBack() }, sheetState = sheetState,
+        surface = visual.surface, modifier = Modifier.testTag("lyrics-search-sheet")) {
         BackHandler { back() }
         Column(Modifier.fillMaxWidth().fillMaxHeight(.9f).imePadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

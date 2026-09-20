@@ -87,9 +87,12 @@ class LyricsSettingsScreenTest {
     @Test fun pickerCanPinNasAndRestoreAutomatic() {
         val actions = Stub()
         val track = Track(TrackId("song"), "Song")
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { LyricsPickerDialog(track, actions, null, {}) } } }
+        val visible = androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface {
+            if (visible.value) LyricsPickerDialog(track, actions, null, { visible.value = false })
+        } } }
         compose.onNodeWithText("使用飞牛歌词").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(LyricsChoiceMode.FnMusic, actions.chosen.value.mode) }
+        compose.runOnIdle { assertEquals(LyricsChoiceMode.FnMusic, actions.chosen.value.mode); assertFalse(visible.value); visible.value = true }
         compose.onNodeWithText("自动匹配", substring = false).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(LyricsChoiceMode.Automatic, actions.chosen.value.mode) }
     }
