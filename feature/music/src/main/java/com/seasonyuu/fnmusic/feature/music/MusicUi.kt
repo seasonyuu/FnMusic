@@ -625,7 +625,7 @@ fun MusicShell(
                 MusicPage.Tracks, MusicPage.Recent, MusicPage.Favorites,
                 MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
             ) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
-            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.AmllSettings, MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage) {
+            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.matchParentSize().layerBackdrop(appBarBackdrop).background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))))
                     BoxWithConstraints(
@@ -842,9 +842,8 @@ fun MusicShell(
                                                             }
                                                         }
                                                         MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
-                                                        MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(it, ::popPage, { openPage(MusicPage.AmllSettings) }, { openPage(MusicPage.OnlineLyricsSettings) }) }
+                                                        MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(::popPage, { openPage(MusicPage.OnlineLyricsSettings) }) }
                                                         MusicPage.OnlineLyricsSettings -> lyricsActions?.let { OnlineLyricsSettingsScreen(it, ::popPage) }
-                                                        MusicPage.AmllSettings -> lyricsActions?.let { AmllSettingsScreen(it, ::popPage) }
                                                         MusicPage.Cache -> CacheSettingsScreen(state.cachePreference, state.cacheUsage, onCachePreferenceChange, onClearCache, ::popPage)
                                                         MusicPage.Appearance -> AppearanceSettingsScreen(state,
                                                             onAppearanceChange, onThemeColorChange, { openPage(MusicPage.LiquidGlass) }, ::popPage)

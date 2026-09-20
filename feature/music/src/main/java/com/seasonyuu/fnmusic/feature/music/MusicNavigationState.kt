@@ -15,7 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, DisplayMode, ThemeColor, Cache, LyricsSettings, AmllSettings, OnlineLyricsSettings, Quality, AdminLibraries, AdminUsers, AdminServer }
+internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, DisplayMode, ThemeColor, Cache, LyricsSettings, OnlineLyricsSettings, Quality, AdminLibraries, AdminUsers, AdminServer }
 
 /** Resource identity travels with data so an outgoing page cannot render another page's response. */
 data class DetailRequestKey(val type: String, val id: String)

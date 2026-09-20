@@ -16,27 +16,30 @@ class LyricsSettingsScreenTest {
     @Test fun lyricsEntryIsClickableAcrossTheWholeItem() {
         val actions = Stub()
         var opened = 0
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { LyricsSettingsScreen(actions, {}, { opened++ }) } } }
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { LyricsSettingsScreen({}, { opened++ }) } } }
         compose.onNodeWithTag("lyrics-amll-toggle").assertDoesNotExist()
-        compose.onNodeWithTag("lyrics-amll-entry").performTouchInput { click(androidx.compose.ui.geometry.Offset(width - 2f, height / 2f)) }
+        compose.onNodeWithText("AMLL 设置").assertDoesNotExist()
+        compose.onNodeWithText("利用在线资源搜索逐字歌词，达到更优秀的体验").assertExists()
+        compose.onNodeWithTag("lyrics-online-entry").performTouchInput { click(androidx.compose.ui.geometry.Offset(width - 2f, height / 2f)) }
         compose.runOnIdle { assertEquals(1, opened) }
     }
-    @Test fun disabledAmllDisablesDetailActionsAndCanBeReenabled() {
+    @Test fun disabledAmllHidesDetailsAndCanBeReenabled() {
         val actions = Stub()
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { AmllSettingsScreen(actions, {}) } } } }
-        compose.onNodeWithTag("lyrics-amll-toggle").performClick()
-        compose.runOnIdle { assertFalse(actions.amllEnabled.value) }
-        listOf("lyrics-source-menu", "lyrics-index-update", "lyrics-cache-clear").forEach {
-            compose.onNodeWithTag(it).performScrollTo().assertIsNotEnabled()
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { OnlineLyricsSettingsScreen(actions, {}) } } } }
+        compose.onNodeWithTag("lyrics-amll-toggle").performScrollTo().performClick()
+        compose.runOnIdle { assertFalse(actions.amllEnabled.value); assertTrue(actions.onlinePreference.value.enabled) }
+        compose.onNodeWithTag("lyrics-cache-clear").performScrollTo().assertIsEnabled()
+        listOf("lyrics-source-menu", "lyrics-index-update").forEach {
+            compose.onNodeWithTag(it).assertDoesNotExist()
         }
         compose.onNodeWithTag("lyrics-amll-toggle").performScrollTo().performClick()
-        listOf("lyrics-source-menu", "lyrics-index-update", "lyrics-cache-clear").forEach {
+        listOf("lyrics-source-menu", "lyrics-index-update").forEach {
             compose.onNodeWithTag(it).performScrollTo().assertIsEnabled()
         }
     }
     @Test fun showsIndexAndUpdatesAndClearsOnlyLyrics() {
         val actions = Stub()
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { AmllSettingsScreen(actions, {}) } } } }
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { OnlineLyricsSettingsScreen(actions, {}) } } } }
         compose.onNodeWithTag("lyrics-index-version").performScrollTo().assertTextEquals("abcdef123456")
         compose.onNodeWithTag("lyrics-index-size").assertTextEquals("2.0 KiB")
         capture("amll-settings-index")
@@ -44,15 +47,30 @@ class LyricsSettingsScreenTest {
         compose.runOnIdle { assertEquals(1, actions.updates) }
         compose.onNodeWithTag("lyrics-cache-clear").performScrollTo()
         capture("amll-settings-cache")
+        compose.onNodeWithTag("lyrics-cache-usage").assertTextEquals("5.0 KiB")
+        compose.onNodeWithText("已缓存 3 份歌词").assertExists()
         compose.onNodeWithTag("lyrics-cache-clear").performClick()
         compose.onNodeWithText("清除").performClick()
         compose.onNodeWithTag("lyrics-cache-usage").performScrollTo().assertTextEquals("暂无缓存")
         compose.onNodeWithTag("lyrics-cache-clear").assertIsNotEnabled()
         compose.runOnIdle { assertEquals("abcdef123456", actions.index.value.version) }
     }
+    @Test fun combinedClearStillClearsAmllWhenOnlineClearFails() {
+        val actions = Stub().apply { failOnlineClear = true }
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { OnlineLyricsSettingsScreen(actions, {}) } } } }
+        compose.onNodeWithTag("lyrics-cache-clear").performScrollTo().performClick()
+        compose.onNodeWithText("清除").performClick()
+        compose.onNodeWithTag("lyrics-cache-usage").performScrollTo().assertTextEquals("1.0 KiB")
+        compose.runOnIdle {
+            assertEquals(0, actions.cacheUsage.value.count)
+            assertEquals(1, actions.onlineCacheUsage.value.count)
+            assertEquals("abcdef123456", actions.index.value.version)
+        }
+        compose.onNodeWithText("部分缓存未能清除，请重试").performScrollTo().assertIsDisplayed()
+    }
     @Test fun sourceSwitchAndCheckingStateAreVisible() {
         val actions = Stub()
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { AmllSettingsScreen(actions, {}) } } } }
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { OnlineLyricsSettingsScreen(actions, {}) } } } }
         compose.onNodeWithTag("lyrics-source-menu").performScrollTo().performClick()
         compose.onNodeWithText("Dimeta").assertIsDisplayed().performClick()
         compose.waitForIdle()
@@ -75,16 +93,19 @@ class LyricsSettingsScreenTest {
         compose.onNodeWithText("自动匹配", substring = false).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(LyricsChoiceMode.Automatic, actions.chosen.value.mode) }
     }
-    @Test fun onlineSettingsProtectLastSourceAndDisableSelection() {
+    @Test fun onlineSettingsProtectLastSourceAndHideDetails() {
         val actions = Stub()
-        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { OnlineLyricsSettingsScreen(actions, {}) } } }
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost { OnlineLyricsSettingsScreen(actions, {}) } } } }
         capture("online-lyrics-settings")
         compose.onNodeWithTag("online-source-QQ").performScrollTo().performClick()
         compose.onNodeWithTag("online-source-Kugou").performScrollTo().performClick()
         compose.onNodeWithTag("online-source-Netease").assertIsNotEnabled()
         compose.onNodeWithTag("online-lyrics-toggle").performScrollTo().performClick()
-        compose.runOnIdle { assertFalse(actions.onlinePreference.value.enabled) }
-        compose.onNodeWithTag("online-source-QQ").performScrollTo().assertIsNotEnabled()
+        compose.runOnIdle { assertFalse(actions.onlinePreference.value.enabled); assertTrue(actions.amllEnabled.value) }
+        compose.onNodeWithTag("online-source-QQ").assertDoesNotExist()
+        compose.onNodeWithTag("online-lyrics-toggle").performScrollTo().performClick()
+        compose.onNodeWithTag("online-source-Netease").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("online-source-QQ").assertIsEnabled()
     }
     @Test fun manualSearchUsesSeparateSheetAndAppliesPreview() {
         val actions = Stub()
@@ -120,9 +141,10 @@ class LyricsSettingsScreenTest {
     }
     private class Stub : LyricsActions {
         override val onlinePreference = MutableStateFlow(OnlineLyricsPreference())
-        override val onlineCacheUsage = MutableStateFlow(LyricsCacheUsage())
+        override val onlineCacheUsage = MutableStateFlow(LyricsCacheUsage(1, 1024))
         override suspend fun setOnlinePreference(preference: OnlineLyricsPreference) { onlinePreference.value = preference }
-        override suspend fun clearOnlineCache() { onlineCacheUsage.value = LyricsCacheUsage() }
+        var failOnlineClear = false
+        override suspend fun clearOnlineCache() { if (failOnlineClear) error("Cannot clear"); onlineCacheUsage.value = LyricsCacheUsage() }
         var searches = 0
         override suspend fun searchOnline(source: OnlineLyricsSource, query: String): List<LyricsCandidate> { searches++; return if (source == OnlineLyricsSource.Netease) listOf(LyricsCandidate("", listOf("Candidate"), listOf("Singer"), onlineSource = source, songId = "1")) else emptyList() }
         override val amllEnabled = MutableStateFlow(true)
