@@ -70,7 +70,7 @@ internal fun AmllSettingsScreen(actions: LyricsActions, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("从 AMLL 获取歌词", style = MaterialTheme.typography.titleMedium)
-                        Text(if (enabled) "优先匹配逐词歌词" else "已关闭，使用飞牛歌词", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
+                        Text(if (enabled) "在线来源无逐词歌词时自动匹配" else "已关闭自动匹配", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
                     }
                     CompositionLocalProvider(LocalFnBackdrop provides null) {
                         LiquidToggle(checked = enabled, onCheckedChange = { value ->
@@ -87,6 +87,7 @@ internal fun AmllSettingsScreen(actions: LyricsActions, onBack: () -> Unit) {
                     }
                 }
             }
+            Text("此开关仅控制自动获取，手动绑定不受影响。", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
             Row(
                 Modifier.fillMaxWidth().alpha(if (controlsEnabled) 1f else 0.38f),
                 verticalAlignment = Alignment.CenterVertically,
@@ -225,7 +226,7 @@ internal fun AmllSettingsScreen(actions: LyricsActions, onBack: () -> Unit) {
 }
 
 @Composable
-private fun LyricsSettingsGroup(enabled: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+internal fun LyricsSettingsGroup(enabled: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.38f).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.035f), RoundedCornerShape(20.dp)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -251,11 +252,22 @@ private fun lyricCheckTime(timestamp: Long): String {
 }
 
 @Composable
-internal fun LyricsSettingsScreen(actions: LyricsActions, onBack: () -> Unit, onAmll: () -> Unit) {
+internal fun LyricsSettingsScreen(actions: LyricsActions, onBack: () -> Unit, onAmll: () -> Unit, onOnline: () -> Unit = {}) {
     val enabled by actions.amllEnabled.collectAsState(initial = false)
+    val online by actions.onlinePreference.collectAsState(OnlineLyricsPreference())
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
         Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("歌词", onBack) }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false))) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.035f))
+                .clickable(onClick = onOnline).testTag("lyrics-online-entry").padding(16.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("在线歌词搜索", style = MaterialTheme.typography.titleMedium)
+                    Text(if (online.enabled) online.sources.sortedBy { it.ordinal }.joinToString("、") { it.label } else "已关闭自动搜索",
+                        style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
+                }
+                Icon(Icons.Rounded.ChevronRight, null, tint = FnTextSecondary)
+            }
+            Spacer(Modifier.height(16.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.035f))

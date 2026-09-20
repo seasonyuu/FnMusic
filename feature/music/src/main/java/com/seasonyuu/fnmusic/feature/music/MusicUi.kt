@@ -577,6 +577,7 @@ fun MusicShell(
             }
         }
         var lyricsPickerTrack by remember { mutableStateOf<Track?>(null) }
+        LaunchedEffect(playerState.current?.track?.id, lyricsActions?.accountKey) { lyricsPickerTrack = null }
         lyricsPickerTrack?.let { track ->
             lyricsActions?.let { actions ->
                 androidx.compose.runtime.key(track.id, lyricsActions.accountKey) {
@@ -624,7 +625,7 @@ fun MusicShell(
                 MusicPage.Tracks, MusicPage.Recent, MusicPage.Favorites,
                 MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
             ) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
-            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page != MusicPage.AmllSettings && navigation.current.detail !is LibraryDetail.AlbumPage) {
+            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.AmllSettings, MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.matchParentSize().layerBackdrop(appBarBackdrop).background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))))
                     BoxWithConstraints(
@@ -841,7 +842,8 @@ fun MusicShell(
                                                             }
                                                         }
                                                         MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
-                                                        MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(it, ::popPage) { openPage(MusicPage.AmllSettings) } }
+                                                        MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(it, ::popPage, { openPage(MusicPage.AmllSettings) }, { openPage(MusicPage.OnlineLyricsSettings) }) }
+                                                        MusicPage.OnlineLyricsSettings -> lyricsActions?.let { OnlineLyricsSettingsScreen(it, ::popPage) }
                                                         MusicPage.AmllSettings -> lyricsActions?.let { AmllSettingsScreen(it, ::popPage) }
                                                         MusicPage.Cache -> CacheSettingsScreen(state.cachePreference, state.cacheUsage, onCachePreferenceChange, onClearCache, ::popPage)
                                                         MusicPage.Appearance -> AppearanceSettingsScreen(state,

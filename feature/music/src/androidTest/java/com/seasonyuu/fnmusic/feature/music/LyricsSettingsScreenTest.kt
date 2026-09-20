@@ -75,15 +75,56 @@ class LyricsSettingsScreenTest {
         compose.onNodeWithText("自动匹配", substring = false).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(LyricsChoiceMode.Automatic, actions.chosen.value.mode) }
     }
-    private fun capture(name: String) {
+    @Test fun onlineSettingsProtectLastSourceAndDisableSelection() {
+        val actions = Stub()
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { OnlineLyricsSettingsScreen(actions, {}) } } }
+        capture("online-lyrics-settings")
+        compose.onNodeWithTag("online-source-QQ").performScrollTo().performClick()
+        compose.onNodeWithTag("online-source-Kugou").performScrollTo().performClick()
+        compose.onNodeWithTag("online-source-Netease").assertIsNotEnabled()
+        compose.onNodeWithTag("online-lyrics-toggle").performScrollTo().performClick()
+        compose.runOnIdle { assertFalse(actions.onlinePreference.value.enabled) }
+        compose.onNodeWithTag("online-source-QQ").performScrollTo().assertIsNotEnabled()
+    }
+    @Test fun manualSearchUsesSeparateSheetAndAppliesPreview() {
+        val actions = Stub()
+        var dismissed = false
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface { LyricsPickerDialog(Track(TrackId("song"), "Song"), actions, null, { dismissed = true }) } } }
+        compose.onNodeWithTag("lyrics-manual-search").performScrollTo()
+        compose.mainClock.advanceTimeBy(500)
+        capture("lyrics-choice-sheet", "lyrics-picker")
+        compose.onNodeWithTag("lyrics-manual-search").performScrollTo().performClick()
+        compose.onNodeWithTag("lyrics-picker").assertDoesNotExist()
+        compose.onNodeWithTag("lyrics-search-sheet").assertExists()
+        capture("lyrics-search-sheet", "lyrics-search-sheet")
+        val initialSearches = actions.searches
+        compose.onNodeWithTag("lyrics-search-query").performTextReplacement("Other")
+        compose.runOnIdle { assertEquals(initialSearches, actions.searches) }
+        compose.onNodeWithTag("lyrics-search-submit").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(actions.searches > initialSearches) }
+        compose.onNodeWithText("Candidate").performScrollTo().performClick()
+        compose.onNodeWithText("返回结果").performClick()
+        compose.onNodeWithTag("lyrics-search-query").assertTextContains("Other")
+        compose.onNodeWithText("Candidate").performScrollTo().performClick()
+        compose.onNodeWithTag("lyrics-preview-apply").performClick()
+        compose.runOnIdle { assertTrue(dismissed); assertEquals(LyricsChoiceMode.Online, actions.chosen.value.mode) }
+    }
+    private fun capture(name: String, tag: String? = null) {
         compose.waitForIdle()
         val directory = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { java.io.File(it).apply { mkdirs() } }
             ?: InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("lyrics-screenshots")!!
         java.io.File(directory, "$name.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            (if (tag == null) compose.onRoot() else compose.onNodeWithTag(tag)).captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
     }
     private class Stub : LyricsActions {
+        override val onlinePreference = MutableStateFlow(OnlineLyricsPreference())
+        override val onlineCacheUsage = MutableStateFlow(LyricsCacheUsage())
+        override suspend fun setOnlinePreference(preference: OnlineLyricsPreference) { onlinePreference.value = preference }
+        override suspend fun clearOnlineCache() { onlineCacheUsage.value = LyricsCacheUsage() }
+        var searches = 0
+        override suspend fun searchOnline(source: OnlineLyricsSource, query: String): List<LyricsCandidate> { searches++; return if (source == OnlineLyricsSource.Netease) listOf(LyricsCandidate("", listOf("Candidate"), listOf("Singer"), onlineSource = source, songId = "1")) else emptyList() }
         override val amllEnabled = MutableStateFlow(true)
         override suspend fun setAmllEnabled(enabled: Boolean) { amllEnabled.value = enabled }
         override val index = MutableStateFlow(LyricsIndexState(version = "abcdef123456", bytes = 2048, status = LyricsIndexStatus.Current))
@@ -94,7 +135,7 @@ class LyricsSettingsScreenTest {
         override suspend fun updateIndex() { updates++ }
         override suspend fun clearCache() { cacheUsage.value = LyricsCacheUsage() }
         override suspend fun search(query: String) = emptyList<LyricsCandidate>()
-        override suspend fun preview(candidate: LyricsCandidate) = LyricsDocument(emptyList(), LyricsOrigin.Amll, candidate)
+        override suspend fun preview(candidate: LyricsCandidate) = LyricsDocument(listOf(LyricLine(0, "Preview")), if (candidate.onlineSource == null) LyricsOrigin.Amll else LyricsOrigin.Netease, candidate)
         override fun choice(track: Track): Flow<LyricsChoice> = chosen
         override suspend fun choose(track: Track, choice: LyricsChoice) { chosen.value = choice }
     }
