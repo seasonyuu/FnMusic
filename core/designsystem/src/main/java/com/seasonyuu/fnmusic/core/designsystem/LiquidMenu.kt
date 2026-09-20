@@ -278,7 +278,7 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
     val itemSpacing = 12.dp
     val iconSize = 24.dp
     val selectionSize = 16.dp
-    val textInset = 24.dp + itemPadding * 2 + iconSize + itemSpacing +
+    val textInset = 24.dp + itemPadding * 2 +
         (if (hasSelection) selectionSize + itemSpacing else 0.dp)
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.labelLarge
@@ -290,7 +290,9 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                     measurer.measure(
                         entry.text,
                         style,
-                        constraints = Constraints(maxWidth = max(1, (width - with(density) { textInset.toPx() }).toInt())),
+                        constraints = Constraints(maxWidth = max(1, (width - with(density) {
+                            (textInset + if (entry.icon != null) iconSize + itemSpacing else 0.dp).toPx()
+                        }).toInt())),
                     )
                 max(48 * d, layout.size.height + 24 * d)
             } else 9 * d
@@ -640,8 +642,10 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                                         if (entry.selected) Icon(Icons.Rounded.Check, null, Modifier.size(selectionSize))
                                     }
                                 }
-                                Box(Modifier.size(iconSize), contentAlignment = Alignment.Center) {
-                                    entry.icon?.invoke()
+                                entry.icon?.let { icon ->
+                                    Box(Modifier.size(iconSize), contentAlignment = Alignment.Center) {
+                                        icon()
+                                    }
                                 }
                                 Text(entry.text, modifier = Modifier.weight(1f), style = style, color = LocalContentColor.current)
                             }
