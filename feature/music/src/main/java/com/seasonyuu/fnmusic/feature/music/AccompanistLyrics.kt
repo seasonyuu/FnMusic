@@ -24,9 +24,9 @@ import com.seasonyuu.fnmusic.core.model.LyricTimeline
 /** Keeps FnMusic's resolved timings and text boundaries at the third-party boundary. */
 internal fun LyricTimeline.toKaraokeLine(text: String): KaraokeLine.MainKaraokeLine {
     val syllables = segments.map { segment ->
-        val start = segment.startMs.coerceIn(0, Int.MAX_VALUE.toLong() - 1).toInt()
+        val start = segment.startMs.coerceIn(-600_000L, Int.MAX_VALUE.toLong() - 1).toInt()
         // The upstream syllable progress divides by duration, including at punctuation timestamps.
-        val end = segment.endMs.coerceIn(start.toLong() + 1, Int.MAX_VALUE.toLong()).toInt()
+        val end = segment.endMs.coerceIn(start.toLong() + 1, minOf(Int.MAX_VALUE.toLong(), start.toLong() + Int.MAX_VALUE)).toInt()
         KaraokeSyllable(text.substring(segment.startOffset, segment.endOffset), start, end)
     }
     return KaraokeLine.MainKaraokeLine(

@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
                         onThemeColorChange = viewModel::setThemeColor,
                         onCachePreferenceChange = viewModel::setCachePreference,
                         onClearCache = viewModel::clearCache,
+                        lyricsActions = viewModel.lyricsActions,
                         openPlayerRequested = openPlayerRequested,
                         onPlayerOpenRequestConsumed = { openPlayerRequested = false },
                     )

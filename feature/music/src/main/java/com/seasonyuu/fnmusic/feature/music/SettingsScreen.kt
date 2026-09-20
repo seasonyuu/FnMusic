@@ -42,6 +42,7 @@ internal fun SettingsScreen(
     onRefreshProfile: () -> Unit = {},
     onAppearance: () -> Unit = {},
     onCache: () -> Unit = {},
+    onLyrics: () -> Unit = {},
     onQuality: () -> Unit = {},
     onAdminLibraries: (() -> Unit)? = null,
     onAdminUsers: (() -> Unit)? = null,
@@ -94,6 +95,7 @@ internal fun SettingsScreen(
                 add(SettingsEntry("外观", onAppearance))
                 add(SettingsEntry("音质偏好", onQuality))
                 add(SettingsEntry("自动缓存歌曲", onCache))
+                add(SettingsEntry("歌词", onLyrics))
 
             })
         }

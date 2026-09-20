@@ -30,7 +30,11 @@ class AppGraph(context: Context) {
     val database = Room.databaseBuilder(context, FnMusicDatabase::class.java, "fn_music.db")
         .addMigrations(FnMusicDatabase.MIGRATION_1_2)
         .addMigrations(FnMusicDatabase.MIGRATION_2_3)
+        .addMigrations(FnMusicDatabase.MIGRATION_3_4)
         .build()
+    val lyrics = com.seasonyuu.fnmusic.data.LyricsRepository(
+        java.io.File(context.filesDir, "amll"), settings, database.lyricsChoices(), catalog::lyrics,
+    )
     val player = Media3PlayerController(context)
 
     fun coverUrl(coverId: String?, size: Int): String? = coverId?.let { network.baseUrlProvider.coverUrl(it, size) }

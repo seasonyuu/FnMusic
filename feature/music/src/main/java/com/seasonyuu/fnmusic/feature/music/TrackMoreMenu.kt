@@ -36,7 +36,7 @@ internal fun PlayerMoreMenu(
     surfaceColor: Color,
 ) = TrackMoreMenu(track, backdrop = backdrop, modifier = modifier,
     preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange, surfaceColor = surfaceColor,
-    actionIds = listOf("artist", "album", "playlist", "info"))
+    actionIds = listOf("artist", "album", "playlist", "lyrics", "info"))
 
 @Composable
 internal fun TrackMoreMenu(

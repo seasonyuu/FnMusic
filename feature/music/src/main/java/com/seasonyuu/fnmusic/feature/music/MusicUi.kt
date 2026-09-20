@@ -352,6 +352,7 @@ data class MusicUiState(
     val appearance: AppearancePreference = AppearancePreference.Dark,
     val profileError: String? = null,
     val lyrics: List<LyricLine> = emptyList(),
+    val lyricsState: com.seasonyuu.fnmusic.core.model.LyricsState = com.seasonyuu.fnmusic.core.model.LyricsState(),
     val liquidGlassEnabled: Boolean = true,
     val liquidGlassBlur: Float = com.seasonyuu.fnmusic.core.model.LiquidGlassBlur.Default,
     val liquidGlassSaveError: String? = null,
@@ -447,6 +448,7 @@ fun MusicShell(
     administration: com.seasonyuu.fnmusic.core.model.MusicAdministration? = null,
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
     onClearCache: suspend () -> Unit = {},
+    lyricsActions: com.seasonyuu.fnmusic.core.model.LyricsActions? = null,
     onThemeColorChange: suspend (com.seasonyuu.fnmusic.core.model.ThemeColorPreference) -> Unit = {},
     onAppearanceChange: suspend (AppearancePreference) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
@@ -574,6 +576,14 @@ fun MusicShell(
                 }
             }
         }
+        var lyricsPickerTrack by remember { mutableStateOf<Track?>(null) }
+        lyricsPickerTrack?.let { track ->
+            lyricsActions?.let { actions ->
+                androidx.compose.runtime.key(track.id, lyricsActions.accountKey) {
+                    LyricsPickerDialog(track, actions, state.lyricsState.takeIf { playerState.current?.track?.id == track.id }, { lyricsPickerTrack = null })
+                }
+            }
+        }
         CompositionLocalProvider(
             com.seasonyuu.fnmusic.core.designsystem.LocalLiquidMenuSurfaceColor provides navigationSurface,
             LocalAppBarBackdrop provides appBarBackdrop,
@@ -585,7 +595,7 @@ fun MusicShell(
                 fun action(id: String, label: String, icon: ImageVector, callback: () -> Unit) =
                     TrackMenuAction(
                         LiquidMenuItem(id, label, icon = { Icon(icon, null) }),
-                        retireSession = id in setOf("playlist", "album", "artist", "info", "remove-playlist"),
+                        retireSession = id in setOf("playlist", "album", "artist", "info", "remove-playlist", "lyrics"),
                         invoke = callback,
                     )
                 val favorite = state.favoriteOverrides[track.id] ?: track.isFavorite
@@ -605,6 +615,7 @@ fun MusicShell(
                         }
                         add(remove.copy(item = remove.item.copy(destructive = true, enabled = !state.playlistBusy)))
                     }
+                    if (lyricsActions != null) add(action("lyrics", "选择歌词", Icons.AutoMirrored.Rounded.QueueMusic) { lyricsPickerTrack = track })
                     add(action("info", "歌曲信息", Icons.Rounded.Info) { pushDetail(LibraryDetail.TrackPage(track)) })
                 }
             },
@@ -613,7 +624,7 @@ fun MusicShell(
                 MusicPage.Tracks, MusicPage.Recent, MusicPage.Favorites,
                 MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
             ) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
-            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.detail !is LibraryDetail.AlbumPage) {
+            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page != MusicPage.AmllSettings && navigation.current.detail !is LibraryDetail.AlbumPage) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.matchParentSize().layerBackdrop(appBarBackdrop).background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))))
                     BoxWithConstraints(
@@ -830,6 +841,8 @@ fun MusicShell(
                                                             }
                                                         }
                                                         MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
+                                                        MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(it, ::popPage) { openPage(MusicPage.AmllSettings) } }
+                                                        MusicPage.AmllSettings -> lyricsActions?.let { AmllSettingsScreen(it, ::popPage) }
                                                         MusicPage.Cache -> CacheSettingsScreen(state.cachePreference, state.cacheUsage, onCachePreferenceChange, onClearCache, ::popPage)
                                                         MusicPage.Appearance -> AppearanceSettingsScreen(state,
                                                             onAppearanceChange, onThemeColorChange, { openPage(MusicPage.LiquidGlass) }, ::popPage)
@@ -864,6 +877,7 @@ fun MusicShell(
                                                             onRefreshProfile = onRefreshProfile,
                                                             onAppearance = { openPage(MusicPage.Appearance) },
                                                             onCache = { openPage(MusicPage.Cache) },
+                                                            onLyrics = { openPage(MusicPage.LyricsSettings) },
                                                             onQuality = { openPage(MusicPage.Quality) },
                                                             onAdminLibraries = administration?.let { { openPage(MusicPage.AdminLibraries) } },
                                                             onAdminUsers = administration?.let { { openPage(MusicPage.AdminUsers) } },
@@ -2893,7 +2907,7 @@ private fun NowPlayingLyricsScreen(
     }
 
     fun seekAndFollow(positionMs: Long) {
-        pendingSeekPositionMs = positionMs
+        pendingSeekPositionMs = positionMs.coerceAtLeast(0)
         followCurrent = true
         revealControls()
         onSeek(positionMs)
@@ -4379,7 +4393,7 @@ private fun LyricsScreen(
     val activeIndex = activeLyricIndex(lyrics, pendingSeekPositionMs ?: state.positionMs)
 
     fun seekAndFollow(positionMs: Long) {
-        pendingSeekPositionMs = positionMs
+        pendingSeekPositionMs = positionMs.coerceAtLeast(0)
         followCurrent = true
         onSeek(positionMs)
     }

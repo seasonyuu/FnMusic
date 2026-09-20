@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic
 
+import kotlinx.coroutines.flow.combine
+import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.async
 import com.seasonyuu.fnmusic.core.player.PlayerDependencies
 import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
@@ -87,6 +89,32 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     fun previewLiquidGlassBlur(value: Float) = liquidGlassSettings.preview(value)
     fun setLiquidGlassEnabled(enabled: Boolean) = liquidGlassSettings.setEnabled(enabled)
     fun saveLiquidGlassBlur() = liquidGlassSettings.save()
+
+    private fun ConnectionProfile.lyricsScope(): String = when (val value = endpoint) {
+        is Endpoint.FnConnect -> "fn:${value.fnId}"
+        is Endpoint.Direct -> "direct:${value.baseUrl}"
+    } + "|" + username
+
+    val lyricsActions: LyricsActions = object : LyricsActions {
+        override val accountKey: String get() = (session.value as? SessionState.Ready)?.profile?.lyricsScope().orEmpty()
+        override val amllEnabled = graph.settings.amllEnabled
+        override suspend fun setAmllEnabled(enabled: Boolean) = graph.settings.setAmllEnabled(enabled)
+        override val index = graph.lyrics.index
+        override val cacheUsage = graph.lyrics.cacheUsage
+        override suspend fun setSource(source: LyricsFetchSource) = graph.lyrics.setSource(source)
+        override suspend fun updateIndex() = graph.lyrics.updateIndex()
+        override suspend fun clearCache() = graph.lyrics.clearCache()
+        override suspend fun search(query: String) = graph.lyrics.search(query)
+        override suspend fun preview(candidate: LyricsCandidate) = graph.lyrics.preview(candidate)
+        override fun choice(track: Track): Flow<LyricsChoice> {
+            val profile = (session.value as? SessionState.Ready)?.profile ?: return kotlinx.coroutines.flow.flowOf(LyricsChoice())
+            return graph.lyrics.choice(profile.lyricsScope(), track)
+        }
+        override suspend fun choose(track: Track, choice: LyricsChoice) {
+            val profile = (session.value as? SessionState.Ready)?.profile ?: return
+            graph.lyrics.choose(profile.lyricsScope(), track, choice)
+        }
+    }
 
     private var refreshJob: Job? = null
     private val catalogRefresh = CatalogRefresh(graph.catalog, mutableMusic, graph.favorites::seed)
@@ -183,20 +211,18 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
                 mutableMusic.value = mutableMusic.value.copy(favoriteOverrides = overrides)
             }
         }
+        graph.lyrics.start(viewModelScope)
         viewModelScope.launch {
-            player.map { it.current?.track?.id }.distinctUntilChanged().collectLatest { id ->
-                mutableMusic.value = mutableMusic.value.copy(lyrics = emptyList())
-                val lines = if (id == null) emptyList() else try {
-                    graph.catalog.lyrics(id)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    emptyList()
+            combine(player.map { it.current?.track }.distinctUntilChanged(), session.map { (it as? SessionState.Ready)?.profile }.distinctUntilChanged()) { track, profile -> track to profile }
+                .collectLatest { (track, profile) ->
+                    mutableMusic.value = mutableMusic.value.copy(lyrics = emptyList(), lyricsState = LyricsState())
+                    if (track != null && profile != null) graph.lyrics.observe(profile.lyricsScope(), track).collect { result ->
+                        mutableMusic.value = mutableMusic.value.copy(
+                            lyrics = result.document?.lines ?: mutableMusic.value.lyrics,
+                            lyricsState = result.copy(document = result.document ?: mutableMusic.value.lyricsState.document),
+                        )
+                    }
                 }
-                if (player.value.current?.track?.id == id) {
-                    mutableMusic.value = mutableMusic.value.copy(lyrics = lines)
-                }
-            }
         }
         viewModelScope.launch {
             player.map { it.isRoaming to it.currentIndex }.distinctUntilChanged().collect { (isRoaming, index) ->
