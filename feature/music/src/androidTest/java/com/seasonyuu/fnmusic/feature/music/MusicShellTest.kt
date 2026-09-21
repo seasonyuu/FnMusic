@@ -3541,9 +3541,14 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithText("通勤歌单").performClick()
-        compose.onNodeWithText("多选").performClick()
-        compose.onNodeWithText("第一首").performClick()
-        compose.onNodeWithText("移除 1 首").performClick()
+        compose.onNodeWithText("多选").assertDoesNotExist()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("编辑").performClick()
+        compose.onNodeWithTag("playlist-editor-list").performScrollToNode(hasText("第一首"))
+        compose.onNodeWithTag("playlist-edit-track-0").performClick()
+        compose.onNodeWithTag("playlist-editor-remove").performClick()
+        org.junit.Assert.assertNull(removed)
+        compose.onNodeWithTag("playlist-editor-done").performClick()
 
         org.junit.Assert.assertEquals(playlist.id to listOf(first.id), removed)
     }
@@ -3747,7 +3752,7 @@ class MusicShellTest {
     }
 
     @Test
-    fun playlistSelectionSurvivesTabSwitchAndConfigurationRestore() {
+    fun playlistSelectionSurvivesConfigurationRestoreAndCancelClearsIt() {
         val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
         val playlist = Playlist(PlaylistId("retained-selection"), "保留选择歌单", trackCount = 1)
         val track = Track(TrackId("selected-track"), "保留选中歌曲")
@@ -3758,16 +3763,17 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("歌单").performClick()
         compose.onNodeWithText("保留选择歌单").performClick()
-        compose.onNodeWithText("多选").performScrollTo().performClick()
-        compose.onNodeWithText("保留选中歌曲").performScrollTo().performClick()
-        if (compose.onAllNodesWithTag("dynamic-primary-tab").fetchSemanticsNodes().isNotEmpty()) {
-            compose.onNodeWithTag("dynamic-primary-tab").performClick()
-        }
-        compose.onNodeWithContentDescription("首页").performClick()
-        compose.onNodeWithContentDescription("音乐库").performClick()
-        compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("编辑").performClick()
+        compose.onNodeWithTag("playlist-editor-list").performScrollToNode(hasText("保留选中歌曲"))
+        compose.onNodeWithTag("playlist-edit-track-0").performClick()
+        compose.onNodeWithText("已选择 1 首").assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("移除 1 首").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("已选择 1 首").assertIsDisplayed()
+        compose.onNodeWithContentDescription("取消").performClick()
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("编辑").performClick()
+        compose.onNodeWithText("已选择 0 首").assertIsDisplayed()
     }
 
     @Test
@@ -4016,7 +4022,7 @@ class MusicShellTest {
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithContentDescription("更多").performClick()
         compose.onNodeWithText("编辑").performClick()
-        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithContentDescription("取消").performClick()
         compose.onNodeWithTag("library-detail-list").assertIsDisplayed()
     }
 
@@ -4100,6 +4106,17 @@ class MusicShellTest {
         },
         testFontScale: () -> Float = { 1f },
     ) {
+        val playlistController = com.seasonyuu.fnmusic.data.PlaylistEditorController(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate),
+            account = { "test" },
+            load = { id ->
+                val current = stateProvider?.invoke() ?: state
+                (current.detailPlaylist?.takeIf { it.id == id } ?: current.playlists.first { it.id == id }) to current.detailTracks
+            },
+            readOrder = { _, _ -> com.seasonyuu.fnmusic.core.model.PlaylistOrder() },
+            writeOrder = { _, _, _ -> }, updateMetadata = { _, _, _ -> },
+            removeTracks = { id, ids -> onRemoveTracksFromPlaylist(id, ids) }, refresh = {},
+        )
         val content: @androidx.compose.runtime.Composable () -> Unit = {
             val detailKey =
                 androidx.compose.runtime.remember { mutableStateOf<DetailRequestKey?>(null) }
@@ -4132,6 +4149,7 @@ class MusicShellTest {
                         },
                         onCreatePlaylist = onCreatePlaylist,
                         onUpdatePlaylist = { _, _, _ -> },
+                        playlistEditing = playlistController,
                         onDeletePlaylist = {},
                         onAddTrackToPlaylist = onAddTrackToPlaylist,
                         onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,

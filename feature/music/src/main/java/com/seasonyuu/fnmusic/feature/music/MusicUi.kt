@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.ui.graphics.asImageBitmap
+
 import android.graphics.Bitmap
 
 import androidx.compose.material3.pulltorefresh.*
@@ -449,6 +451,7 @@ fun MusicShell(
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
     onClearCache: suspend () -> Unit = {},
     lyricsActions: com.seasonyuu.fnmusic.core.model.LyricsActions? = null,
+    playlistEditing: com.seasonyuu.fnmusic.core.model.PlaylistEditActions? = null,
     onThemeColorChange: suspend (com.seasonyuu.fnmusic.core.model.ThemeColorPreference) -> Unit = {},
     onAppearanceChange: suspend (AppearancePreference) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
@@ -506,6 +509,12 @@ fun MusicShell(
         var pickerSourcePlaylist by remember { mutableStateOf<PlaylistId?>(null) }
         var playlistPickerTrack by remember { mutableStateOf<Track?>(null) }
         var deletePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
+        var editingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+        editingPlaylistId?.let { id ->
+            playlistEditing?.let { actions ->
+                PlaylistEditSheet(PlaylistId(id), actions, coverUrl) { editingPlaylistId = null }
+            }
+        }
         var purgePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
         var catalogEditVersion by remember { mutableStateOf(0) }
         val artistItems = pagedArtists.collectAsLazyPagingItems()
@@ -796,16 +805,27 @@ fun MusicShell(
                                                             onBack = { popPage() },
                                                             onRetry = { onLoadAlbum(selected.album.id) },
                                                         ) }
+                                                        is LibraryDetail.PlaylistPage -> {
+                                                            val playlist = detailState.detailPlaylist
+                                                                ?.takeIf { it.id == selected.playlist.id } ?: selected.playlist
+                                                            FnMusicTheme(darkTheme = true) { PlaylistDetailScreen(
+                                                                playlist = playlist,
+                                                                state = detailState,
+                                                                playerState = playerState,
+                                                                coverUrl = coverUrl,
+                                                                onPlay = onPlay,
+                                                                onEdit = { editingPlaylistId = playlist.id.value },
+                                                                onDelete = { deletePlaylistCandidate = playlist },
+                                                                onPurge = { purgePlaylistCandidate = playlist },
+                                                                onBack = { popPage() },
+                                                            ) }
+                                                        }
                                                         else -> LibraryDetailScreen(
                                                             detail = selected,
                                                             state = detailState,
                                                             coverUrl = coverUrl,
                                                             onPlay = onPlay,
                                                             onToggleFavorite = onToggleFavorite,
-                                                            onEditPlaylist = { pushDetail(LibraryDetail.PlaylistEditorPage(it)) },
-                                                            onDeletePlaylist = { deletePlaylistCandidate = it },
-                                                            onPurgePlaylist = { purgePlaylistCandidate = it },
-                                                            onRemoveTracksFromPlaylist = onRemoveTracksFromPlaylist,
                                                             onBack = { popPage() },
                                                         )
                                                     }
@@ -1847,46 +1867,31 @@ private fun PlaylistGridScreen(
 }
 
 @Composable
-private fun PlaylistCoverImage(
+internal fun PlaylistCoverImage(
     coverId: String?,
     coverUrl: (String?, Int) -> String?,
     title: String,
     modifier: Modifier,
+    onBitmapLoaded: ((Bitmap) -> Unit)? = null,
 ) {
     val defaultIndex = coverId
         ?.takeIf { it.startsWith("playlist_default_") }
         ?.substringAfterLast('_')
         ?.toIntOrNull()
     if (defaultIndex == null) {
-        CoverImage(coverUrl(coverId, 640), title, modifier)
+        CoverImage(coverUrl(coverId, 640), title, modifier, onBitmapLoaded = onBitmapLoaded)
         return
     }
-    val colors = when (defaultIndex) {
-        1 -> listOf(Color(0xFF8E2745), Color(0xFF351B35))
-        2 -> listOf(Color(0xFF3B4D91), Color(0xFF20213F))
-        3 -> listOf(Color(0xFF258578), Color(0xFF173B43))
-        else -> listOf(Color(0xFFB0682E), Color(0xFF4A2635))
+    val context = LocalContext.current
+    val bitmap = remember(context, defaultIndex) {
+        com.seasonyuu.fnmusic.data.DefaultPlaylistCover.preview(context, "playlist_default_${defaultIndex.coerceIn(1, 4)}")
     }
-    Box(
-        modifier
-            .background(Brush.linearGradient(colors), RoundedCornerShape(12.dp))
-            .semantics { contentDescription = title },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            Icons.AutoMirrored.Rounded.QueueMusic,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = .9f),
-            modifier = Modifier.fillMaxSize(.36f),
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(12.dp)
-                .size(12.dp)
-                .background(Color.White.copy(alpha = .55f), RoundedCornerShape(50)),
-        )
-    }
+    val onLoaded by rememberUpdatedState(onBitmapLoaded)
+    LaunchedEffect(bitmap, onBitmapLoaded != null) { onLoaded?.invoke(bitmap) }
+    androidx.compose.foundation.Image(
+        bitmap = bitmap.asImageBitmap(), contentDescription = title,
+        modifier = modifier.clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop,
+    )
 }
 
 @Composable
@@ -2196,190 +2201,40 @@ private fun LibraryDetailScreen(
     coverUrl: (String?, Int) -> String?,
     onPlay: (List<Track>, Int) -> Unit,
     onToggleFavorite: (Track) -> Unit,
-    onEditPlaylist: (Playlist) -> Unit,
-    onDeletePlaylist: (Playlist) -> Unit,
-    onPurgePlaylist: (Playlist) -> Unit,
-    onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit,
     onBack: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
 ) {
-    val title: String
-    val subtitle: String
-    val metadata: String
-    val coverId: String?
-    var managedPlaylist: Playlist? = null
-    when (detail) {
-        is LibraryDetail.AlbumPage -> {
-            val album = state.detailAlbum?.takeIf { it.id == detail.album.id } ?: detail.album
-            title = album.name
-            subtitle = album.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }
-            metadata = listOfNotNull("${album.trackCount} 首歌曲", album.releaseDate).joinToString(" · ")
-            coverId = album.coverId
-        }
-        is LibraryDetail.ArtistPage -> {
-            val artist = state.detailArtist?.takeIf { it.id == detail.artist.id } ?: detail.artist
-            title = artist.name
-            subtitle = "歌手"
-            metadata = "${artist.albumCount} 张专辑 · ${artist.trackCount} 首歌曲"
-            coverId = artist.coverId
-        }
-        is LibraryDetail.PlaylistPage -> {
-            val playlist = state.detailPlaylist?.takeIf { it.id == detail.playlist.id } ?: detail.playlist
-            managedPlaylist = playlist
-            title = playlist.name
-            subtitle = "我的歌单"
-            metadata = playlist.trackCount.countLabel()
-            coverId = playlist.coverId
-        }
-        is LibraryDetail.TrackPage -> return
-        is LibraryDetail.PlaylistEditorPage -> return
-    }
-    var selectingTracks by rememberSaveable(managedPlaylist?.id?.value) { mutableStateOf(false) }
-    var selectedTrackIds by rememberSaveable(
-        managedPlaylist?.id?.value,
-        stateSaver = androidx.compose.runtime.saveable.listSaver<Set<TrackId>, String>(
-            save = { ids -> ids.map { it.value } },
-            restore = { ids -> ids.map(::TrackId).toSet() },
-        ),
-    ) { mutableStateOf(emptySet<TrackId>()) }
-    CollectionPage(title, onBack, { listState.firstVisibleItemIndex > 0 }, actions = {
-        managedPlaylist?.let { playlist ->
-            PlaylistActionsMenu(
-                busy = state.playlistBusy,
-                onEdit = { onEditPlaylist(playlist) },
-                onPurge = { onPurgePlaylist(playlist) },
-                onDelete = { onDeletePlaylist(playlist) },
-            )
-        }
-    }) { heading, top ->
-        if (state.detailLoading) {
-            EmptyPane("正在加载详情…")
-        } else {
-            BoxWithConstraints(
-                Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
-            ) {
-                val compact = maxWidth < 600.dp
-                LazyColumn(
-                    Modifier.fillMaxSize().testTag("library-detail-list"),
-                    state = listState,
-                    contentPadding = edgeToEdgeContentPadding(top = top, bottom = 36.dp, includeTopInset = false),
-                ) {
-                    item {
-                        if (compact) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                if (managedPlaylist != null) {
-                                    PlaylistCoverImage(coverId, coverUrl, title, Modifier.size(232.dp))
-                                } else {
-                                    CoverImage(coverUrl(coverId, 640), title, Modifier.size(232.dp))
-                                }
-                                DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay, heading)
-                            }
-                        } else {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 24.dp),
-                                horizontalArrangement = Arrangement.spacedBy(32.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (managedPlaylist != null) {
-                                    PlaylistCoverImage(coverId, coverUrl, title, Modifier.size(264.dp))
-                                } else {
-                                    CoverImage(coverUrl(coverId, 640), title, Modifier.size(264.dp))
-                                }
-                                Box(Modifier.weight(1f)) { DetailHeading(title, subtitle, metadata, state.detailTracks, onPlay, heading) }
-                            }
+    val page = detail as? LibraryDetail.ArtistPage ?: return
+    val artist = state.detailArtist?.takeIf { it.id == page.artist.id } ?: page.artist
+    CollectionPage(artist.name, onBack, { listState.firstVisibleItemIndex > 0 }) { heading, top ->
+        if (state.detailLoading) EmptyPane("正在加载详情…")
+        else BoxWithConstraints(Modifier.fillMaxSize()) {
+            val compact = maxWidth < 600.dp
+            LazyColumn(Modifier.fillMaxSize().testTag("library-detail-list"), state = listState,
+                contentPadding = edgeToEdgeContentPadding(top = top, bottom = 36.dp, includeTopInset = false)) {
+                item {
+                    val metadata = "${artist.albumCount} 张专辑 · ${artist.trackCount} 首歌曲"
+                    if (compact) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CoverImage(coverUrl(artist.coverId, 640), artist.name, Modifier.size(232.dp))
+                            DetailHeading(artist.name, "歌手", metadata, state.detailTracks, onPlay, heading)
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CoverImage(coverUrl(artist.coverId, 640), artist.name, Modifier.size(264.dp))
+                            Box(Modifier.weight(1f)) { DetailHeading(artist.name, "歌手", metadata, state.detailTracks, onPlay, heading) }
                         }
                     }
-                    managedPlaylist?.let { playlist ->
-                        item {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                item {
-                                    OutlinedButton(colors = readableOutlinedButtonColors(),
-                                        onClick = {
-                                            if (selectingTracks) {
-                                                selectingTracks = false
-                                                selectedTrackIds = emptySet()
-                                            } else {
-                                                selectingTracks = true
-                                            }
-                                        },
-                                        enabled = state.detailTracks.isNotEmpty(),
-                                        modifier = Modifier.height(48.dp),
-                                    ) {
-                                        Icon(if (selectingTracks) Icons.Rounded.Close else Icons.Rounded.CheckCircle, null, Modifier.padding(end = 6.dp))
-                                        Text(if (selectingTracks) "取消多选" else "多选")
-                                    }
-                                }
-                                if (selectingTracks) item {
-                                    Button(
-                                        onClick = {
-                                            onRemoveTracksFromPlaylist(playlist.id, selectedTrackIds.toList())
-                                            selectingTracks = false
-                                            selectedTrackIds = emptySet()
-                                        },
-                                        enabled = selectedTrackIds.isNotEmpty() && !state.playlistBusy,
-                                        modifier = Modifier.height(48.dp),
-                                    ) {
-                                        Icon(Icons.Rounded.RemoveCircleOutline, null, Modifier.padding(end = 6.dp))
-                                        Text("移除 ${selectedTrackIds.size} 首")
-                                    }
-                                }
-
-                            }
-                        }
-                        state.playlistMessage?.let { message ->
-                            item { Text(message, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
-                        }
-                    }
-                    item {
-                        Text(
-                            "曲目",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                        )
-                    }
-                    when {
-                        state.detailLoading -> item { EmptyPane("正在加载曲目…") }
-                        state.detailError != null -> item { EmptyPane(state.detailError) }
-                        state.detailTracks.isEmpty() -> item { EmptyPane("暂无曲目") }
-                        else -> items(state.detailTracks, key = { it.id.value }) { track ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                if (selectingTracks) {
-                                    androidx.compose.material3.Checkbox(
-                                        checked = track.id in selectedTrackIds,
-                                        onCheckedChange = { checked ->
-                                            selectedTrackIds = if (checked) selectedTrackIds + track.id else selectedTrackIds - track.id
-                                        },
-                                        modifier = Modifier.padding(start = 8.dp),
-                                    )
-                                }
-                                Box(Modifier.weight(1f)) {
-                                    FavoriteTrackRow(
-                                        track = track,
-                                        state = state,
-                                        coverUrl = coverUrl,
-                                        onPlay = {
-                                            if (selectingTracks) {
-                                                selectedTrackIds = if (track.id in selectedTrackIds) selectedTrackIds - track.id else selectedTrackIds + track.id
-                                            } else {
-                                                onPlay(state.detailTracks, state.detailTracks.indexOf(track))
-                                            }
-                                        },
-                                        onToggleFavorite = onToggleFavorite,
-                                        sourcePlaylist = managedPlaylist?.id,
-                                    )
-                                }
-                            }
-                        }
+                }
+                item { Text("曲目", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) }
+                when {
+                    state.detailError != null -> item { EmptyPane(state.detailError) }
+                    state.detailTracks.isEmpty() -> item { EmptyPane("暂无曲目") }
+                    else -> items(state.detailTracks, key = { it.id.value }) { track ->
+                        FavoriteTrackRow(track, state, coverUrl, { onPlay(state.detailTracks, state.detailTracks.indexOf(track)) }, onToggleFavorite)
                     }
                 }
             }

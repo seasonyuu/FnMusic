@@ -1,0 +1,12 @@
+{
+  "capturedAt": "2026-09-21",
+  "scope": "Personal sideload build only; supplied Web artwork, not original FnMusic artwork",
+  "sourceBaseUrl": "https://doubleyu.fnos.net/music/static/assets/img/playlist-covers/",
+  "retrieval": "Same Music service via authenticated FN Connect relay bootstrap; original PNG bytes preserved",
+  "assets": [
+    {"target": "data/src/main/assets/playlist-covers/1.png", "sourceFile": "1.png", "sha256": "cfd192e1be333d8dcfaf4c0ddcf96169289d28aba86e119329d7fa75a0613a10"},
+    {"target": "data/src/main/assets/playlist-covers/2.png", "sourceFile": "2.png", "sha256": "c92aea6654d0c6ce0d4e376a69e2302882cf1ddb977f3e0dc7ca244eb8d777ca"},
+    {"target": "data/src/main/assets/playlist-covers/3.png", "sourceFile": "3.png", "sha256": "814dcae08b7092b385b0c9e570f19c41bbb953a6179f00a5e0bb7f08ca98cbd0"},
+    {"target": "data/src/main/assets/playlist-covers/4.png", "sourceFile": "4.png", "sha256": "13cd1dd75bdc633804427b4c3582ec9e97d6ddf1bd849a5e2e0f7e6b1b8cd133"}
+  ]
+}

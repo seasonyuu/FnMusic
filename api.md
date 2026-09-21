@@ -550,7 +550,7 @@ track/metadata
 | GET | `/api/v1/playlist/purge-track-count?guid={playlistGuid}` | 统计失效曲目 | V + S + A | 已确认返回 `data.total` |
 | POST | `/api/v1/playlist/purge-track` | 清除失效曲目 | V + S + A | 空集合幂等语义 |
 | POST | `/api/v1/playlist/delete` | 删除歌单 | V + S + A | 删除后不可由服务端恢复 |
-| POST | `/api/v1/static/cover/playlist` | 上传歌单封面 | V + S + A/B | multipart 响应字段仍需固定样本 |
+| POST | `/api/v1/static/cover/playlist` | 上传歌单封面 | V + S + A/B | 当前 Web 包确认 multipart `file`，结果为 `data.coverId`；Android 使用模拟响应验证，尚未实服上传回归 |
 | POST | `/api/v1/event/report` | 播放事件上报 | V + S + A | 服务端去重、触发阈值 |
 
 浏览器和验证脚本使用的临时歌单均在验证结束后删除，收藏状态也会恢复。当前验证报告不把 `OPTIONS` 当作写接口证据，因为这些路径的 `OPTIONS` 请求会落到 SPA HTML。
@@ -581,7 +581,7 @@ track/metadata
 
 ```json
 // create
-{"name":"{playlistName}","coverId":"playlist_default_1"}
+{"name":"{playlistName}","coverId":"{uploadedCoverId}"}
 
 // edit
 {"guid":"{playlistGuid}","name":"{playlistName}","coverId":"{coverId}"}
@@ -593,7 +593,7 @@ track/metadata
 {"guid":"{playlistGuid}"}
 ```
 
-写操作中的歌单参数名是 `guid`，不是列表接口使用的 `playlistGUID`。当前 Web UI 允许 1–32 个字符的名称，识别业务码 `160001`（名称已存在）和 `160002`（达到数量上限）。新建歌单可使用 `playlist_default_1` 至 `playlist_default_4`，也可以上传 JPG、JPEG、PNG 或 WEBP 封面，Web UI 限制为 5 MiB。
+写操作中的歌单参数名是 `guid`，不是列表接口使用的 `playlistGUID`。当前 Web UI 允许 1–32 个字符的名称，识别业务码 `160001`（名称已存在）和 `160002`（达到数量上限）。2026-09-21 重新核对 Web 包后确认：默认封面也先作为图片上传，再把返回的真实 `coverId` 传给 create/edit；`playlist_default_1` 至 `playlist_default_4` 仅是 Android 本地模板标识，不能直接当作服务端封面 ID。支持上传 JPG、JPEG、PNG 或 WEBP，Web UI 限制为 5 MiB。Android 已内置 Web 的 `static/assets/img/playlist-covers/1.png` 至 `4.png` 原始资源（344×344），预览与上传共用这些文件，上传不重新编码。来源和 SHA-256 记录于 `docs/web-assets/playlist-covers.json`。上传成功的 ID 沿用编辑草稿检查点用于失败重试。
 
 ## 10. 标识符、分页和排序
 
@@ -782,7 +782,7 @@ python3 scripts/test_verify_fn_connect.py -v
 | 歌单 | list/detail + create/edit/add/remove/purge/delete | 读取、写入 V | 自定义封面、冲突、恢复 |
 | 风格 | `genre/list` | V | 详情和曲目筛选 |
 
-Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录、曲库分页、元数据、封面、歌词、Range 播放、收藏、`track_play` 上报，以及歌单创建、改名、默认封面、删除、添加曲目、逐首/批量移除和失效曲目清理。自定义歌单封面上传在取得稳定响应样本前保持关闭。
+Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录、曲库分页、元数据、封面、歌词、Range 播放、收藏、`track_play` 上报，以及歌单创建、改名、默认封面、删除、添加曲目、逐首/批量移除和失效曲目清理。已有歌单的编辑面板支持通过系统照片选择器选择 JPG、PNG、WEBP（最多 5 MiB），点击完成才上传。2026-09-21 经 FN Connect 中继读取当前 Web 静态包确认：上传使用 multipart `file` 字段，响应信封中的 `data.coverId` 用于后续歌单 edit；Authx 按 `JSON.stringify(FormData)` 即 `{}` 签名，而不是对二进制 multipart 请求体签名。上传成功后的 coverId 在编辑草稿内作检查点，后续 edit 失败重试不重复上传。上传协议已添加模拟服务测试，尚未做实服上传回归。
 
 ## 14. 待验证清单
 

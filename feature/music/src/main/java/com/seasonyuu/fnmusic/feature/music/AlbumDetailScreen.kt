@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +50,7 @@ import coil3.toBitmap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.seasonyuu.fnmusic.core.designsystem.FnBackgroundTop
+import com.seasonyuu.fnmusic.core.designsystem.CoverImage
 import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
 import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +93,36 @@ internal fun coverTone(bitmap: Bitmap): Color {
     } finally {
         if (sample !== bitmap) sample.recycle()
     }
+}
+
+/** Shared by playlist detail and its editor; only the active artwork drives the color. */
+@Composable
+internal fun rememberPlaylistCoverTone(coverId: String?, url: String?, photoPath: String? = null): Color {
+    val context = LocalContext.current
+    val isDefault = photoPath == null && coverId in (1..4).map { "playlist_default_$it" }
+    val key = when {
+        photoPath != null -> "photo:$photoPath"
+        isDefault -> "default:$coverId"
+        else -> url
+    }
+    var tone by remember(key) { mutableStateOf(albumColors[key] ?: Color(0xFF2D293A)) }
+    LaunchedEffect(key) {
+        if (key == null) return@LaunchedEffect
+        albumColors[key]?.let { tone = it; return@LaunchedEffect }
+        val bitmap = if (isDefault) {
+            withContext(Dispatchers.Default) { com.seasonyuu.fnmusic.data.DefaultPlaylistCover.preview(context, requireNotNull(coverId)) }
+        } else {
+            val result = coil3.SingletonImageLoader.get(context).execute(
+                ImageRequest.Builder(context).data(photoPath?.let { java.io.File(it) } ?: url)
+                    .size(640).allowHardware(false).build(),
+            )
+            (result as? coil3.request.SuccessResult)?.image?.toBitmap()
+        } ?: return@LaunchedEffect
+        val result = withContext(Dispatchers.Default) { coverTone(bitmap) }
+        albumColors[key] = result
+        tone = result
+    }
+    return tone
 }
 
 @Composable
@@ -239,6 +271,175 @@ internal fun AlbumDetailScreen(
             MusicAppBar(null, onBack = onBack, fullAppBarBlur = true, drawBackgroundBlur = false,
                 modifier = Modifier.padding(start = horizontal, end = horizontal, top = top)
                     .testTag("detail-app-bar"))
+        }
+    }
+}
+
+/**
+ * A playlist is presented as a collection of songs, rather than a generic metadata
+ * record. Keeping it alongside [AlbumDetailScreen] makes the two detail pages share
+ * the same artwork-led hierarchy and edge-to-edge treatment.
+ */
+@Composable
+internal fun PlaylistDetailScreen(
+    playlist: Playlist,
+    state: MusicUiState,
+    playerState: PlayerState,
+    coverUrl: (String?, Int) -> String?,
+    onPlay: (List<Track>, Int) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onPurge: () -> Unit,
+    onBack: () -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+) {
+    val url = coverUrl(playlist.coverId, 640)
+    val tone = rememberPlaylistCoverTone(playlist.coverId, url)
+    PageNavigationAppearance(surfaceColor = lerp(tone, Color.Black, .16f))
+    val background by animateColorAsState(tone, tween(250), label = "playlist-tone")
+    val backdrop = rememberLayerBackdrop()
+    val appBarBackdrop = rememberLayerBackdrop()
+    val safe = WindowInsets.safeDrawing.asPaddingValues()
+    val top = safe.calculateTopPadding()
+    val hiddenEdgePx = with(LocalDensity.current) { (top + 8.dp).toPx() }
+    val tracks = state.detailTracks
+    val placeholderListState = rememberLazyListState()
+    val cover: @Composable (Modifier) -> Unit = { modifier ->
+        PlaylistCoverImage(
+            coverId = playlist.coverId,
+            coverUrl = coverUrl,
+            title = playlist.name,
+            modifier = modifier.dropShadow(
+                shape = RoundedCornerShape(8.dp),
+                shadow = Shadow(radius = 12.dp, color = Color.Black.copy(alpha = .20f), offset = DpOffset(0.dp, 4.dp)),
+            ).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(8.dp)),
+        )
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 600.dp
+        val coverSize = minOf(maxWidth * .70f, 320.dp)
+        val horizontal = if (compact) 20.dp else 48.dp
+        Box(Modifier.fillMaxSize().layerBackdrop(appBarBackdrop)) {
+            LazyColumn(
+                state = if (tracks.isEmpty()) placeholderListState else listState,
+                modifier = Modifier.fillMaxSize().layerBackdrop(backdrop)
+                    .background(Brush.verticalGradient(listOf(background, lerp(background, Color.Black, .16f))))
+                    .testTag("library-detail-list"),
+                contentPadding = edgeToEdgeContentPadding(top = 76.dp, bottom = 36.dp),
+            ) {
+                item(key = "header") {
+                    if (compact) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = horizontal), horizontalAlignment = Alignment.CenterHorizontally) {
+                            cover(Modifier.size(coverSize))
+                            Spacer(Modifier.height(20.dp))
+                            PlaylistHeading(playlist, tracks, onPlay)
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = horizontal, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                            cover(Modifier.size(264.dp))
+                            Box(Modifier.weight(1f)) { PlaylistHeading(playlist, tracks, onPlay) }
+                        }
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    HorizontalDivider(Modifier.padding(horizontal = horizontal), color = Color.White.copy(alpha = .18f))
+                }
+                state.playlistMessage?.let { message ->
+                    item(key = "playlist-message") {
+                        Text(message, Modifier.padding(horizontal = horizontal, vertical = 12.dp), color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
+                    }
+                }
+                when {
+                    state.detailLoading && tracks.isEmpty() -> item(key = "loading") {
+                        Column(Modifier.padding(horizontal = horizontal).semantics { contentDescription = "正在加载曲目" }) {
+                            repeat(6) {
+                                Box(Modifier.fillMaxWidth().height(56.dp).padding(vertical = 18.dp)
+                                    .clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = .10f)))
+                            }
+                        }
+                    }
+                    state.detailError != null -> item(key = "error") {
+                        Text(state.detailError, Modifier.fillMaxWidth().padding(24.dp), color = Color.White, textAlign = TextAlign.Center)
+                    }
+                    tracks.isEmpty() -> item(key = "empty") {
+                        Text("暂无曲目", Modifier.fillMaxWidth().padding(24.dp), color = Color.White.copy(alpha = .8f), textAlign = TextAlign.Center)
+                    }
+                }
+                itemsIndexed(tracks, key = { index, track -> "playlist-track-$index-${track.id.value}" }) { index, track ->
+                    val enabled by remember(listState, track.id, index, hiddenEdgePx) {
+                        derivedStateOf {
+                            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "playlist-track-$index-${track.id.value}" }
+                            info == null || info.offset + info.size + listState.layoutInfo.beforeContentPadding > hiddenEdgePx
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = horizontal).heightIn(min = 56.dp)
+                            .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("playlist-track-$index"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.padding(vertical = 6.dp).size(44.dp).clip(RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                            CoverImage(coverUrl(track.coverId, 120), null,
+                                Modifier.fillMaxSize().testTag("playlist-track-cover-$index"))
+                            if (playerState.current?.track?.id == track.id) {
+                                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .4f)), contentAlignment = Alignment.Center) {
+                                    AlbumPlayingIndicator(playerState.isPlaying)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+                            Text(track.title, color = Color.White, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            track.artists.joinToString(" / ") { it.name }.takeIf { it.isNotBlank() }?.let { artists ->
+                                Text(artists, color = Color.White.copy(alpha = .7f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        TrackMoreMenu(track, sourcePlaylist = playlist.id, backdrop = backdrop, enabled = enabled,
+                            icon = Icons.Rounded.MoreHoriz, description = "更多操作", tint = Color.White.copy(alpha = .8f))
+                    }
+                    HorizontalDivider(
+                        Modifier.padding(start = horizontal + 56.dp, end = horizontal),
+                        color = Color.White.copy(alpha = .15f),
+                    )
+                }
+                if (tracks.isNotEmpty()) item(key = "footer") {
+                    Text(
+                        listOfNotNull("${tracks.size} 首歌", albumDurationLabel(tracks)).joinToString("，"),
+                        Modifier.padding(horizontal = horizontal, vertical = 24.dp).testTag("playlist-footer"),
+                        color = Color.White.copy(alpha = .75f),
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            MusicAppBarBlur(backdrop, fullAppBarBlur = true, modifier = Modifier.align(Alignment.TopCenter), tint = background)
+        }
+        CompositionLocalProvider(
+            LocalAppBarBackdrop provides appBarBackdrop,
+            androidx.compose.material3.LocalContentColor provides Color.White,
+        ) {
+            MusicAppBar(null, onBack = onBack, fullAppBarBlur = true, drawBackgroundBlur = false, actions = {
+                PlaylistActionsMenu(state.playlistBusy, onEdit, onPurge, onDelete)
+            }, modifier = Modifier.padding(start = horizontal, end = horizontal, top = top).testTag("detail-app-bar"))
+        }
+    }
+}
+
+@Composable
+private fun PlaylistHeading(playlist: Playlist, tracks: List<Track>, onPlay: (List<Track>, Int) -> Unit) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(playlist.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(6.dp))
+        Text("我的歌单", color = Color.White.copy(alpha = .9f), fontSize = 19.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Text(listOfNotNull(playlist.trackCount?.let { "$it 首歌曲" }, albumDurationLabel(tracks)).joinToString(" · "), color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
+        Spacer(Modifier.height(18.dp))
+        Button(
+            onClick = { onPlay(tracks, 0) }, enabled = tracks.isNotEmpty(),
+            modifier = Modifier.width(160.dp).heightIn(min = 48.dp).testTag("playlist-play"),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF332A27)),
+        ) {
+            Icon(Icons.Rounded.PlayArrow, null)
+            Spacer(Modifier.width(4.dp))
+            Text("播放", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
