@@ -36,6 +36,22 @@ class LyricsSheetTest {
         compose.runOnIdle { assertTrue(dismissed) }
         compose.mainClock.autoAdvance = true
     }
+    @Test fun tabsAndInitialSearchFollowSavedOrder() {
+        val actions = Fake().apply {
+            onlinePreference.value = OnlineLyricsPreference(
+                sources = setOf(OnlineLyricsSource.Netease, OnlineLyricsSource.QQ),
+                order = listOf(OnlineLyricsSource.Kugou, OnlineLyricsSource.QQ, OnlineLyricsSource.Netease),
+            )
+        }
+        show(actions); openSearch()
+        compose.runOnIdle { assertEquals(listOf(OnlineLyricsSource.QQ to "Song"), actions.requests) }
+        val positions = listOf("Kugou", "QQ", "Netease", "Amll").map {
+            compose.onNodeWithTag("lyrics-tab-$it").fetchSemanticsNode().boundsInRoot.left
+        }
+        assertEquals(positions.sorted(), positions)
+        compose.onNodeWithTag("lyrics-tab-Kugou").performClick()
+        compose.runOnIdle { assertEquals(OnlineLyricsSource.Kugou to "Song", actions.requests.last()) }
+    }
     @Test fun tabsLoadOnDemandAndUseSubmittedQuery() {
         val actions = Fake(); show(actions); openSearch()
         compose.runOnIdle { assertEquals(listOf(OnlineLyricsSource.Netease to "Song"), actions.requests) }

@@ -1,7 +1,5 @@
 package com.seasonyuu.fnmusic.feature.music
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,7 +16,6 @@ import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun OnlineLyricsSettingsScreen(actions: LyricsActions, onBack: () -> Unit) {
     val preference by actions.onlinePreference.collectAsState(OnlineLyricsPreference())
@@ -54,33 +51,8 @@ internal fun OnlineLyricsSettingsScreen(actions: LyricsActions, onBack: () -> Un
                         }
                     }
                     Text("自动搜索会向所选平台发送歌曲名称和歌手；手动绑定不受此开关影响。", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
-                }
-                LyricsSettingsDetails(visible = preference.enabled) {
-                    LyricsSettingsGroup() {
-                        Text("歌词来源", style = MaterialTheme.typography.titleMedium)
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            OnlineLyricsSource.entries.forEach { source ->
-                                val checked = source in preference.sources
-                                val enabled = preference.enabled && !saving && !(checked && preference.sources.size == 1)
-                                FilterChip(
-                                    selected = checked,
-                                    enabled = enabled,
-                                    onClick = {
-                                        save(preference.copy(sources = if (checked) preference.sources - source else preference.sources + source))
-                                    },
-                                    label = { Text(source.label) },
-                                    leadingIcon = if (checked) {
-                                        { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-                                    } else null,
-                                    modifier = Modifier.testTag("online-source-${source.name}"),
-                                )
-                            }
-                        }
-                        Text("至少选择一个来源。优先采用逐词歌词，同等质量按网易云、QQ、酷狗顺序选择。", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
+                    LyricsSettingsDetails(visible = preference.enabled) {
+                        LyricsSourceOrder(preference, saving, onChange = ::save)
                     }
                 }
             }

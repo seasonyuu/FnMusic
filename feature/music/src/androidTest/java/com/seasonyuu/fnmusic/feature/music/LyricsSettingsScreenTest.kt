@@ -1,6 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.ui.test.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -102,13 +103,38 @@ class LyricsSettingsScreenTest {
         capture("online-lyrics-settings")
         compose.onNodeWithTag("online-source-QQ").performScrollTo().performClick()
         compose.onNodeWithTag("online-source-Kugou").performScrollTo().performClick()
-        compose.onNodeWithTag("online-source-Netease").assertIsNotEnabled()
+        compose.onNodeWithTag("online-source-priority").assertTextEquals("仅从 网易云音乐 搜索，优先采用逐词歌词。")
+        compose.onNodeWithText("拖动调整优先级，越靠上越优先。").assertDoesNotExist()
+        compose.onNodeWithTag("online-source-Netease").assertIsEnabled().performClick().assertIsOn()
+        compose.runOnIdle { assertEquals(setOf(OnlineLyricsSource.Netease), actions.onlinePreference.value.sources) }
         compose.onNodeWithTag("online-lyrics-toggle").performScrollTo().performClick()
         compose.runOnIdle { assertFalse(actions.onlinePreference.value.enabled); assertTrue(actions.amllEnabled.value) }
         compose.onNodeWithTag("online-source-QQ").assertDoesNotExist()
         compose.onNodeWithTag("online-lyrics-toggle").performScrollTo().performClick()
-        compose.onNodeWithTag("online-source-Netease").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("online-source-Netease").performScrollTo().assertIsOn()
         compose.onNodeWithTag("online-source-QQ").assertIsEnabled()
+    }
+    @Test fun dragOrderUpdatesPreferenceAndExplanation() {
+        val actions = Stub()
+        compose.setContent { FnMusicTheme { androidx.compose.material3.Surface {
+            LyricsSourceOrder(actions.onlinePreference.collectAsState().value, false) { actions.onlinePreference.value = it }
+        } } }
+        val first = compose.onNodeWithTag("online-source-drag-Netease", useUnmergedTree = true)
+        val last = compose.onNodeWithTag("online-source-drag-Kugou", useUnmergedTree = true)
+        val distance = last.fetchSemanticsNode().boundsInRoot.center.y - first.fetchSemanticsNode().boundsInRoot.center.y
+        first.performTouchInput { swipe(center, center + androidx.compose.ui.geometry.Offset(0f, distance), 600) }
+        compose.runOnIdle { assertEquals(listOf(OnlineLyricsSource.QQ, OnlineLyricsSource.Kugou, OnlineLyricsSource.Netease), actions.onlinePreference.value.order) }
+        compose.onNodeWithTag("online-source-priority").assertTextEquals("优先采用逐词歌词，同等质量按 QQ 音乐 → 酷狗音乐 → 网易云音乐 的顺序选择。")
+        compose.onNodeWithTag("online-source-Kugou").performClick()
+        compose.onNodeWithTag("online-source-priority").assertTextEquals("优先采用逐词歌词，同等质量按 QQ 音乐 → 网易云音乐 的顺序选择。")
+        capture("lyrics-source-order")
+        compose.onNodeWithTag("online-source-reset").performClick()
+        compose.runOnIdle {
+            assertEquals(OnlineLyricsSource.entries.toList(), actions.onlinePreference.value.order)
+            assertEquals(OnlineLyricsSource.entries.toSet(), actions.onlinePreference.value.sources)
+        }
+        OnlineLyricsSource.entries.forEach { compose.onNodeWithTag("online-source-${it.name}").assertIsOn() }
+        compose.onNodeWithTag("online-source-priority").assertTextEquals("优先采用逐词歌词，同等质量按 网易云音乐 → QQ 音乐 → 酷狗音乐 的顺序选择。")
     }
     @Test fun manualSearchUsesSeparateSheetAndAppliesPreview() {
         val actions = Stub()

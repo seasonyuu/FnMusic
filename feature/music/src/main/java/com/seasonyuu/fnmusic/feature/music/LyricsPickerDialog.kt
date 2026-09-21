@@ -219,6 +219,8 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
 private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: LyricsSheetVisual, sheetState: SheetState,
     saving: Boolean, saveError: String?, onBack: () -> Unit, onApply: (LyricsCandidate) -> Unit) {
     val index by actions.index.collectAsState()
+    val onlinePreference by actions.onlinePreference.collectAsState(OnlineLyricsPreference())
+    val tabOrder = onlinePreference.orderedSources.map { platform -> LyricsSearchSource.entries.first { it.online == platform } } + LyricsSearchSource.Amll
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     var query by remember { mutableStateOf((track.title + " " + track.artists.joinToString(" ") { it.name }).trim()) }
@@ -280,7 +282,8 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
         val preference = actions.onlinePreference.first()
         source = if (saved.mode == LyricsChoiceMode.Amll) LyricsSearchSource.Amll
         else if (saved.mode == LyricsChoiceMode.Online) LyricsSearchSource.entries.firstOrNull { it.online == saved.candidate?.onlineSource } ?: LyricsSearchSource.Netease
-        else LyricsSearchSource.entries.firstOrNull { it.online?.let { platform -> preference.enabled && platform in preference.sources } ?: actions.amllEnabled.first() } ?: LyricsSearchSource.Netease
+        else if (preference.enabled && preference.enabledSources.isNotEmpty()) LyricsSearchSource.entries.first { it.online == preference.enabledSources.first() }
+        else if (actions.amllEnabled.first()) LyricsSearchSource.Amll else LyricsSearchSource.Netease
         ready = true; search()
     }
     var mirror by remember { mutableStateOf(index.source) }
@@ -321,7 +324,7 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
                         colors = TextFieldDefaults.colors(focusedContainerColor = Color.White.copy(alpha = .08f), unfocusedContainerColor = Color.White.copy(alpha = .06f), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                         trailingIcon = { IconButton(onClick = { submit() }, enabled = query.isNotBlank() && ready, modifier = Modifier.testTag("lyrics-search-submit")) { Icon(Icons.Rounded.Search, "搜索") } },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { submit() }))
-                    SourceTabs(source, enabled = ready, onSelect = ::switch)
+                    SourceTabs(source, tabOrder, enabled = ready, onSelect = ::switch)
                     Crossfade(source, modifier = Modifier.weight(1f), animationSpec = tween(140), label = "lyrics-source") { tab ->
                         val result = results[tab]
                         LazyColumn(Modifier.fillMaxSize().testTag("lyrics-search-results"), state = listStates.getValue(tab), contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -383,18 +386,18 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
 }
 
 @Composable
-private fun SourceTabs(source: LyricsSearchSource, enabled: Boolean, onSelect: (LyricsSearchSource) -> Unit) {
+private fun SourceTabs(source: LyricsSearchSource, order: List<LyricsSearchSource>, enabled: Boolean, onSelect: (LyricsSearchSource) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         val fontScale = LocalDensity.current.fontScale
         val tabs: @Composable () -> Unit = {
-            LyricsSearchSource.entries.forEach { tab ->
+            order.forEach { tab ->
                 Tab(selected = source == tab, onClick = { onSelect(tab) }, enabled = enabled,
                     selectedContentColor = Color.White, unselectedContentColor = SheetSecondary,
                     modifier = Modifier.clip(RoundedCornerShape(12.dp)).testTag("lyrics-tab-${tab.name}"), text = { Text(tab.label, maxLines = 1) })
             }
         }
         if (maxWidth < 320.dp || fontScale > 1.2f) {
-            ScrollableTabRow(selectedTabIndex = source.ordinal, containerColor = Color.Transparent, contentColor = Color.White, edgePadding = 0.dp, tabs = tabs)
-        } else TabRow(selectedTabIndex = source.ordinal, containerColor = Color.Transparent, contentColor = Color.White, tabs = tabs)
+            ScrollableTabRow(selectedTabIndex = order.indexOf(source), containerColor = Color.Transparent, contentColor = Color.White, edgePadding = 0.dp, tabs = tabs)
+        } else TabRow(selectedTabIndex = order.indexOf(source), containerColor = Color.Transparent, contentColor = Color.White, tabs = tabs)
     }
 }
