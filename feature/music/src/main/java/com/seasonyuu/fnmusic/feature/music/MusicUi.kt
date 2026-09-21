@@ -622,11 +622,22 @@ fun MusicShell(
                 }
             },
         ) {
-            val collectionPage = navigation.current.page in setOf(
+            val collectionPage = (navigation.current.detail == null && navigation.current.page in setOf(
                 MusicPage.Tracks, MusicPage.Recent, MusicPage.Favorites,
                 MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
-            ) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
-            FnProgressiveSystemBars(showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage) {
+            )) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
+            FnProgressiveSystemBars(
+                showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage,
+                topBlur = { backdrop ->
+                    if (navigation.current.page != MusicPage.Root || navigation.current.detail != null) {
+                        // The app bar paints its own blur beneath its foreground.
+                        MusicAppBarBlur(backdrop, fullAppBarBlur = true, statusBarSegmentOnly = true)
+                    } else {
+                        // Root destinations have no app bar; retain their system-bar treatment.
+                        com.seasonyuu.fnmusic.core.designsystem.ProgressiveBarBlur(backdrop, top = true, modifier = Modifier)
+                    }
+                },
+            ) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.matchParentSize().layerBackdrop(appBarBackdrop).background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))))
                     BoxWithConstraints(

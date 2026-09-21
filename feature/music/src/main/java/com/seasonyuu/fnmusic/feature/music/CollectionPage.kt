@@ -25,12 +25,13 @@ internal fun CollectionPage(
     onBack: (() -> Unit)?,
     headingGone: () -> Boolean,
     actions: @Composable RowScope.() -> Unit = {},
+    fullAppBarBlur: Boolean = true,
     content: @Composable (Modifier, Dp) -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
     val appBarBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
-    val top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 64.dp
+    val top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + MusicAppBarHeight
     var origin by remember { mutableFloatStateOf(0f) }
     var headingBottom by remember { mutableStateOf<Float?>(null) }
     // Read at draw time as well, so layout/scroll updates need no timed transition.
@@ -46,12 +47,13 @@ internal fun CollectionPage(
                     headingBottom = it.positionInRoot().y + it.size.height
                 }, top + 12.dp)
             }
-            ProgressiveBarBlur(backdrop, true, Modifier, extraHeight = 64.dp)
+            MusicAppBarBlur(backdrop, fullAppBarBlur = fullAppBarBlur)
         }
         CompositionLocalProvider(LocalAppBarBackdrop provides appBarBackdrop) {
             MusicAppBar(title, onBack = onBack, titleAlpha = alpha, actions = actions,
+                fullAppBarBlur = fullAppBarBlur, drawBackgroundBlur = false,
                 modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    .padding(horizontal = 20.dp, vertical = 8.dp).testTag("collection-app-bar"))
+                    .padding(horizontal = 20.dp).testTag("collection-app-bar"))
         }
     }
 }

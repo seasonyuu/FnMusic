@@ -22,11 +22,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -47,7 +49,6 @@ import coil3.toBitmap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.seasonyuu.fnmusic.core.designsystem.FnBackgroundTop
-import com.seasonyuu.fnmusic.core.designsystem.ProgressiveBarBlur
 import com.seasonyuu.fnmusic.core.designsystem.LiquidButton
 import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.Dispatchers
@@ -136,7 +137,11 @@ internal fun AlbumDetailScreen(
             error = painterResource(com.seasonyuu.fnmusic.core.designsystem.R.drawable.cover_placeholder),
             onSuccess = { coverBitmap = it.result.image.toBitmap() },
             contentScale = ContentScale.Crop,
-            modifier = modifier.shadow(12.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(8.dp)),
+            // A 2D shadow survives backdrop replay without elevation/light-source shifts.
+            modifier = modifier.dropShadow(
+                shape = RoundedCornerShape(8.dp),
+                shadow = Shadow(radius = 12.dp, color = Color.Black.copy(alpha = .20f), offset = DpOffset(0.dp, 4.dp)),
+            ).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = .10f), RoundedCornerShape(8.dp)),
         )
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -225,14 +230,14 @@ internal fun AlbumDetailScreen(
                     }
                 }
             }
-            ProgressiveBarBlur(backdrop, top = true, modifier = Modifier.align(Alignment.TopCenter), tint = background)
+            MusicAppBarBlur(backdrop, fullAppBarBlur = true, modifier = Modifier.align(Alignment.TopCenter), tint = background)
         }
         androidx.compose.runtime.CompositionLocalProvider(
             LocalAppBarBackdrop provides appBarBackdrop,
             androidx.compose.material3.LocalContentColor provides Color.White,
         ) {
-            MusicAppBar(null, onBack = onBack,
-                modifier = Modifier.padding(start = horizontal, end = horizontal, top = top + 8.dp)
+            MusicAppBar(null, onBack = onBack, fullAppBarBlur = true, drawBackgroundBlur = false,
+                modifier = Modifier.padding(start = horizontal, end = horizontal, top = top)
                     .testTag("detail-app-bar"))
         }
     }
