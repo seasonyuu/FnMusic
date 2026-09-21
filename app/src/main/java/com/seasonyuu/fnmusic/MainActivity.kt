@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
                         onLoadPlaylist = viewModel::loadPlaylist,
                         onCreatePlaylist = viewModel::createPlaylist,
                         onUpdatePlaylist = viewModel::updatePlaylist,
+                        playlistEditing = viewModel.playlistEditing,
                         onDeletePlaylist = viewModel::deletePlaylist,
                         onAddTrackToPlaylist = viewModel::addTrackToPlaylist,
                         onRemoveTracksFromPlaylist = viewModel::removeTracksFromPlaylist,

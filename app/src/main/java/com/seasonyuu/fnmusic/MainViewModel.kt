@@ -49,7 +49,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel() {
+class MainViewModel @Inject constructor(private val graph: AppGraph, private val savedState: androidx.lifecycle.SavedStateHandle) : ViewModel() {
     val session: StateFlow<SessionState> = graph.session.state
     val loginForm = graph.session.loginForm
 
@@ -57,6 +57,40 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     val player: StateFlow<PlayerState> = graph.player.state
     private val mutableMusic = kotlinx.coroutines.flow.MutableStateFlow(MusicUiState())
     val music: StateFlow<MusicUiState> = mutableMusic
+    private fun playlistAccount(): String {
+        val ready = session.value as? SessionState.Ready ?: error("请先登录")
+        val endpoint = when (val value = ready.profile.endpoint) {
+            is Endpoint.FnConnect -> "fn:${value.fnId}"
+            is Endpoint.Direct -> "direct:${value.baseUrl.trimEnd('/')}"
+        }
+        return "${endpoint.length}:$endpoint|${ready.user?.id ?: ready.profile.username}"
+    }
+    val playlistEditing: PlaylistEditActions = com.seasonyuu.fnmusic.data.PlaylistEditorController(
+        scope = viewModelScope,
+        account = ::playlistAccount,
+        load = { id -> graph.catalog.playlistDetail(id) to graph.catalog.playlistTracks(id) },
+        readOrder = graph.playlistOrders::read,
+        writeOrder = graph.playlistOrders::write,
+        updateMetadata = { id, name, cover -> graph.catalog.updatePlaylist(id, name, cover) },
+        removeTracks = graph.catalog::removePlaylistTracks,
+        refresh = ::refreshPlaylistAfterMembershipChange,
+        restore = { savedState.get<String>("playlistEdit")?.let { runCatching { graph.network.json.decodeFromString<PlaylistEditDraft>(it) }.getOrNull() } },
+        checkpoint = { draft -> savedState["playlistEdit"] = draft?.let { graph.network.json.encodeToString(PlaylistEditDraft.serializer(), it) } },
+        prepareCover = graph.playlistCoverFiles::prepare,
+        uploadCover = graph.playlistCoverFiles::upload,
+        discardCover = graph.playlistCoverFiles::discard,
+        uploadDefaultCover = graph.playlistCoverFiles::uploadDefault,
+    )
+
+    private suspend fun orderedPlaylistTracks(id: PlaylistId): List<Track> {
+        val owner = playlistAccount()
+        val tracks = graph.catalog.playlistTracks(id)
+        val saved = graph.playlistOrders.read(owner, id)
+        val reconciled = saved.reconcile(tracks)
+        check(owner == playlistAccount()) { "账号已切换" }
+        if (saved.keys.isNotEmpty() && reconciled != saved) graph.playlistOrders.write(owner, id, reconciled)
+        return reconciled.apply(tracks)
+    }
     val administration: com.seasonyuu.fnmusic.core.model.MusicAdministration = ProfileAdministration(
         viewModelScope, graph.administration,
         canManage = { session.value is SessionState.Ready && mutableMusic.value.user?.role == "admin" },
@@ -330,7 +364,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     }
     fun loadPlaylist(id: PlaylistId) = loadDetail(DetailRequestKey("playlist", id.value)) {
         val metadata = graph.catalog.playlistDetail(id)
-        val tracks = graph.catalog.playlistTracks(id)
+        val tracks = orderedPlaylistTracks(id)
         copy(detailTracks = tracks, detailPlaylist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size))
     }
 
@@ -394,8 +428,9 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
 
     fun deletePlaylist(id: PlaylistId) {
         viewModelScope.launch {
+            val owner = playlistAccount()
             mutableMusic.value = mutableMusic.value.copy(playlistBusy = true, playlistMessage = null)
-            runCatching { graph.catalog.deletePlaylist(id) }
+            runCatching { graph.catalog.deletePlaylist(id); graph.playlistOrders.delete(owner, id) }
                 .onSuccess {
                     mutableMusic.value = mutableMusic.value.copy(
                         playlistBusy = false,
@@ -471,14 +506,23 @@ class MainViewModel @Inject constructor(private val graph: AppGraph) : ViewModel
     }
 
     private suspend fun refreshPlaylistAfterMembershipChange(id: PlaylistId) {
+        val owner = playlistAccount()
         val metadata = graph.catalog.playlistDetail(id)
-        val tracks = graph.catalog.playlistTracks(id)
+        val tracks = orderedPlaylistTracks(id)
         graph.favorites.seed(tracks)
         val playlists = graph.catalog.playlists()
+        check(owner == playlistAccount()) { "账号已切换" }
         val current = mutableMusic.value
         val active = current.detailKey == DetailRequestKey("playlist", id.value)
+        if (active) {
+            // A load started before the edit must not overwrite the newly saved order.
+            detailGeneration++
+            detailJob?.cancel()
+        }
         mutableMusic.value = current.copy(
             playlists = playlists,
+            detailLoading = if (active) false else current.detailLoading,
+            detailError = if (active) null else current.detailError,
             detailPlaylist = if (active) metadata.copy(trackCount = metadata.trackCount ?: tracks.size) else current.detailPlaylist,
             detailTracks = if (active) tracks else current.detailTracks,
             detailCache = current.detailCache + (DetailRequestKey("playlist", id.value) to MusicDetailSnapshot(

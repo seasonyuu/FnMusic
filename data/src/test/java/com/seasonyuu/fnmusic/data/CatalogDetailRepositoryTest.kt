@@ -10,6 +10,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CatalogDetailRepositoryTest {
+    @Test fun playlistReadsEveryPageAndRejectsAnIncompleteResponse() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val runtime = NetworkRuntime()
+            runtime.activateBaseUrl(server.url("/music/"), allowPrivateLanHttp = true)
+            val repository = MusicCatalogRepository(runtime.api)
+            fun page(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+            server.enqueue(page("""{"code":0,"data":{"total":3,"list":[{"guid":"a"},{"guid":"b"}]}}"""))
+            server.enqueue(page("""{"code":0,"data":{"total":3,"list":[{"guid":"c"}]}}"""))
+            val id = com.seasonyuu.fnmusic.core.model.PlaylistId("playlist")
+            assertEquals(listOf("a", "b", "c"), repository.playlistTracks(id, size = 2).map { it.id.value })
+            assertEquals("1", server.takeRequest().requestUrl!!.queryParameter("page"))
+            assertEquals("2", server.takeRequest().requestUrl!!.queryParameter("page"))
+            server.enqueue(page("""{"code":0,"data":{"total":3,"list":[{"guid":"a"},{"guid":"b"}]}}"""))
+            server.enqueue(page("""{"code":0,"data":{"total":3,"list":[]}}"""))
+            org.junit.Assert.assertTrue(runCatching { repository.playlistTracks(id, size = 2) }.isFailure)
+        } finally { server.shutdown() }
+    }
+
     @Test fun `detail endpoints supply counts and artists absent from nested song metadata`() = runBlocking {
         val server = MockWebServer()
         server.start()

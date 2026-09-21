@@ -188,7 +188,17 @@ class MusicCatalogRepository(private val api: MusicApi) : CatalogRepository {
     override suspend fun artistDetail(id: ArtistId) = api.artistDetail(id.value).requireData().toDomain()
     override suspend fun albumTracks(id: AlbumId, size: Int) = api.albumTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
     override suspend fun artistTracks(id: ArtistId, size: Int) = api.artistTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
-    override suspend fun playlistTracks(id: PlaylistId, size: Int) = api.playlistTracks(id.value, 1, size).requireData().list.map(TrackDto::toDomain)
+    override suspend fun playlistTracks(id: PlaylistId, size: Int): List<Track> {
+        require(size > 0)
+        val tracks = mutableListOf<Track>()
+        var page = 1
+        do {
+            val response = api.playlistTracks(id.value, page++, size).requireData()
+            check(response.list.isNotEmpty() || tracks.size >= response.total) { "歌单曲目加载不完整，请重试" }
+            tracks += response.list.map(TrackDto::toDomain)
+        } while (tracks.size < response.total)
+        return tracks
+    }
 
     override suspend fun trackMetadata(id: TrackId): TrackMetadata {
         val value = api.trackMetadata(id.value).requireData()

@@ -26,6 +26,8 @@ class AppGraph(context: Context) {
     val favorites = OptimisticFavoriteRepository(network.api)
     val events = MusicPlaybackEventReporter(network.api)
     val settings = SettingsStore(context)
+    val playlistOrders = com.seasonyuu.fnmusic.data.PlaylistOrderStore(context)
+    val playlistCoverFiles = com.seasonyuu.fnmusic.data.PlaylistCoverFiles(context, network.api)
     val catalogCache = CatalogCache(context, network.json)
     val database = Room.databaseBuilder(context, FnMusicDatabase::class.java, "fn_music.db")
         .addMigrations(FnMusicDatabase.MIGRATION_1_2)

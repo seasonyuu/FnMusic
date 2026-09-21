@@ -22,6 +22,9 @@ import retrofit2.http.POST
 import retrofit2.http.Query
 
 @Serializable
+data class PlaylistCoverUploadDto(val coverId: String)
+
+@Serializable
 data class ApiEnvelope<T>(
     val code: Int = -1,
     val msg: String = "",
@@ -251,6 +254,9 @@ data class LyricDataDto(
 )
 
 interface MusicApi {
+    @retrofit2.http.Multipart
+    @POST("api/v1/static/cover/playlist")
+    suspend fun uploadPlaylistCover(@retrofit2.http.Part file: okhttp3.MultipartBody.Part): ApiEnvelope<PlaylistCoverUploadDto>
     @Headers("$NO_SESSION_RECOVERY_HEADER: true")
     @POST("api/v1/user/password-login")
     suspend fun passwordLogin(@Body body: LoginRequest): ApiEnvelope<LoginData>

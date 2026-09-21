@@ -11,8 +11,28 @@ import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class NetworkRuntimeIntegrationTest {
+    @Test
+    fun `playlist cover uses file multipart and signs empty FormData object`() = runBlocking {
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/json")
+            .setBody("""{"code":0,"data":{"coverId":"uploaded-cover"}}"""))
+        val runtime = NetworkRuntime()
+        runtime.activateBaseUrl(server.url("/music/"), allowPrivateLanHttp = true)
+        val part = okhttp3.MultipartBody.Part.createFormData("file", "cover.png",
+            byteArrayOf(0, 1, -1, 2).toRequestBody("image/png".toMediaType()))
+        assertEquals("uploaded-cover", runtime.api.uploadPlaylistCover(part).requireData().coverId)
+        val request = server.takeRequest()
+        assertEquals("/music/api/v1/static/cover/playlist", request.path)
+        assertTrue(request.getHeader("Content-Type")!!.startsWith("multipart/form-data; boundary="))
+        assertTrue(request.body.readUtf8().contains("name=\"file\"; filename=\"cover.png\""))
+        val auth = request.getHeader("authx")!!.split("&").associate { it.substringBefore("=") to it.substringAfter("=") }
+        val signer = AuthxSigner({ auth.getValue("nonce") }, { auth.getValue("timestamp").toLong() })
+        assertEquals(signer.sign("POST", request.path!!, emptyList(), "{}"), request.getHeader("authx"))
+    }
+
     private lateinit var server: MockWebServer
 
     @Before

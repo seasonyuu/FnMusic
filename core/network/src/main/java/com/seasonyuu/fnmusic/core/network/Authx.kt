@@ -49,7 +49,8 @@ class AuthxSigner(
 class AuthxInterceptor(private val signer: AuthxSigner = AuthxSigner()) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val bodyText = request.body?.let { body ->
+        // Web signs JSON.stringify(FormData), which is "{}", not the binary multipart body.
+        val bodyText = if (request.body is okhttp3.MultipartBody) "{}" else request.body?.let { body ->
             Buffer().use { buffer ->
                 body.writeTo(buffer)
                 buffer.readUtf8()
