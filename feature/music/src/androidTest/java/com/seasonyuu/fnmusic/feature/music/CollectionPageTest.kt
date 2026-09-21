@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.*
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
+import com.seasonyuu.fnmusic.core.designsystem.LiquidMenuHost
 import com.seasonyuu.fnmusic.core.model.*
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
@@ -91,11 +92,13 @@ class CollectionPageTest {
         }
         compose.setContent {
             FnMusicTheme {
-                val scope = rememberCoroutineScope()
-                val flow = remember { pager.flow.cachedIn(scope) }
-                PagingTrackScreen("全部歌曲", flow.collectAsLazyPagingItems(), MusicUiState(loading = false),
-                    { _, _ -> null }, { _, _ -> }, {}, { error("Must not refresh homepage") },
-                    sort = TrackSort.TitleAscending, pullRefreshEnabled = true, onSort = {}, onBack = {})
+                LiquidMenuHost {
+                    val scope = rememberCoroutineScope()
+                    val flow = remember { pager.flow.cachedIn(scope) }
+                    PagingTrackScreen("全部歌曲", flow.collectAsLazyPagingItems(), MusicUiState(loading = false),
+                        { _, _ -> null }, { _, _ -> }, {}, { error("Must not refresh homepage") },
+                        sort = TrackSort.TitleAscending, pullRefreshEnabled = true, onSort = {}, onBack = {})
+                }
             }
         }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("歌曲 1").fetchSemanticsNodes().isNotEmpty() }
@@ -131,11 +134,13 @@ class CollectionPageTest {
         }
         compose.setContent {
             FnMusicTheme {
-                val scope = rememberCoroutineScope()
-                val flow = remember { pager.flow.cachedIn(scope) }
-                PagingTrackScreen("全部歌曲", flow.collectAsLazyPagingItems(), MusicUiState(loading = false),
-                    { _, _ -> null }, { _, _ -> }, {}, { error("Homepage refresh") },
-                    sort = TrackSort.RecentlyAdded, pullRefreshEnabled = true, onSort = {})
+                LiquidMenuHost {
+                    val scope = rememberCoroutineScope()
+                    val flow = remember { pager.flow.cachedIn(scope) }
+                    PagingTrackScreen("全部歌曲", flow.collectAsLazyPagingItems(), MusicUiState(loading = false),
+                        { _, _ -> null }, { _, _ -> }, {}, { error("Homepage refresh") },
+                        sort = TrackSort.RecentlyAdded, pullRefreshEnabled = true, onSort = {})
+                }
             }
         }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("加载失败示例").fetchSemanticsNodes().isNotEmpty() }

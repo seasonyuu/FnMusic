@@ -1,6 +1,8 @@
 package com.seasonyuu.fnmusic.feature.music
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,6 +20,38 @@ import org.junit.Test
 
 class MusicAppBarTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun toolbarReservesTenDpBelowTopAlignedControls() {
+        compose.setContent {
+            FnMusicTheme {
+                MusicAppBar("标题", modifier = Modifier.testTag("toolbar"), onBack = {})
+            }
+        }
+        compose.onNodeWithTag("toolbar").assertHeightIsEqualTo(54.dp)
+        compose.onNodeWithContentDescription("返回").assertWidthIsEqualTo(44.dp).assertHeightIsEqualTo(44.dp)
+        val bar = compose.onNodeWithTag("toolbar").fetchSemanticsNode().boundsInRoot
+        val button = compose.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithText("标题").fetchSemanticsNode().boundsInRoot
+        assertEquals(bar.top, button.top, 1f)
+        assertEquals(button.center.y, title.center.y, 1f)
+    }
+
+    @Test fun blurRangeIsExplicitAndIndependentOfHiddenTitle() {
+        compose.setContent {
+            FnMusicTheme {
+                val backdrop = rememberLayerBackdrop()
+                Column {
+                    Box(Modifier.testTag("status-blur")) { MusicAppBarBlur(backdrop, fullAppBarBlur = true, statusBarSegmentOnly = true) }
+                    Box(Modifier.testTag("full-blur")) { MusicAppBarBlur(backdrop, fullAppBarBlur = true) }
+                    MusicAppBar("标题", titleAlpha = { 0f })
+                }
+            }
+        }
+        val status = compose.onNodeWithTag("status-blur").fetchSemanticsNode().boundsInRoot
+        val full = compose.onNodeWithTag("full-blur").fetchSemanticsNode().boundsInRoot
+        val density = compose.density.density
+        assertEquals(54f * density, full.height - status.height, 1f)
+    }
 
     @Test fun largeFontRetainsBackAndActionAndDisabledActionsCannotRun() {
         var back = 0
