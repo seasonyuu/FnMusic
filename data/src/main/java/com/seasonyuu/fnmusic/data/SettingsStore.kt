@@ -30,13 +30,18 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         val sources = values[stringPreferencesKey("online_lyrics_sources")]?.split(',')?.mapNotNull { name ->
             com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.firstOrNull { it.name == name }
         }?.toSet()?.takeIf { it.isNotEmpty() } ?: com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.toSet()
-        com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference(values[booleanPreferencesKey("online_lyrics_enabled")] ?: true, sources)
+        val order = values[stringPreferencesKey("online_lyrics_order")]?.split(',')?.mapNotNull { name ->
+            com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.firstOrNull { it.name == name }
+        }.orEmpty()
+        val preference = com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference(values[booleanPreferencesKey("online_lyrics_enabled")] ?: true, sources, order)
+        preference.copy(order = preference.orderedSources)
     }
 
     suspend fun setOnlineLyricsPreference(value: com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference) {
         require(value.sources.isNotEmpty()) { "请至少选择一个来源" }
         dataStore.edit {
             it[booleanPreferencesKey("online_lyrics_enabled")] = value.enabled
+            it[stringPreferencesKey("online_lyrics_order")] = value.orderedSources.joinToString(",") { source -> source.name }
             it[stringPreferencesKey("online_lyrics_sources")] = value.sources.sortedBy { source -> source.ordinal }.joinToString(",") { source -> source.name }
         }
     }

@@ -65,6 +65,8 @@ class OnlineLyricsTest {
         val repo = OnlineLyricsRepository(folder.root, providers)
         val results = repo.automatic(track, OnlineLyricsPreference())
         assertEquals(listOf(LyricsOrigin.Netease, LyricsOrigin.QQ, LyricsOrigin.Kugou), results.map { it.origin })
+        val reordered = repo.automatic(track, OnlineLyricsPreference(order = listOf(OnlineLyricsSource.Kugou, OnlineLyricsSource.Netease, OnlineLyricsSource.QQ)))
+        assertEquals(listOf(LyricsOrigin.Kugou, LyricsOrigin.Netease, LyricsOrigin.QQ), reordered.map { it.origin })
         assertEquals(3, repo.cacheUsage.value.count)
         repo.clearCache()
         assertEquals(LyricsCacheUsage(), repo.cacheUsage.value)

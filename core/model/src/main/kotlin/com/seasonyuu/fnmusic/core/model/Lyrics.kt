@@ -16,7 +16,14 @@ enum class LyricsFetchSource(val label: String, val baseUrl: String) {
 enum class OnlineLyricsSource(val label: String) { Netease("网易云音乐"), QQ("QQ 音乐"), Kugou("酷狗音乐") }
 
 @Serializable
-data class OnlineLyricsPreference(val enabled: Boolean = true, val sources: Set<OnlineLyricsSource> = OnlineLyricsSource.entries.toSet())
+data class OnlineLyricsPreference(
+    val enabled: Boolean = true,
+    val sources: Set<OnlineLyricsSource> = OnlineLyricsSource.entries.toSet(),
+    val order: List<OnlineLyricsSource> = OnlineLyricsSource.entries.toList(),
+) {
+    val orderedSources: List<OnlineLyricsSource> get() = (order + OnlineLyricsSource.entries).distinct()
+    val enabledSources: List<OnlineLyricsSource> get() = orderedSources.filter { it in sources }
+}
 
 @Serializable
 data class LyricsCandidate(

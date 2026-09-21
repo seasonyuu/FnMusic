@@ -89,7 +89,7 @@ class OnlineLyricsRepository(
         val results = java.util.concurrent.ConcurrentHashMap<OnlineLyricsSource, LyricsDocument>()
         val contextKey = json.encodeToString(track)
         withTimeoutOrNull(stageTimeoutMs) {
-            preference.sources.map { source -> launch {
+            preference.enabledSources.map { source -> launch {
                 try {
                     val row = OnlineLyricsMatcher.match(search(source, track.title + " " + track.artists.joinToString(" ") { it.name }, contextKey), track)
                     if (row != null) results[source] = preview(row)
@@ -97,7 +97,7 @@ class OnlineLyricsRepository(
                 catch (_: Exception) { /* A failed provider does not block lower-priority sources. */ }
             } }.joinAll()
         }
-        OnlineLyricsSource.entries.mapNotNull { results[it] }
+        preference.enabledSources.mapNotNull { results[it] }
     }
     private suspend fun <T> cancellableDownload(block: suspend () -> T): T = coroutineScope {
         val task = async(start = CoroutineStart.LAZY) { block() }
