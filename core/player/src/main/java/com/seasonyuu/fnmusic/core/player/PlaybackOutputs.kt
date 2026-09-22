@@ -16,6 +16,14 @@ import com.seasonyuu.fnmusic.core.model.*
 internal object OutputCommands {
     val command = SessionCommand("com.seasonyuu.fnmusic.OUTPUT", Bundle.EMPTY)
     fun encode(state: OutputState) = Bundle().apply {
+        putBundle("localState", Bundle().apply {
+            putInt("current", state.local.currentId ?: -1); putInt("requested", state.local.requestedId ?: -1)
+            putBoolean("pending", state.local.pending); putBoolean("waiting", state.local.awaitingPlayback)
+            putBoolean("system", state.local.followsSystem); putString("error", state.local.error)
+            putParcelableArrayList("devices", ArrayList(state.local.devices.map { device -> Bundle().apply {
+                putInt("id", device.id); putString("name", device.name); putString("kind", device.kind.name)
+            } }))
+        })
         putString("target", (state.output as? PlaybackOutput.AirPlay)?.id)
         putString("name", (state.output as? PlaybackOutput.AirPlay)?.name)
         putBoolean("scanning", state.scanning); putBoolean("pairing", state.pairing)
@@ -37,6 +45,14 @@ internal object OutputCommands {
                 it.getInt("port"), it.getString("model").orEmpty(), it.getString("features").orEmpty(), it.getString("type").orEmpty())
         }
         return OutputState(output = bundle.getString("target")?.let { PlaybackOutput.AirPlay(it, bundle.getString("name").orEmpty()) } ?: PlaybackOutput.Local,
+            local = bundle.getBundle("localState")?.let { local -> LocalAudioState(
+                devices = local.getParcelableArrayList<Bundle>("devices").orEmpty().mapNotNull { device ->
+                    val kind = runCatching { LocalAudioDeviceKind.valueOf(device.getString("kind").orEmpty()) }.getOrNull()
+                    kind?.let { LocalAudioDevice(device.getInt("id"), device.getString("name").orEmpty(), it) }
+                }, currentId = local.getInt("current", -1).takeIf { it >= 0 },
+                requestedId = local.getInt("requested", -1).takeIf { it >= 0 }, pending = local.getBoolean("pending"),
+                awaitingPlayback = local.getBoolean("waiting"), followsSystem = local.getBoolean("system", true), error = local.getString("error"))
+            } ?: LocalAudioState(),
             devices = devices, scanning = bundle.getBoolean("scanning"), connecting = bundle.getBundle("connectingDevice")?.let {
                 AirPlayDevice(it.getString("id").orEmpty(), it.getString("name").orEmpty(), it.getString("host").orEmpty(),
                     it.getInt("port"), it.getString("model").orEmpty(), it.getString("features").orEmpty(), it.getString("type").orEmpty())
@@ -53,6 +69,7 @@ internal class PlaybackOutputs(private val context: Context, private val player:
         android.os.Build.VERSION.SDK_INT < 37 ||
             context.checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) == android.content.pm.PackageManager.PERMISSION_GRANTED
     },
+    private val localRouter: () -> LocalAudioRouter? = { null },
     private val createConnection: (AirPlayDevice, (String) -> Unit) -> AirPlaySession = { device, event -> AirPlayConnection(context, device, event) },
 ) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
@@ -62,6 +79,7 @@ internal class PlaybackOutputs(private val context: Context, private val player:
     private var discovery: AirPlayDiscovery? = null
     private var generation = 0
     var state = OutputState()
+        get() = field.copy(local = localRouter()?.state ?: field.local)
         private set
     fun command(args: Bundle): SessionResult {
         if (!hasNetworkPermission()) {
@@ -83,10 +101,10 @@ internal class PlaybackOutputs(private val context: Context, private val player:
                     val value = args.getFloat("volume"); require(value.isFinite())
                     state = state.copy(volume = value.coerceIn(0f, 100f)); connection?.volume(state.volume)
                 }
-                "local" -> {
-                    generation++; candidate?.close(); candidate = null
-                    val old = connection; connection = null; handoff(); old?.close()
-                    state = state.copy(output = PlaybackOutput.Local, connecting = null, pairing = false, error = null)
+                "local" -> if (!selectLocal(null)) return SessionResult(SessionError.ERROR_BAD_VALUE, OutputCommands.encode(state))
+                "local-device" -> {
+                    require(args.containsKey("deviceId"))
+                    if (!selectLocal(args.getInt("deviceId"))) return SessionResult(SessionError.ERROR_BAD_VALUE, OutputCommands.encode(state))
                 }
                 else -> return SessionResult(SessionError.ERROR_BAD_VALUE)
             }
@@ -141,6 +159,7 @@ internal class PlaybackOutputs(private val context: Context, private val player:
                 "connected" -> {
                     if (candidate !== next) return@callback
                     val selected = next
+                    localRouter()?.activate(false)
                     val old = connection; connection = selected; candidate = null
                     selected.volume(state.volume)
                     handoff(); old?.close()
@@ -166,6 +185,20 @@ internal class PlaybackOutputs(private val context: Context, private val player:
         candidate = next
         next.connect()
     }
+    private fun selectLocal(id: Int?): Boolean {
+        val router = localRouter()
+        if (id != null && router == null) return false
+        if (router != null && !router.request(id)) return false
+        generation++; candidate?.close(); candidate = null
+        val old = connection
+        connection = null
+        router?.activate(true)
+        if (old != null) handoff()
+        old?.close()
+        state = state.copy(output = PlaybackOutput.Local, connecting = null, pairing = false, error = null)
+        return true
+    }
+    fun tickLocalRoutes() { localRouter()?.tick(player().isPlaying) }
     private fun cancelConnection() {
         generation++; candidate?.close(); candidate = null
         state = state.copy(connecting = null, pairing = false)
@@ -181,5 +214,6 @@ internal class PlaybackOutputs(private val context: Context, private val player:
     }
     override fun close() {
         generation++; discovery?.close(); candidate?.close(); connection?.close(); connection = null
+        localRouter()?.close()
     }
 }

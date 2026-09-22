@@ -14,7 +14,7 @@ import java.nio.ByteOrder
 
 /** Decoder-thread adapter. All networking is delegated to the connection worker. */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal class AirPlayAudioSink(local: AudioSink, private val output: () -> AirPlayAudioOutput?) : ForwardingAudioSink(local) {
+internal class AirPlayAudioSink(local: AudioSink, private val invalidateLocalTrack: () -> Unit = {}, private val output: () -> AirPlayAudioOutput?) : ForwardingAudioSink(local) {
     private var format: Format? = null
     private var converter: StereoPcmConverter? = null
     private var pending: ShortArray? = null
@@ -61,6 +61,7 @@ internal class AirPlayAudioSink(local: AudioSink, private val output: () -> AirP
     override fun pause() { playing = false; target()?.play(false) ?: super.pause() }
     override fun flush() {
         super.flush()
+        invalidateLocalTrack()
         target()?.flush()
         remote = output()
         converter = format?.let { StereoPcmConverter(it.sampleRate, it.channelCount) }
@@ -76,7 +77,7 @@ internal class AirPlayAudioSink(local: AudioSink, private val output: () -> AirP
     override fun getSkipSilenceEnabled() = target() == null && super.getSkipSilenceEnabled()
     override fun setVolume(volume: Float) { if (target() == null) super.setVolume(volume) }
     override fun reset() { flush(); super.reset(); format = null; converter = null }
-    override fun release() { super.release() }
+    override fun release() { invalidateLocalTrack(); super.release() }
 }
 
 /** Streaming linear resampling with a retained boundary frame; no per-buffer timeline reset. */

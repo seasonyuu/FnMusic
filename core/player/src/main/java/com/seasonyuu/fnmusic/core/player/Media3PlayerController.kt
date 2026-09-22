@@ -33,7 +33,7 @@ class Media3PlayerController(context: Context) : PlayerController {
         val result = controller.sendCustomCommand(OutputCommands.command, Bundle().apply { putString("operation", operation); fill() })
         result.addListener({
             runCatching { result.get() }.getOrNull()?.let {
-                if (it.resultCode == SessionResult.RESULT_SUCCESS) mutableOutput.value = OutputCommands.decode(it.extras)
+                if (it.resultCode == SessionResult.RESULT_SUCCESS || it.extras.containsKey("localState")) mutableOutput.value = OutputCommands.decode(it.extras)
             }
         }, ContextCompat.getMainExecutor(appContext))
     }
@@ -42,6 +42,7 @@ class Media3PlayerController(context: Context) : PlayerController {
     override fun submitOutputPin(pin: String) = outputCommand("pin") { putString("pin", pin) }
     override fun setOutputVolume(volume: Float) = outputCommand("volume") { putFloat("volume", volume) }
     override fun cancelOutputConnection() = outputCommand("cancel")
+    override fun selectLocalOutput(deviceId: Int) = outputCommand("local-device") { putInt("deviceId", deviceId) }
     override fun useLocalOutput() = outputCommand("local")
     private val appContext = context.applicationContext
     private val mutableState = MutableStateFlow(PlayerState())

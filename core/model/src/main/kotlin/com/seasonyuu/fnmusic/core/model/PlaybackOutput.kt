@@ -19,6 +19,7 @@ data class AirPlayDevice(
 
 data class OutputState(
     val output: PlaybackOutput = PlaybackOutput.Local,
+    val local: LocalAudioState = LocalAudioState(),
     val devices: List<AirPlayDevice> = emptyList(),
     val scanning: Boolean = false,
     val connecting: AirPlayDevice? = null,
@@ -37,6 +38,7 @@ interface PlaybackOutputController {
     fun submitOutputPin(pin: String) {}
     fun setOutputVolume(volume: Float) {}
     fun useLocalOutput() {}
+    fun selectLocalOutput(deviceId: Int) {}
 }
 
 private object LocalOnlyOutput { val state: StateFlow<OutputState> = kotlinx.coroutines.flow.MutableStateFlow(OutputState()) }

@@ -41,12 +41,17 @@ class PlaybackService : MediaSessionService() {
             },
         )
         lateinit var playbackPlayer: ExoPlayer
-        outputs = PlaybackOutputs(this, player = { playbackPlayer })
+        var localRouter: AndroidLocalAudioRouter? = null
+        outputs = PlaybackOutputs(this, player = { playbackPlayer }, localRouter = { localRouter })
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
             override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink =
                 AirPlayAudioSink(androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false).build()) { outputs.connection }
+                    .setEnableFloatOutput(false)
+                    .setAudioTrackProvider { config, attributes, sessionId ->
+                        androidx.media3.exoplayer.audio.DefaultAudioSink.AudioTrackProvider.DEFAULT
+                            .getAudioTrack(config, attributes, sessionId).also { localRouter?.attach(it) }
+                    }.build(), invalidateLocalTrack = { localRouter?.invalidateTrack() }) { outputs.connection }
         }
         val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(QualityMediaSourceFactory(this))
@@ -57,6 +62,10 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
         playbackPlayer = player
+        localRouter = AndroidLocalAudioRouter(this, player::setPreferredAudioDevice, player::pause)
+        scope.launch {
+            while (true) { outputs.tickLocalRoutes(); delay(250) }
+        }
         scope.launch {
             while (true) {
                 delay(10_000)
