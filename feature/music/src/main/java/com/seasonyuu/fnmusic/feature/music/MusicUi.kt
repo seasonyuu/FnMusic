@@ -574,6 +574,8 @@ fun MusicShell(
                 throw cancelled
             }
         }
+        var navigationWidthPx by remember { mutableIntStateOf(0) }
+        val navigationWidth = with(LocalDensity.current) { navigationWidthPx.toDp() }
         val appBarBackdrop = rememberLayerBackdrop()
         val playerArtworkBackdrop = rememberLayerBackdrop()
         val systemBarView = androidx.compose.ui.platform.LocalView.current
@@ -639,12 +641,16 @@ fun MusicShell(
             FnProgressiveSystemBars(
                 showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage,
                 topBlur = { backdrop ->
-                    if (navigation.current.page != MusicPage.Root || navigation.current.detail != null) {
-                        // The app bar paints its own blur beneath its foreground.
-                        MusicAppBarBlur(backdrop, fullAppBarBlur = true, statusBarSegmentOnly = true)
-                    } else {
-                        // Root destinations have no app bar; retain their system-bar treatment.
-                        com.seasonyuu.fnmusic.core.designsystem.ProgressiveBarBlur(backdrop, top = true, modifier = Modifier)
+                    // Only the content pane is recorded in this backdrop. Keep the
+                    // overlay out of the sidebar/rail, including after fold changes.
+                    Box(Modifier.padding(start = navigationWidth)) {
+                        if (navigation.current.page != MusicPage.Root || navigation.current.detail != null) {
+                            // The app bar paints its own blur beneath its foreground.
+                            MusicAppBarBlur(backdrop, fullAppBarBlur = true, statusBarSegmentOnly = true)
+                        } else {
+                            // Root destinations have no app bar; retain their system-bar treatment.
+                            com.seasonyuu.fnmusic.core.designsystem.ProgressiveBarBlur(backdrop, top = true, modifier = Modifier)
+                        }
                     }
                 },
             ) {
@@ -677,10 +683,12 @@ fun MusicShell(
                                     else Modifier,
                                 ),
                         ) {
-                            if (!compact) {
-                                FnMusicTheme(darkTheme = !navigationDarkForeground) {
-                                if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName, navigationSurface)
-                                else MusicRail(destination, { navigate(it) }, navigationSurface)
+                            Box(Modifier.onSizeChanged { navigationWidthPx = it.width }) {
+                                if (!compact) {
+                                    FnMusicTheme(darkTheme = !navigationDarkForeground) {
+                                        if (expanded) PermanentSidebar(destination, { navigate(it) }, state.serverName, navigationSurface)
+                                        else MusicRail(destination, { navigate(it) }, navigationSurface)
+                                    }
                                 }
                             }
                             Scaffold(
