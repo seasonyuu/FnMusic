@@ -55,7 +55,8 @@ sender currently builds arm64-v8a and x86_64; other native ABIs are not verified
 
 ```sh
 python3 scripts/verify_airplay.py
-./gradlew :core:airplay:connectedDebugAndroidTest
+ANDROID_SERIAL="${TEST_EMULATOR_SERIAL:?Set a dedicated test emulator serial}" \
+  ./gradlew :core:airplay:connectedDebugAndroidTest
 ```
 
 The first command builds the sanitizer-enabled native probe, executes the
@@ -63,7 +64,8 @@ upstream fake-receiver and socket tests, runs the verification-script tests,
 and builds the Android test APK plus local unit tests. Native dependencies are
 fetched at fixed commits; first build needs network access. The second command
 runs JNI input validation and Keystore encryption/device-binding tests on the
-connected Android device. The live test is skipped unless explicitly enabled.
+dedicated test emulator selected above; follow [device preservation rules](testing.md#device-checks).
+The live test is skipped unless explicitly enabled.
 
 Outputs: `build/airplay/*-report.json`, archived per-run reports under
 `build/airplay/runs/`, build/test logs in the same ignored

@@ -12,12 +12,12 @@ Android/厂商可能不接受某些输出组合。累计播放 8 秒仍未确认
 
 ```sh
 ./gradlew :core:player:testDebugUnitTest :app:assembleDebug
-ANDROID_SERIAL=emulator-5554 ./gradlew :core:player:connectedDebugAndroidTest
-ANDROID_SERIAL=emulator-5554 ./gradlew :feature:music:connectedDebugAndroidTest \
+ANDROID_SERIAL="${TEST_EMULATOR_SERIAL:?请先设置专用测试模拟器序列号}" ./gradlew :core:player:connectedDebugAndroidTest
+ANDROID_SERIAL="${TEST_EMULATOR_SERIAL:?请先设置专用测试模拟器序列号}" ./gradlew :feature:music:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.seasonyuu.fnmusic.feature.music.LocalOutputSheetTest
 ```
 
-将序列号替换为测试模拟器。不要将不同模块的测试类放到同一个全局 instrumentation 类过滤器中。
+先核实并设置专用测试模拟器的序列号，遵守[测试设备与数据保护规则](testing.md#device-checks)。不要使用日常开发或手动验收的模拟器，也不要将不同模块的测试类放到同一个全局 instrumentation 类过滤器中。
 
 覆盖请求与实际路由分离、暂停期间不超时、切换超时、连续选择、设备移除、设备类型过滤、状态序列化、无局域网权限、本地与 AirPlay 交接及面板状态。平台测试在模拟器播放静音 WAV，检查真实 AudioTrack 路由与音轨重建；该测试在非模拟器上跳过。模拟器测试不能替代蓝牙真机验收。
 

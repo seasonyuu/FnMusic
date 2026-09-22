@@ -86,7 +86,12 @@ Flutter optical rendering. Frame reports from emulators do not establish a real-
 
 ## Repeatable verification
 
-With the API 26, 31, 33 and 36 emulators connected:
+With dedicated API 26, 31, 33 and 36 test emulators connected:
+
+The script selects the first connected device for each API level and does not
+honor `ANDROID_SERIAL`. Before running it, ensure every connected device matching
+the requested API levels is a dedicated test emulator, following the
+[device preservation rules](testing.md#device-checks).
 
 ```sh
 python3 scripts/verify_liquid_menu.py --regressions --performance
@@ -97,7 +102,9 @@ the instrumentation APKs, and executes the menu rendering, interaction, compatib
 reduced-motion, anchor handoff, and all four business menu suites on each requested API. It installs only test APKs,
 uses local fixture data, and does not require a NAS or credentials. The AVDs prepared
 for this work are named `FnMenu_API_26`, `FnMenu_API_31`, `FnMenu_API_33` and the existing
-API 36 device. Start them with the Android emulator/AVD manager before verification.
+API 36 device used at that time. That historical device list does not designate
+current devices as disposable. Use a dedicated API 36 test emulator and verify
+the connected device identities before verification.
 
 A focused run uses `--apis 36`; `--skip-build` reuses already built test APKs.
 Use `--output build/reports/liquid-menu-adaptation` to keep this adaptation run

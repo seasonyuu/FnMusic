@@ -106,9 +106,12 @@ Credentials for real-NAS write verification are read only from the untracked `.e
 
 ## Tests
 
+Choose checks by change scope using [docs/testing.md](docs/testing.md), including
+the dedicated-emulator requirements for device tests. Local checks:
+
 ```bash
 ./gradlew testDebugUnitTest
-python3 scripts/test_verify_fn_connect.py -v
+python3 -m unittest discover -s scripts -p 'test_verify_*.py' -v
 ```
 
 ## Security & Privacy
