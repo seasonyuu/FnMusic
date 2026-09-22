@@ -1097,7 +1097,9 @@ class MusicShellTest {
         org.junit.Assert.assertEquals(1, favoriteRequests)
 
         compose.onNodeWithTag("player-more-action").performClick()
-        compose.onNodeWithText("下一首播放").assertIsDisplayed()
+        compose.onNodeWithText("添加到歌单").assertIsDisplayed()
+        compose.onNodeWithText("歌曲信息").assertIsDisplayed()
+        compose.onNodeWithText("下一首播放").assertDoesNotExist()
     }
 
     @Test
@@ -3974,7 +3976,7 @@ class MusicShellTest {
         compose.onNodeWithTag("dynamic-search").performClick()
         compose.onNodeWithTag("album-play").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("搜索").assertIsDisplayed()
+        compose.onNodeWithText("搜索").assertDoesNotExist()
         compose.onNodeWithTag("search-input").assertIsDisplayed()
         compose.onNodeWithText("导航").assertIsDisplayed()
         compose.onNodeWithText("快速匹配").assertDoesNotExist()
