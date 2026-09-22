@@ -1,4 +1,5 @@
 package com.seasonyuu.fnmusic.feature.music
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.runtime.collectAsState
 
 import androidx.compose.ui.graphics.asImageBitmap
@@ -3056,12 +3057,13 @@ private fun NowPlayingLyricsScreen(
                 )
             }
         }
-        val controls: @Composable () -> Unit = {
+        val controls: @Composable (Dp?) -> Unit = { desiredHeight ->
             Box(Modifier.padding(horizontal = if (landscapeLayout) 16.dp else 0.dp)) {
                 PlayerPlaybackControls(
                     state = state,
                     compactHeight = compactHeight,
                     compactTransport = landscapeLayout,
+                    desiredHeight = desiredHeight,
                     showUtilities = !landscapeLayout,
                     lyricsMode = displayedLyricsMode,
                     queueMode = displayedQueueMode,
@@ -3167,12 +3169,13 @@ private fun NowPlayingLyricsScreen(
                         bottomControlsTopPx = it.boundsInRoot().top
                 },
                 modifier =
-                    Modifier.offset(x = safeLeft, y = safeTop + playerTopPadding)
+                    Modifier.offset(x = if (portraitPhoneLayout) insets.calculateStartPadding(direction) else safeLeft, y = safeTop + playerTopPadding)
                         .width(maxWidth - safeLeft - safeRight)
                         .height(availablePlayerHeight)
                         .zIndex(if (wideLayout) 0f else 2f),
                 metadata = metadata,
                 controls = controls,
+                adaptiveUtilitiesGap = portraitPhoneLayout,
             )
         val landscapeFooterAlpha =
             if (landscapeLayout && displayedLyricsMode && !displayedQueueMode) controlsVisibility.value else 1f
@@ -3227,13 +3230,17 @@ private fun NowPlayingLyricsScreen(
                     ) {
                         metadata()
                         Spacer(Modifier.height(8.dp))
-                        controls()
+                        controls(null)
                     }
                 }
+                val portraitInsets = portraitPlayerContentInsets(
+                    maxWidth, insets.calculateStartPadding(direction), insets.calculateEndPadding(direction)
+                )
                 val lyricsHorizontalPadding =
                     if (splitLayout) 16.dp
-                    else if (portraitPhoneLayout) safeLeft + geometry.contentStart
+                    else if (portraitPhoneLayout) portraitInsets.start
                     else 64.dp
+                val lyricsEndPadding = if (portraitPhoneLayout) portraitInsets.end else lyricsHorizontalPadding
                 val lyricsCoverSize = if (splitLayout) 0.dp else 56.dp
                 val lyricsHeaderTop = if (splitLayout) 0.dp else safeTop + 34.dp
                 val panelHeight = maxHeight
@@ -3288,6 +3295,7 @@ private fun NowPlayingLyricsScreen(
                     Box(
                         Modifier.offset(x = lyricsHorizontalPadding, y = lyricsHeaderTop)
                             .size(lyricsCoverSize)
+                            .testTag("player-lyrics-cover-slot")
                             .then(lyricsCoverModifier)
                     )
                 }
@@ -3352,7 +3360,7 @@ private fun NowPlayingLyricsScreen(
                             }
                             Box(
                                 modifier =
-                                    Modifier.size(if (inQueue) 40.dp else 46.dp)
+                                    Modifier.size(if (inQueue && !portraitPhoneLayout) 40.dp else 46.dp)
                                         .clip(CircleShape)
                                         .pointerInput(current.track.id, favorite) {
                                             detectTapGestures {
@@ -3386,7 +3394,7 @@ private fun NowPlayingLyricsScreen(
                             PlayerMoreMenu(
                                 current.track, playerMenuBackdrop,
                                 surfaceColor = playerMenuSurface,
-                                modifier = Modifier.size(if (inQueue) 40.dp else 46.dp).testTag("player-lyrics-more-action"),
+                                modifier = Modifier.size(if (inQueue && !portraitPhoneLayout) 40.dp else 46.dp).testTag("player-lyrics-more-action"),
                                 onOpenChange = { moreMenuOpen = it; revealControls() },
                             )
                         }
@@ -3397,7 +3405,7 @@ private fun NowPlayingLyricsScreen(
                             .padding(
                                 start = lyricsHorizontalPadding,
                                 top = lyricsHeaderTop,
-                                end = lyricsHorizontalPadding
+                                end = lyricsEndPadding
                             )
                             .graphicsLayer { alpha = lyricsHeaderAlpha }
                             .then(
@@ -3429,6 +3437,7 @@ private fun NowPlayingLyricsScreen(
                             state = state,
                             topPadding = lyricsHeaderTop,
                             bottomPadding = queueBottomPadding,
+                            contentInsets = if (portraitPhoneLayout) portraitInsets else null,
                             alpha = 1f,
                             onSelect = { index ->
                                 revealControls()
@@ -3497,6 +3506,7 @@ private fun NowPlayingLyricsScreen(
                                     focusTop = focusTop,
                                     trailingSpace = lyricsTrailingSpaceHeight,
                                     horizontalPadding = lyricsHorizontalPadding,
+                                    endPadding = lyricsEndPadding,
                                     removeRendererInset = landscapeLayout || portraitPhoneLayout,
                                     bottomInset = panelBottom,
                                     fadeTopPx = headerBottomPx,
@@ -3640,6 +3650,7 @@ private data class PlayerLyricsViewport(
     val focusTop: Dp,
     val trailingSpace: Dp,
     val horizontalPadding: Dp,
+    val endPadding: Dp,
     val removeRendererInset: Boolean = false,
     val bottomInset: Dp,
     val fadeTopPx: Float,
@@ -3820,14 +3831,16 @@ private fun PlayerLyricsPane(
                             line.timeMs?.let(onSeek)
                         }
                         .padding(
-                            horizontal = viewport.horizontalPadding - lyricsPressSurfaceInset,
-                            vertical = 4.dp,
+                            start = viewport.horizontalPadding - lyricsPressSurfaceInset,
+                            end = viewport.endPadding - lyricsPressSurfaceInset,
+                            top = 4.dp,
+                            bottom = 4.dp,
                         )
                         .testTag("lyrics-line-$index")
                         .semantics { lyricBlurRadius = blurRadius.value },
                 ) {
                     Column(
-                        Modifier.blur(
+                        Modifier.testTag("lyrics-text-area-$index").blur(
                                 radius = blurRadius,
                                 edgeTreatment = BlurredEdgeTreatment.Unbounded,
                             )
@@ -3946,6 +3959,7 @@ private fun PlayerPlaybackControls(
     state: PlayerState,
     compactHeight: Boolean,
     compactTransport: Boolean = false,
+    desiredHeight: Dp? = null,
     showUtilities: Boolean = true,
     showVolume: Boolean = true,
     lyricsMode: Boolean,
@@ -3970,9 +3984,9 @@ private fun PlayerPlaybackControls(
     val volumeMotion = rememberPlayerSliderMotion()
     val startOnLeft = LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Ltr
     val volumeTint = FnTextPrimary.copy(alpha = 0.58f + 0.42f * volumeExpansion)
-    Column(
-        Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(if (compactHeight) 2.dp else 6.dp)
+    PlayerControlsLayout(
+        desiredHeight = desiredHeight,
+        spacing = if (compactHeight) 2.dp else 6.dp,
     ) {
         PlaybackProgress(
             state,
@@ -4068,7 +4082,12 @@ private fun PlayerPlaybackControls(
                 )
             }
         if (showUtilities) {
-            Spacer(Modifier.height(if (compactHeight) 12.dp else 48.dp))
+            Spacer(
+                Modifier.fillMaxWidth()
+                    .layoutId(PlayerUtilitiesGapLayoutId)
+                    .then(if (desiredHeight == null) Modifier.height(if (compactHeight) 12.dp else 48.dp) else Modifier)
+                    .testTag("player-utilities-gap"),
+            )
             PlayerPageControls(state, lyricsMode, queueMode, onLyricsClick, onQueueClick)
         }
     }
@@ -4507,6 +4526,7 @@ private fun QueuePlayerContent(
     topPadding: Dp,
     bottomPadding: Dp,
     alpha: Float,
+    contentInsets: PlayerContentInsets? = null,
     onSelect: (Int) -> Unit,
     onSelectHistoryItem: (Int) -> Unit,
     onClearPlaybackHistory: () -> Unit,
@@ -4651,6 +4671,7 @@ private fun QueuePlayerContent(
                         state,
                         { revealedKey = null; onToggleShuffle() },
                         { revealedKey = null; onCycleRepeatMode() },
+                        horizontalPadding = if (contentInsets != null) 8.dp else 4.dp,
                     )
                 }
                 Row(
@@ -4685,7 +4706,11 @@ private fun QueuePlayerContent(
                         blendMode = BlendMode.DstIn,
                     )
                 }.testTag("player-queue-list"),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = tailPadding),
+            contentPadding = PaddingValues(
+                start = contentInsets?.let { (it.start - 8.dp).coerceAtLeast(0.dp) } ?: 16.dp,
+                end = contentInsets?.let { (it.end - 8.dp).coerceAtLeast(0.dp) } ?: 16.dp,
+                bottom = tailPadding,
+            ),
         ) {
             if (state.playbackHistory.isNotEmpty()) {
                 val historyHeader: @Composable () -> Unit = {
@@ -4852,9 +4877,10 @@ private fun QueueModeControls(
     state: PlayerState,
     onToggleShuffle: () -> Unit,
     onCycleRepeatMode: () -> Unit,
+    horizontalPadding: Dp = 4.dp,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = horizontalPadding).testTag("player-queue-mode-bounds"),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         QueueModePill(
@@ -5012,7 +5038,7 @@ private fun QueueTrackRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                CoverImage(item.coverUrl, item.track.title, Modifier.size(52.dp))
+                CoverImage(item.coverUrl, item.track.title, Modifier.size(52.dp).testTag("player-queue-track-cover-${item.track.id.value}"))
                 Column(Modifier.weight(1f)) {
                     Text(
                         item.track.title,

@@ -466,10 +466,10 @@ class MusicShellTest {
             compose.onNodeWithTag("player-track-metadata").assertIsDisplayed()
             compose.onNodeWithTag("player-queue-entry").performClick()
             val queueHeader = compose.onNodeWithTag("player-queue-header").fetchSemanticsNode().boundsInRoot
-            assertEquals("Queue cover uses the same inset as queue rows", root.left + 24f * density, queueHeader.left, 2f)
-            assertEquals("Queue header right matches queue rows", root.right - 24f * density, queueHeader.right, 2f)
+            assertEquals("Queue cover uses the same inset as queue rows", root.left + 40f * density, queueHeader.left, 2f)
+            assertEquals("Queue header right matches queue rows", root.right - 40f * density, queueHeader.right, 2f)
             val more = compose.onNodeWithTag("player-lyrics-more-action", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertEquals("Queue actions share the trailing button center", root.right - 44f * density, more.center.x, 2f)
+            assertEquals("Queue actions share the trailing button center", root.right - 63f * density, more.center.x, 2f)
             compose.onNodeWithTag("player-queue-header").performClick()
         }
     }
@@ -779,6 +779,140 @@ class MusicShellTest {
         compose.onNodeWithTag("player-volume-slider").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("player-lyrics-entry").assertIsDisplayed()
         captureLyricsScreenshot("adaptive-short-large-font")
+    }
+
+    @Test
+    fun portraitPagesShareContentEdgesAcrossWindowAndFontMatrix() {
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(390.dp, 844.dp))
+        val font = mutableStateOf(1f)
+        val first = Track(TrackId("gutter-first"), "很长的歌曲标题 A long responsive title")
+        val next = Track(TrackId("gutter-next"), "下一首")
+        setContent(
+            windowSize = { size.value }, testFontScale = { font.value },
+            stateProvider = { MusicUiState(loading = false, lyrics = listOf(
+                LyricLine(0, "长句歌词需要与标题边界对齐", translation = "Aligned translation",
+                    segments = if (size.value.width == 360.dp) listOf(
+                        com.seasonyuu.fnmusic.core.model.LyricSegment(0, 13, 0, 30_000)
+                    ) else emptyList(),
+                    timingSource = if (size.value.width == 360.dp) com.seasonyuu.fnmusic.core.model.LyricTimingSource.Accurate
+                        else com.seasonyuu.fnmusic.core.model.LyricTimingSource.Line,
+                ),
+                LyricLine(60_000, "第二行歌词"),
+            )) },
+            playerState = PlayerState(queue = listOf(
+                PlayableTrack(first, "https://music.invalid/one"),
+                PlayableTrack(next, "https://music.invalid/two"),
+            ), currentIndex = 0, durationMs = 180_000, playbackStatus = PlaybackStatus.Paused),
+        )
+        compose.onNodeWithText(first.title).performClick()
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        fun settle() { compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle() }
+        for ((width, height) in listOf(360 to 640, 390 to 693, 390 to 844, 520 to 924)) {
+            for (scale in listOf(1f, 1.3f, 2f)) {
+                compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(width.dp, height.dp); font.value = scale }
+                settle()
+                val metadata = bounds("player-track-metadata")
+                val normalControls = bounds("player-bottom-controls")
+                val normalFavorite = bounds("player-favorite-action")
+                val normalMore = bounds("player-more-action")
+                compose.onNodeWithTag("player-lyrics-entry").performScrollTo().performClick()
+                settle()
+                val header = bounds("player-lyrics-header")
+                val favorite = bounds("player-lyrics-favorite-action")
+                val more = bounds("player-lyrics-more-action")
+                val lyricsControls = bounds("player-bottom-controls")
+                assertEquals(normalFavorite.center.x, favorite.center.x, 1f)
+                assertEquals(normalMore.center.x, more.center.x, 1f)
+                assertEquals(header.left, bounds("player-lyrics-cover-slot").left, 1f)
+                assertEquals(metadata.left, header.left, 1f)
+                assertEquals(metadata.right, header.right, 1f)
+                assertEquals(header.left, bounds("lyrics-text-area-0").left, 1f)
+                assertEquals(normalControls.left, lyricsControls.left, 1f)
+                assertEquals(normalControls.right, lyricsControls.right, 1f)
+                assertEquals(normalControls.bottom, lyricsControls.bottom, 1f)
+                val utilities = bounds("player-bottom-utilities")
+                compose.onNodeWithTag("player-queue-entry").performScrollTo().performClick()
+                settle()
+                val queueHeader = bounds("player-queue-header")
+                assertEquals(header.left, queueHeader.left, 1f)
+                assertEquals(header.right, queueHeader.right, 1f)
+                assertEquals(favorite.center.x, bounds("player-lyrics-favorite-action").center.x, 1f)
+                assertEquals(more.center.x, bounds("player-lyrics-more-action").center.x, 1f)
+                assertEquals(header.left, bounds("player-queue-title").left, 1f)
+                assertEquals(header.left, bounds("player-queue-track-cover-gutter-next").left, 1f)
+                assertEquals(header.left, bounds("player-queue-mode-bounds").left, 1f)
+                assertEquals(header.right, bounds("player-queue-mode-bounds").right, 1f)
+                assertEquals(utilities.bottom, bounds("player-bottom-utilities").bottom, 1f)
+                assertEquals(lyricsControls.left, bounds("player-bottom-controls").left, 1f)
+                val stable = bounds("player-bottom-controls")
+                repeat(4) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle(); assertEquals(stable, bounds("player-bottom-controls")) }
+                compose.onNodeWithTag("player-queue-entry").performScrollTo().performClick()
+                settle()
+            }
+        }
+    }
+
+    @Test
+    fun portraitPagesRespectAsymmetricSafeInsets() {
+        val track = Track(TrackId("safe-insets"), "非对称安全区域")
+        setContent(
+            windowSize = { androidx.compose.ui.unit.DpSize(443.dp, 844.dp) },
+            testPlayerInsets = androidx.compose.foundation.layout.WindowInsets(left = 11.dp, right = 27.dp),
+            playerState = PlayerState(queue = listOf(PlayableTrack(track, "https://music.invalid/one")), currentIndex = 0),
+            state = MusicUiState(loading = false, lyrics = listOf(LyricLine(text = "安全区域内的歌词"))),
+        )
+        compose.onNodeWithText(track.title).performClick()
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val root = bounds("player-morph-overlay")
+        val density = root.width / 443f
+        val metadata = bounds("player-track-metadata")
+        assertEquals(root.left + 51f * density, metadata.left, 1f)
+        assertEquals(root.right - 67f * density, metadata.right, 1f)
+        compose.onNodeWithTag("player-lyrics-entry").performClick()
+        compose.mainClock.advanceTimeBy(1_200)
+        for (tag in listOf("player-lyrics-header", "lyrics-text-area-0")) {
+            assertEquals(metadata.left, bounds(tag).left, 1f)
+        }
+        assertEquals(metadata.right, bounds("player-lyrics-header").right, 1f)
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.mainClock.advanceTimeBy(1_200)
+        val queue = bounds("player-queue-header")
+        assertEquals(metadata.left, queue.left, 1f)
+        assertEquals(metadata.right, queue.right, 1f)
+    }
+
+    @Test
+    fun portraitHeightBudgetReclaimsUtilitiesGapBeforeArtwork() {
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(390.dp, 900.dp))
+        val track = Track(TrackId("height-budget"), "高度预算")
+        setContent(windowSize = { size.value }, playerState = PlayerState(
+            queue = listOf(PlayableTrack(track, "https://music.invalid/one")), currentIndex = 0,
+            durationMs = 180_000, playbackStatus = PlaybackStatus.Paused,
+        ))
+        compose.onNodeWithText(track.title).performClick()
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        var previousGap = Float.NaN
+        var previousCover = Float.NaN
+        var observedRecovery = false
+        // Normalize coordinates because the fixture may fit each window at a different density.
+        for (height in 780 downTo 650 step 2) {
+            compose.runOnIdle { size.value = androidx.compose.ui.unit.DpSize(390.dp, height.dp) }
+            compose.mainClock.advanceTimeBy(600)
+            compose.waitForIdle()
+            val density = bounds("player-morph-overlay").width / 390f
+            val tolerance = 1f / density
+            val gap = bounds("player-utilities-gap").height / density
+            val cover = bounds("player-artwork-slot").width / density
+            val contentWidth = bounds("player-primary-pane").width / density
+            if (previousGap.isFinite() && gap < previousGap - 0.1f && gap > 12f + tolerance) {
+                assertEquals(previousCover, cover, tolerance)
+                assertEquals(contentWidth, cover, tolerance)
+                observedRecovery = true
+            }
+            previousGap = gap
+            previousCover = cover
+        }
+        assertTrue("Must exercise the elastic gap, not only its clamped endpoints", observedRecovery)
     }
 
     @Test
@@ -4070,6 +4204,7 @@ class MusicShellTest {
 
     private fun setContent(
         state: MusicUiState = MusicUiState(loading = false),
+        testPlayerInsets: androidx.compose.foundation.layout.WindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
         restoration: androidx.compose.ui.test.junit4.StateRestorationTester? = null,
         backInput: androidx.navigationevent.DirectNavigationEventInput? = null,
         stateProvider: (() -> MusicUiState)? = null,
@@ -4128,8 +4263,8 @@ class MusicShellTest {
             MusicTestWindow(windowSize?.invoke(), testFontScale()) {
                 FnMusicTheme {
                     MusicShell(
-                        playerWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
-                        immersivePlayerInsets = androidx.compose.foundation.layout.WindowInsets(0),
+                        playerWindowInsets = testPlayerInsets,
+                        immersivePlayerInsets = testPlayerInsets,
                         managePlayerSystemBars = false,
                         state = stateProvider?.invoke() ?: state.copy(detailKey = detailKey.value),
                         playerState = playerStateProvider?.invoke() ?: playerState,

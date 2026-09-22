@@ -6,6 +6,37 @@ import org.junit.Test
 
 class PlayerAdaptiveLayoutTest {
     @Test
+    fun portraitInsetsIncludeEachSafeEdgeIndependently() {
+        val insets = portraitPlayerContentInsets(443.dp, 11.dp, 27.dp)
+        assertEquals(51.dp, insets.start)
+        assertEquals(67.dp, insets.end)
+        assertEquals(325.dp, 443.dp - insets.start - insets.end)
+        for (height in listOf(640.dp, 844.dp, 1000.dp)) {
+            assertEquals(40.dp, playerLayoutGeometry(390.dp, height).contentStart)
+        }
+        assertEquals(PlayerContentInsets(70.dp, 70.dp), portraitPlayerContentInsets(520.dp, 0.dp, 0.dp))
+    }
+
+    @Test
+    fun utilitiesYieldSpaceBeforeArtworkShrinks() {
+        val fixed = 300.dp
+        val cover = 310.dp
+        assertEquals(48.dp, playerUtilitiesGap(700.dp, fixed, cover))
+        assertEquals(48.dp, playerUtilitiesGap(658.dp, fixed, cover))
+        assertEquals(30.dp, playerUtilitiesGap(640.dp, fixed, cover))
+        assertEquals(12.dp, playerUtilitiesGap(622.dp, fixed, cover))
+        assertEquals(12.dp, playerUtilitiesGap(621.dp, fixed, cover))
+        for (height in 600..680) {
+            val gap = playerUtilitiesGap(height.dp, fixed, cover)
+            val actualCover = minOf(cover, height.dp - fixed - gap)
+            assertTrue(gap in 12.dp..48.dp)
+            if (gap > 12.dp) assertEquals(cover, actualCover)
+            assertTrue(actualCover + fixed + gap <= height.dp)
+        }
+        assertEquals(12.dp, playerUtilitiesGap(100.dp, 800.dp, cover))
+    }
+
+    @Test
     fun portraitPhoneUsesGenerousCenteredGutters() {
         listOf(360.dp, 390.dp, 443.dp).forEach { width ->
             val layout = playerLayoutGeometry(width, width * 20f / 9f)
