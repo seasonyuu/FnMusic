@@ -11,8 +11,8 @@ import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import com.seasonyuu.fnmusic.core.model.StreamingQuality
 
 @UnstableApi
-internal class QualityMediaSourceFactory : MediaSource.Factory {
-    private val delegate = DefaultMediaSourceFactory(PlayerDependencies.dataSourceFactory())
+internal class QualityMediaSourceFactory(context: android.content.Context) : MediaSource.Factory {
+    private val delegate = DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, PlayerDependencies.dataSourceFactory()))
     override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider): MediaSource.Factory = apply { delegate.setDrmSessionManagerProvider(provider) }
     override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy): MediaSource.Factory = apply { delegate.setLoadErrorHandlingPolicy(policy) }
     override fun getSupportedTypes(): IntArray = delegate.supportedTypes

@@ -27,6 +27,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class Media3PlayerController(context: Context) : PlayerController {
+    private val mutableOutput = MutableStateFlow(com.seasonyuu.fnmusic.core.model.OutputState())
+    override val outputState = mutableOutput.asStateFlow()
+    private fun outputCommand(operation: String, fill: Bundle.() -> Unit = {}) = withController { controller ->
+        val result = controller.sendCustomCommand(OutputCommands.command, Bundle().apply { putString("operation", operation); fill() })
+        result.addListener({
+            runCatching { result.get() }.getOrNull()?.let {
+                if (it.resultCode == SessionResult.RESULT_SUCCESS) mutableOutput.value = OutputCommands.decode(it.extras)
+            }
+        }, ContextCompat.getMainExecutor(appContext))
+    }
+    override fun scanOutputs(start: Boolean) = outputCommand("scan") { putBoolean("enabled", start) }
+    override fun selectOutput(deviceId: String) = outputCommand("select") { putString("id", deviceId) }
+    override fun submitOutputPin(pin: String) = outputCommand("pin") { putString("pin", pin) }
+    override fun setOutputVolume(volume: Float) = outputCommand("volume") { putFloat("volume", volume) }
+    override fun cancelOutputConnection() = outputCommand("cancel")
+    override fun useLocalOutput() = outputCommand("local")
     private val appContext = context.applicationContext
     private val mutableState = MutableStateFlow(PlayerState())
     override val state: StateFlow<PlayerState> = mutableState.asStateFlow()
@@ -50,7 +66,7 @@ class Media3PlayerController(context: Context) : PlayerController {
         scope.launch {
             while (true) {
                 delay(500)
-                if (controllerFuture.isDone) publishState()
+                if (controllerFuture.isDone) { publishState(); outputCommand("get") }
             }
         }
     }
@@ -386,6 +402,7 @@ class Media3PlayerController(context: Context) : PlayerController {
         }
         mutableState.value = PlayerState(
             playbackAudioSpec = streamedAudio,
+            outputDeviceName = (mutableOutput.value.output as? com.seasonyuu.fnmusic.core.model.PlaybackOutput.AirPlay)?.name,
             queue = queue,
             playbackHistory = playbackHistory,
             playbackSessionId = playbackSessionId,

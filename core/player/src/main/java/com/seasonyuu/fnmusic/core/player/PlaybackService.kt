@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class PlaybackService : MediaSessionService() {
+    private lateinit var outputs: PlaybackOutputs
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var reportedMediaId: String? = null
@@ -39,23 +40,40 @@ class PlaybackService : MediaSessionService() {
                 setSmallIcon(R.drawable.ic_notification_music)
             },
         )
-        val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(QualityMediaSourceFactory())
+        lateinit var playbackPlayer: ExoPlayer
+        outputs = PlaybackOutputs(this, player = { playbackPlayer })
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink =
+                AirPlayAudioSink(androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false).build()) { outputs.connection }
+        }
+        val player = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(QualityMediaSourceFactory(this))
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true,
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
+        playbackPlayer = player
         scope.launch {
             while (true) {
                 delay(10_000)
-                try { PlayerDependencies.maintainTranscode(player.currentMediaItem?.mediaId, player.currentPosition / 1000) }
+                try { if (player.currentMediaItem?.localConfiguration?.uri?.scheme in listOf("http", "https"))
+                    PlayerDependencies.maintainTranscode(player.currentMediaItem?.mediaId, player.currentPosition / 1000) }
                 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                 catch (_: Exception) { /* Retry heartbeats on the next interval. */ }
             }
         }
         player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && outputs.connection != null) {
+                    // Re-decode from the estimated audible position after clearing remote PCM.
+                    val position = player.currentPosition
+                    player.stop(); player.seekTo(position); player.prepare()
+                }
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 val id = player.currentMediaItem?.mediaId.orEmpty()
                 if (isPlaying && id.isNotBlank() && reportedMediaId != id) {
@@ -64,7 +82,8 @@ class PlaybackService : MediaSessionService() {
                         delay(1_000)
                         if (player.currentMediaItem?.mediaId == id && player.currentPosition > 0 && reportedMediaId != id) {
                             reportedMediaId = id
-                            runCatching { PlayerDependencies.onTrackPlayed(TrackId(id)) }
+                            if (player.currentMediaItem?.localConfiguration?.uri?.scheme in listOf("http", "https"))
+                                runCatching { PlayerDependencies.onTrackPlayed(TrackId(id)) }
                         }
                     }
                 } else if (!isPlaying) {
@@ -77,20 +96,15 @@ class PlaybackService : MediaSessionService() {
                 if (mediaItem?.mediaId != reportedMediaId) reportedMediaId = null
             }
         })
+        val artworkLoader = CacheBitmapLoader(DataSourceBitmapLoader(
+            DataSourceBitmapLoader.DEFAULT_EXECUTOR_SERVICE.get(),
+            DefaultDataSource.Factory(this, PlayerDependencies.upstreamFactory), null, 512))
+        scope.publishAirPlayNowPlaying(player, artworkLoader) { outputs.connection }
         session = MediaSession.Builder(this, player)
-            .setCallback(QueueSessionCallback(player, packageName))
+            .setCallback(QueueSessionCallback(player, packageName, outputs))
             // Cover endpoints need the same cookies, signing and connection policy as
             // playback. The default Media3 HTTP loader has none of those credentials.
-            .setBitmapLoader(
-                CacheBitmapLoader(
-                    DataSourceBitmapLoader(
-                        DataSourceBitmapLoader.DEFAULT_EXECUTOR_SERVICE.get(),
-                        DefaultDataSource.Factory(this, PlayerDependencies.upstreamFactory),
-                        null,
-                        512,
-                    ),
-                ),
-            )
+            .setBitmapLoader(artworkLoader)
             .apply {
                 packageManager.getLaunchIntentForPackage(packageName)?.let { launchIntent ->
                     setSessionActivity(
@@ -110,6 +124,7 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        if (::outputs.isInitialized) outputs.close()
         progressReportJob?.cancel()
         scope.cancel()
         session?.run {

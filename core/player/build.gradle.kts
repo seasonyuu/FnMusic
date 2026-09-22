@@ -18,6 +18,7 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     api(project(":core:model"))
     implementation(project(":core:network"))
+    implementation(project(":core:airplay"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.media3.exoplayer)

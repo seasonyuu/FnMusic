@@ -43,12 +43,14 @@ internal object QueueSessionCommands {
 
 /** MediaController cannot set ExoPlayer's shuffle order; edit it on the session thread. */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal class QueueSessionCallback(private val player: ExoPlayer, private val packageName: String) : MediaSession.Callback {
+internal class QueueSessionCallback(private val player: ExoPlayer, private val packageName: String,
+    private val outputs: PlaybackOutputs? = null) : MediaSession.Callback {
     override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         val result = super.onConnect(session, controller)
-        if (controller.packageName != packageName) return result
+        if (controller.packageName != packageName || controller.uid != android.os.Process.myUid()) return result
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-            .setAvailableSessionCommands(result.availableSessionCommands.buildUpon().add(QueueSessionCommands.editShuffle).build())
+            .setAvailableSessionCommands(result.availableSessionCommands.buildUpon().add(QueueSessionCommands.editShuffle)
+                .apply { if (outputs != null) add(OutputCommands.command) }.build())
             .setAvailablePlayerCommands(result.availablePlayerCommands)
             .build()
     }
@@ -59,6 +61,10 @@ internal class QueueSessionCallback(private val player: ExoPlayer, private val p
         customCommand: SessionCommand,
         args: Bundle,
     ): ListenableFuture<SessionResult> {
+        if (customCommand == OutputCommands.command && controller.packageName == packageName &&
+            controller.uid == android.os.Process.myUid() && outputs != null) {
+            return Futures.immediateFuture(outputs.command(args))
+        }
         if (customCommand != QueueSessionCommands.editShuffle || controller.packageName != packageName) {
             return super.onCustomCommand(session, controller, customCommand, args)
         }
