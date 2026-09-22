@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-accompanist-lyrics-ui",
+  "name": "Accompanist Lyrics ui",
+  "artifactVersion": "d844e105bfb49104e1eabd03f700f26f492140e2",
+  "developers": [
+    {
+      "name": "6xingyv and contributors"
+    }
+  ],
+  "website": "https://github.com/cwuom/accompanist-lyrics-ui",
+  "licenses": [
+    "fnmusic-accompanist-lyrics-ui"
+  ],
+  "description": ""
+}

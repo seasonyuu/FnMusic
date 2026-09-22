@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-mbedtls",
+  "name": "Mbed TLS",
+  "artifactVersion": "3.6.0 (2ca6c285a0dd3f33982dd57299012dacab1ff206)",
+  "developers": [
+    {
+      "name": "The Mbed TLS Contributors"
+    }
+  ],
+  "website": "https://github.com/Mbed-TLS/mbedtls",
+  "licenses": [
+    "fnmusic-mbedtls"
+  ],
+  "description": "AirPlay 原生加密依赖，使用 Apache-2.0 许可。"
+}

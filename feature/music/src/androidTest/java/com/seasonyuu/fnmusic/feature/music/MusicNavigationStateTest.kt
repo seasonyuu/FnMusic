@@ -11,6 +11,32 @@ import org.junit.Test
 class MusicNavigationStateTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun aboutLicenseDetailRestoresAndReturnsThroughParents() {
+        lateinit var navigation: MusicNavigationState
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            navigation = rememberSaveable(saver = MusicNavigationState.Saver) { MusicNavigationState() }
+        }
+        compose.runOnIdle {
+            navigation.select(MusicDestination.Profile)
+            navigation.push(page = MusicPage.About)
+            navigation.push(page = MusicPage.OpenSourceLibraries)
+            navigation.push(page = MusicPage.OpenSourceDetail, libraryId = "fnmusic-airplay2-sender")
+        }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.runOnIdle {
+            assertEquals(MusicPage.OpenSourceDetail, navigation.current.page)
+            assertEquals("fnmusic-airplay2-sender", navigation.current.libraryId)
+            navigation.pop()
+            assertEquals(MusicPage.OpenSourceLibraries, navigation.current.page)
+            navigation.pop()
+            assertEquals(MusicPage.About, navigation.current.page)
+            navigation.pop()
+            assertEquals(MusicDestination.Profile, navigation.destination)
+            assertFalse(navigation.canPop)
+        }
+    }
+
     @Test fun liquidGlassRestoresAndReturnsToSettings() {
         lateinit var navigation: MusicNavigationState
         val restoration = StateRestorationTester(compose)

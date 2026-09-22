@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             val viewModel: MainViewModel = hiltViewModel()
+            val aboutViewModel: AboutViewModel = hiltViewModel()
             val music by viewModel.music.collectAsState()
             val session by viewModel.session.collectAsState()
             val dark = when (music.appearance) {
@@ -119,6 +120,7 @@ class MainActivity : ComponentActivity() {
                         onCachePreferenceChange = viewModel::setCachePreference,
                         onClearCache = viewModel::clearCache,
                         lyricsActions = viewModel.lyricsActions,
+                        aboutActions = aboutViewModel,
                         openPlayerRequested = openPlayerRequested,
                         onPlayerOpenRequestConsumed = { openPlayerRequested = false },
                     )

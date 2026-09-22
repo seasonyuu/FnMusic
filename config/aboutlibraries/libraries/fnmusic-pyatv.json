@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-pyatv",
+  "name": "pyatv",
+  "artifactVersion": "",
+  "developers": [
+    {
+      "name": "Pierre Ståhl and contributors"
+    }
+  ],
+  "website": "https://github.com/postlund/pyatv",
+  "licenses": [
+    "fnmusic-pyatv"
+  ],
+  "description": "AirPlay 协议移植或规范参考，未打包上游运行时。"
+}

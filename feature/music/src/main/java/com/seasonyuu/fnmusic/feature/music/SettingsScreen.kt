@@ -44,6 +44,7 @@ internal fun SettingsScreen(
     onCache: () -> Unit = {},
     onLyrics: () -> Unit = {},
     onQuality: () -> Unit = {},
+    onAbout: () -> Unit = {},
     onAdminLibraries: (() -> Unit)? = null,
     onAdminUsers: (() -> Unit)? = null,
     onAdminServer: (() -> Unit)? = null,
@@ -106,6 +107,9 @@ internal fun SettingsScreen(
                 onAdminServer?.let { add(SettingsEntry("服务器设置", it)) }
             }
             if (administration.isNotEmpty()) item { SettingsNavigationGroup(administration) }
+        }
+        item {
+            SettingsNavigationGroup(listOf(SettingsEntry("关于", onAbout)))
         }
         item {
             SettingsNavigationGroup(listOf(SettingsEntry("退出音乐登录", onLogout)))
@@ -277,7 +281,7 @@ private fun PreviewBand(
 private fun settingsCardColors() = CardDefaults.cardColors(containerColor = FnCard, contentColor = FnTextPrimary)
 
 @Composable
-private fun SettingsCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun SettingsCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(colors = settingsCardColors(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }

@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-liquid-glass-widgets",
+  "name": "Liquid Glass Widgets",
+  "artifactVersion": "097dea6993e474d5d04db33a4f6f2ea31dd40ac1",
+  "developers": [
+    {
+      "name": "sdegenaar"
+    }
+  ],
+  "website": "https://github.com/sdegenaar/liquid_glass_widgets",
+  "licenses": [
+    "fnmusic-liquid-glass-widgets"
+  ],
+  "description": "菜单形变算法参考；未嵌入 Flutter。"
+}

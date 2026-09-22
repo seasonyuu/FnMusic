@@ -151,3 +151,16 @@ Lyrics are cached separately from audio and search indexes. The combined cache d
 Online provider adapters and YRC/QRC/KRC decoders are implemented in Kotlin; no downloaded JavaScript plugins run in the app. Network smoke checks are opt-in (`FNMUSIC_LYRICS_SMOKE=1 ./gradlew :data:testDebugUnitTest --tests '*OnlineLyricsSmokeTest' --rerun-tasks`); normal unit tests use local fixtures. Platform endpoint availability is not guaranteed.
 
 AMLL's README distinguishes contributor-authored CC0 material from externally sourced material governed by its original terms. FnMusic displays contributors in the lyric selector and links to the upstream repository from AMLL settings; it does not bundle the database.
+
+### About and open-source notices
+
+**我的 → 关于** shows the installed build version, the source repository and a
+manual stable-release update check. New versions open the matching GitHub Release
+in the browser for download. Development builds compare their base version and
+label stable releases as a reference; the app does not download or install APKs.
+Update requests use a separate unauthenticated client and never carry NAS credentials.
+
+**关于 → 开源许可** provides an offline dependency list with full license
+texts and native/source attribution notices. AboutLibraries generates variant-specific
+metadata at build time; manually maintained notices and maintenance instructions
+are in `config/aboutlibraries/README.md`.

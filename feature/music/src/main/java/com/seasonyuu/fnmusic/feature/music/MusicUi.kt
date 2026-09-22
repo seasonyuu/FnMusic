@@ -452,6 +452,7 @@ fun MusicShell(
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
     onClearCache: suspend () -> Unit = {},
     lyricsActions: com.seasonyuu.fnmusic.core.model.LyricsActions? = null,
+    aboutActions: com.seasonyuu.fnmusic.core.model.AboutActions? = null,
     playlistEditing: com.seasonyuu.fnmusic.core.model.PlaylistEditActions? = null,
     onThemeColorChange: suspend (com.seasonyuu.fnmusic.core.model.ThemeColorPreference) -> Unit = {},
     onAppearanceChange: suspend (AppearancePreference) -> Unit = {},
@@ -639,7 +640,7 @@ fun MusicShell(
                 MusicPage.Albums, MusicPage.Artists, MusicPage.Playlists,
             )) || navigation.current.detail is LibraryDetail.ArtistPage || navigation.current.detail is LibraryDetail.PlaylistPage
             FnProgressiveSystemBars(
-                showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings) && navigation.current.detail !is LibraryDetail.AlbumPage,
+                showTopBlur = !playerComposed && !collectionPage && navigation.current.page !in setOf(MusicPage.OnlineLyricsSettings, MusicPage.About, MusicPage.OpenSourceLibraries, MusicPage.OpenSourceDetail) && navigation.current.detail !is LibraryDetail.AlbumPage,
                 topBlur = { backdrop ->
                     // Only the content pane is recorded in this backdrop. Keep the
                     // overlay out of the sidebar/rail, including after fold changes.
@@ -882,6 +883,9 @@ fun MusicShell(
                                                                 else -> ServerAdministrationScreen(administration, ::popPage)
                                                             }
                                                         }
+                                                        MusicPage.About -> aboutActions?.let { AboutScreen(it, { openPage(MusicPage.OpenSourceLibraries) }, ::popPage) }
+                                                        MusicPage.OpenSourceLibraries -> aboutActions?.let { OpenSourceLibrariesScreen(it, { id -> navigation.push(page = MusicPage.OpenSourceDetail, libraryId = id) }, ::popPage) }
+                                                        MusicPage.OpenSourceDetail -> aboutActions?.let { OpenSourceDetailScreen(it, entry.libraryId, ::popPage) }
                                                         MusicPage.Quality -> QualitySettingsScreen(state.streamingQuality, onStreamingQualityChange, ::popPage)
                                                         MusicPage.LyricsSettings -> lyricsActions?.let { LyricsSettingsScreen(::popPage, { openPage(MusicPage.OnlineLyricsSettings) }) }
                                                         MusicPage.OnlineLyricsSettings -> lyricsActions?.let { OnlineLyricsSettingsScreen(it, ::popPage) }
@@ -921,6 +925,7 @@ fun MusicShell(
                                                             onCache = { openPage(MusicPage.Cache) },
                                                             onLyrics = { openPage(MusicPage.LyricsSettings) },
                                                             onQuality = { openPage(MusicPage.Quality) },
+                                                            onAbout = { openPage(MusicPage.About) },
                                                             onAdminLibraries = administration?.let { { openPage(MusicPage.AdminLibraries) } },
                                                             onAdminUsers = administration?.let { { openPage(MusicPage.AdminUsers) } },
                                                             onAdminServer = administration?.let { { openPage(MusicPage.AdminServer) } },

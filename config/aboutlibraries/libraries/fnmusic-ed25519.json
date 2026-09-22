@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-ed25519",
+  "name": "ed25519",
+  "artifactVersion": "b1f19fab4aebe607805620d25a5e42566ce46a0e",
+  "developers": [
+    {
+      "name": "Orson Peters"
+    }
+  ],
+  "website": "https://github.com/orlp/ed25519",
+  "licenses": [
+    "fnmusic-ed25519"
+  ],
+  "description": ""
+}

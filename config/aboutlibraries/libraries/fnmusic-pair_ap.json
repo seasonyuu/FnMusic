@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-pair_ap",
+  "name": "pair_ap",
+  "artifactVersion": "",
+  "developers": [
+    {
+      "name": "Espen Jürgensen and contributors"
+    }
+  ],
+  "website": "https://github.com/ejurgensen/pair_ap",
+  "licenses": [
+    "fnmusic-pair_ap"
+  ],
+  "description": "AirPlay 协议移植或规范参考，未打包上游运行时。"
+}

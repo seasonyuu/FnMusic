@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-accompanist-lyrics-core",
+  "name": "Accompanist Lyrics core",
+  "artifactVersion": "825661a10101b6b17cdcf8f39e0d5a12ff8d21fd",
+  "developers": [
+    {
+      "name": "6xingyv and contributors"
+    }
+  ],
+  "website": "https://github.com/cwuom/accompanist-lyrics-core",
+  "licenses": [
+    "fnmusic-accompanist-lyrics-core"
+  ],
+  "description": ""
+}

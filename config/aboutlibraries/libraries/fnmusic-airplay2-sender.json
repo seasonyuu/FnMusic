@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-airplay2-sender",
+  "name": "AirPlay 2 Sender",
+  "artifactVersion": "fc913509039412790aa2427558d35178aa7842ea",
+  "developers": [
+    {
+      "name": "Andreas Wendorf (Akustikrausch)"
+    }
+  ],
+  "website": "https://github.com/akustikrausch/airplay2-sender-cpp",
+  "licenses": [
+    "fnmusic-airplay2-sender"
+  ],
+  "description": ""
+}

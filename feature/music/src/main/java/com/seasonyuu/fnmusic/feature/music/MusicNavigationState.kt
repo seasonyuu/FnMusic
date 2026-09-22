@@ -15,7 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, DisplayMode, ThemeColor, Cache, LyricsSettings, OnlineLyricsSettings, Quality, AdminLibraries, AdminUsers, AdminServer }
+internal enum class MusicPage { Root, Tracks, Recent, Albums, Artists, Playlists, Favorites, LiquidGlass, Password, Appearance, DisplayMode, ThemeColor, Cache, LyricsSettings, OnlineLyricsSettings, Quality, AdminLibraries, AdminUsers, AdminServer, About, OpenSourceLibraries, OpenSourceDetail }
 
 /** Resource identity travels with data so an outgoing page cannot render another page's response. */
 data class DetailRequestKey(val type: String, val id: String)
@@ -43,6 +43,7 @@ internal data class MusicPageEntry(
     val detail: LibraryDetail? = null,
     val id: String = UUID.randomUUID().toString(),
     val depth: Int = 0,
+    val libraryId: String? = null,
 )
 
 internal class MusicNavigationState {
@@ -70,8 +71,8 @@ internal class MusicNavigationState {
     val previous: MusicPageEntry? get() = stacks.getValue(destination).dropLast(1).lastOrNull()
 
     fun select(target: MusicDestination) { destination = target }
-    fun push(detail: LibraryDetail? = null, page: MusicPage = MusicPage.Root) {
-        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, page, detail, depth = stacks.getValue(destination).size)))
+    fun push(detail: LibraryDetail? = null, page: MusicPage = MusicPage.Root, libraryId: String? = null) {
+        stacks = stacks + (destination to (stacks.getValue(destination) + MusicPageEntry(destination, page, detail, depth = stacks.getValue(destination).size, libraryId = libraryId)))
     }
     fun pop(): MusicPageEntry? {
         if (!canPop) return null
@@ -120,6 +121,7 @@ internal class MusicNavigationState {
 private fun MusicPageEntry.toBundle() = Bundle().apply {
     putString("id", id)
     putString("page", page.name)
+    putString("libraryId", libraryId)
     val type: String
     val payload: String?
     when (val page = detail) {
@@ -147,7 +149,7 @@ private fun Bundle.toEntry(tab: MusicDestination): MusicPageEntry {
         "editor" -> LibraryDetail.PlaylistEditorPage(payload?.let { Json.decodeFromString<Playlist>(it) }, getString("initialTrack")?.let(::TrackId))
         else -> null
     }
-    return MusicPageEntry(tab, MusicPage.valueOf(requireNotNull(getString("page"))), detail, requireNotNull(getString("id")))
+    return MusicPageEntry(tab, MusicPage.valueOf(requireNotNull(getString("page"))), detail, requireNotNull(getString("id")), libraryId = getString("libraryId"))
 }
 
 @Suppress("DEPRECATION")

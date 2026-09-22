@@ -1,4 +1,5 @@
 plugins {
+    alias(libs.plugins.aboutlibraries)
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
@@ -96,6 +97,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.aboutlibraries.core)
+    testImplementation(libs.mockwebserver)
     implementation(project(":core:model"))
     implementation(project(":core:network"))
     implementation(project(":core:designsystem"))
@@ -130,4 +133,13 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+}
+
+aboutLibraries {
+    collect {
+        configPath = rootProject.file("config/aboutlibraries")
+        fetchRemoteLicense = false
+        fetchRemoteFunding = false
+        includePlatform = false
+    }
 }
