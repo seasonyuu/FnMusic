@@ -1,0 +1,57 @@
+--- a/src/airplay_crypto.cpp
++++ b/src/airplay_crypto.cpp
+@@ -6,6 +6,8 @@
+ //
+ 
+ #include "airplay_crypto.h"
++#include <codecvt>
++#include <locale>
+ 
+ #include <mbedtls/bignum.h>
+ #include <mbedtls/chachapoly.h>
+@@ -531,9 +533,15 @@
+     }
+ 
+     static void encodeString(Bytes& obj, const std::string& s) {
+-        // ASCII string (0x5x). AirPlay SETUP keys/values are all ASCII.
+-        encodeMarkerLen(obj, 0x50, s.size());
+-        obj.insert(obj.end(), s.begin(), s.end());
++        if (std::all_of(s.begin(), s.end(), [](unsigned char c) { return c < 128; })) {
++            encodeMarkerLen(obj, 0x50, s.size());
++            obj.insert(obj.end(), s.begin(), s.end());
++            return;
++        }
++        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> utf;
++        const auto units = utf.from_bytes(s);
++        encodeMarkerLen(obj, 0x60, units.size());
++        for (const auto unit : units) { obj.push_back(uint8_t(unit >> 8)); obj.push_back(uint8_t(unit)); }
+     }
+ 
+     static void encodeInt(Bytes& obj, int64_t value) {
+@@ -693,16 +701,16 @@
+             if (cnt > d.size() || pos + cnt > d.size()) return std::nullopt;
+             return Value::str(std::string(d.begin() + pos, d.begin() + pos + cnt));
+         }
+-        case 0x60: { // UTF-16 string, store the raw bytes' ASCII subset
+-            const uint64_t cnt = readCount();   // unit count
+-            if (cnt > d.size()) return std::nullopt;   // DoS-bound, match siblings
+-            std::string s;
+-            for (uint64_t i = 0; i < cnt; ++i) {
+-                const uint64_t at = pos + i * 2;
+-                if (at + 1 >= d.size()) break;
+-                s.push_back(char(d[at + 1]));   // low byte (ASCII range)
+-            }
+-            return Value::str(s);
++        case 0x60: {
++            const uint64_t cnt = readCount();
++            if (!ok || pos > d.size() || cnt > (d.size()-pos)/2) return std::nullopt;
++            std::u16string units;
++            units.reserve(cnt);
++            for (uint64_t i=0;i<cnt;++i) units.push_back(char16_t((uint16_t(d[pos+i*2])<<8)|d[pos+i*2+1]));
++            try {
++                std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> utf;
++                return Value::str(utf.to_bytes(units));
++            } catch (const std::range_error&) { return std::nullopt; }
+         }
+         case 0xA0: { // array
+             const uint64_t cnt = readCount();

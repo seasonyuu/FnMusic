@@ -1,0 +1,197 @@
+--- a/src/airplay_crypto.h
++++ b/src/airplay_crypto.h
+@@ -166,7 +166,7 @@
+ using Dict  = std::vector<std::pair<std::string, Value>>;   // ordered
+ 
+ struct Value {
+-    enum class Type { Bool, Int, Real, Str, Data, Arr, Dict } type;
++    enum class Type { Bool, Int, Real, Date, Str, Data, Arr, Dict } type;
+     bool        b = false;
+     int64_t     i = 0;
+     double      r = 0.0;
+@@ -188,6 +188,7 @@
+     static Value boolean(bool v)            { Value x; x.type=Type::Bool; x.b=v; return x; }
+     static Value integer(int64_t v)         { Value x; x.type=Type::Int;  x.i=v; return x; }
+     static Value real(double v)             { Value x; x.type=Type::Real; x.r=v; return x; }
++    static Value date(double v) { Value x; x.type=Type::Date; x.r=v; return x; }
+     static Value str(std::string v)         { Value x; x.type=Type::Str;  x.s=std::move(v); return x; }
+     static Value bytes(Bytes v)             { Value x; x.type=Type::Data; x.data=std::move(v); return x; }
+     static Value array(Array v)             { Value x; x.type=Type::Arr;  x.arr=std::move(v); return x; }
+--- a/src/airplay_crypto.cpp
++++ b/src/airplay_crypto.cpp
+@@ -478,8 +478,9 @@
+         case Value::Type::Int:
+             encodeInt(obj, v.i);
+             break;
++        case Value::Type::Date:
+         case Value::Type::Real: {
+-            obj.push_back(0x23);   // double (8-byte)
++            obj.push_back(v.type == Value::Type::Date ? 0x33 : 0x23);   // double (8-byte)
+             uint64_t bits; std::memcpy(&bits, &v.r, 8);
+             for (int s = 7; s >= 0; --s) obj.push_back(uint8_t((bits >> (8*s)) & 0xFF));
+             break;
+@@ -669,14 +670,16 @@
+             pos += n;
+             return Value::integer(v);
+         }
++        case 0x30:
+         case 0x20: { // real
++            if (hi == 0x30 && lo != 3) return std::nullopt;
+             const int n = 1 << lo;
+             uint64_t bits = readBE(pos, n);
+             pos += n;
+             double r = 0;
+             if (n == 8) std::memcpy(&r, &bits, 8);
+             else if (n == 4) { float f; uint32_t b32 = uint32_t(bits); std::memcpy(&f,&b32,4); r = f; }
+-            return Value::real(r);
++            return hi == 0x30 ? Value::date(r) : Value::real(r);
+         }
+         case 0x40: { // data
+             const uint64_t cnt = readCount();
+--- a/src/raop_sender.h
++++ b/src/raop_sender.h
+@@ -66,6 +66,7 @@
+ // inside a sender call (onTcpData / tick / stop ...), i.e. on the thread that
+ // drives the sender; none may destroy the sender, calling stop() is fine.
+ struct RaopEvents {
++    std::function<void(const std::string&)> remoteCommand;
+     std::function<void(bool ok, const std::string& error)> launched;   // RECORD accepted / failed
+     std::function<void()>                                  closed;     // session ended
+     // The receiver shows a PIN; collect 4 digits and call submitPin().
+@@ -147,6 +148,7 @@
+     // Stored when not streaming and (re)sent on the next RECORD; sent
+     // immediately on a track change while streaming. `cover`/`coverMime`
+     // may be empty (no artwork sent then).
++    void setPlaybackInfo(int64_t positionMs, int64_t durationMs, bool playing);
+     void setNowPlaying(const std::string& title, const std::string& artist,
+                        const std::string& album,
+                        const std::string& cover = {},
+@@ -359,6 +361,9 @@
+     std::vector<std::string> backlog_;
+     std::vector<int32_t>     backlogSeq_;
+ 
++    void publishNowPlaying_();
++    int64_t npPositionMs_ = 0, npDurationMs_ = 0;
++    bool npPlaying_ = false;
+     std::string npTitle_, npArtist_, npAlbum_;   // now-playing metadata
+     std::string npCover_, npCoverMime_;          // cover art bytes + MIME
+ 
+--- a/src/raop_sender.cpp
++++ b/src/raop_sender.cpp
+@@ -663,7 +663,7 @@
+     npCover_ = cover; npCoverMime_ = coverMime;
+     // While streaming, push the new track to the receiver right away;
+     // otherwise it's stored and sent once RECORD/SETUP completes.
+-    if (state_ == State::Streaming && changed) sendMetadata_();
++    if (state_ == State::Streaming && changed && !airplay2_) sendMetadata_();
+ }
+ 
+ void RaopSender::sendMetadata_() {
+@@ -708,6 +708,62 @@
+     }
+     info_("Cast: RAOP now-playing pushed, '{}' / '{}'{}",
+           npTitle_, npArtist_, coverSent ? " + cover" : "");
++}
++
++void RaopSender::setPlaybackInfo(int64_t positionMs, int64_t durationMs, bool playing) {
++    npPositionMs_ = std::max<int64_t>(0, positionMs);
++    npDurationMs_ = std::max<int64_t>(0, durationMs);
++    npPlaying_ = playing;
++    if (state_ != State::Streaming) return;
++    const uint32_t current = rtptime32_();
++    const uint32_t start = current - uint32_t(uint64_t(npPositionMs_) * 44100 / 1000);
++    const uint32_t end = start + uint32_t(uint64_t(npDurationMs_) * 44100 / 1000);
++    sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters",
++        "progress: " + std::to_string(start) + "/" + std::to_string(current) + "/" + std::to_string(end) + "\r\n");
++    publishNowPlaying_();
++}
++
++void RaopSender::publishNowPlaying_() {
++    if (!airplay2_ || state_ != State::Streaming) return;
++    using namespace airplay::bplist;
++    auto post = [&](const std::string& type, Dict params) {
++        auto body = encode(Value::object({{"type", Value::str(type)}, {"params", Value::object(std::move(params))}}));
++        sendRequest_("POST", "/command", "application/x-apple-binary-plist", toStr(body));
++        pendingMethods_.back() = "NOW_PLAYING";
++    };
++    Dict info;
++    auto text = [&](const char* key, const std::string& value) { info.emplace_back(std::string("kMRMediaRemoteNowPlayingInfo") + key, Value::str(value)); };
++    auto real = [&](const char* key, double value) { info.emplace_back(std::string("kMRMediaRemoteNowPlayingInfo") + key, Value::real(value)); };
++    auto fingerprint = [](const std::string& value) {
++        const auto digest = airplay::sha512(toBytes(value));
++        uint64_t id = 0; for (size_t i=0;i<8;++i) id=(id<<8)|digest[i];
++        return id & 0x7fffffffffffffffULL;
++    };
++    info.emplace_back("kMRMediaRemoteNowPlayingInfoUniqueIdentifier", Value::integer(fingerprint(npTitle_ + "\n" + npArtist_ + "\n" + npAlbum_)));
++    text("Title", npTitle_); text("Artist", npArtist_); text("Album", npAlbum_);
++    text("MediaType", "MRMediaRemoteMediaTypeMusic");
++    real("ElapsedTime", npPositionMs_ / 1000.0); real("Duration", npDurationMs_ / 1000.0);
++    real("PlaybackRate", npPlaying_ ? 1.0 : 0.0); real("DefaultPlaybackRate", 1.0);
++    const double cfNow = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count() - 978307200.0;
++    info.emplace_back("kMRMediaRemoteNowPlayingInfoTimestamp", Value::date(cfNow));
++    if (!npCover_.empty()) {
++        text("ArtworkIdentifier", std::to_string(fingerprint(npCover_)));
++        text("ArtworkMIMEType", npCoverMime_);
++        info.emplace_back("kMRMediaRemoteNowPlayingInfoArtworkData", Value::bytes(toBytes(npCover_)));
++    }
++    post("updateMRNowPlayingInfo", {{"type", Value::str("npi-text")}, {"mergePolicy", Value::str("replace")}, {"params", Value::object(std::move(info))}});
++    Array commands;
++    for (int command : {0, 1, 2, 4, 5}) commands.push_back(Value::bytes(encode(Value::object({
++        {"kCommandInfoCommandKey", Value::integer(command)}, {"kCommandInfoEnabledKey", Value::boolean(true)}}))));
++    post("updateMRSupportedCommands", {{"mrSupportedCommandsFromSender", Value::array(std::move(commands))}});
++    post("updateMRPlaybackState", {{"mrPlaybackState", Value::integer(npPlaying_ ? 1 : 2)}});
++    // NowPlayingClient protobuf: process identifier, bundle identifier, display name.
++    Bytes client{8, 1};
++    for (auto field : {std::pair<uint8_t,std::string>{18, "com.seasonyuu.fnmusic"}, {58, "FnMusic"}}) {
++        client.push_back(field.first); client.push_back(uint8_t(field.second.size()));
++        client.insert(client.end(), field.second.begin(), field.second.end());
++    }
++    post("updateMRNowPlayingClient", {{"mrNowPlayingClient", Value::bytes(std::move(client))}});
+ }
+ 
+ // -- RTSP plumbing ---------------------------------------------------
+@@ -820,7 +876,10 @@
+     // Answer each complete RTSP request with an encrypted 200 OK.
+     for (;;) {
+         const size_t headEnd = eventPlainBuf_.find("\r\n\r\n");
+-        if (headEnd == std::string::npos) break;
++        if (headEnd == std::string::npos) {
++            if(eventPlainBuf_.size() > 8192) fail_("Invalid event header");
++            break;
++        }
+         int contentLen = 0;
+         std::string cseq;
+         for (const std::string& line : splitOn(eventPlainBuf_.substr(0, headEnd), '\n')) {
+@@ -832,8 +891,20 @@
+             if (k == "content-length") contentLen = toInt(v);
+             else if (k == "cseq")      cseq = v;
+         }
+-        const size_t total = headEnd + 4 + size_t(contentLen > 0 ? contentLen : 0);
++        if(contentLen < 0 || contentLen > 65536 || headEnd > 8192) { fail_("Invalid event size"); return; }
++        const size_t total = headEnd + 4 + size_t(contentLen);
+         if (eventPlainBuf_.size() < total) break;   // body still arriving
++        if (contentLen > 0 && contentLen <= 65536 && eventPlainBuf_.starts_with("POST /command ")) {
++            const auto root = airplay::bplist::decode(toBytes(eventPlainBuf_.substr(headEnd + 4, contentLen)));
++            if (root) {
++                const auto* type = root->find("type"); const auto* value = root->find("value");
++                if (type && value && type->asStr() == "sendMediaRemoteCommand") {
++                    const auto command = value->asStr();
++                    if (command == "play" || command == "paus" || command == "plps" || command == "nitm" || command == "pitm")
++                        if (events_.remoteCommand) events_.remoteCommand(command);
++                }
++            }
++        }
+         eventPlainBuf_.erase(0, total);
+         // Encrypted 200 OK, owntone's respond() sends a BARE 200 (just Server),
+         // no Content-Length/Audio-Latency (those can corrupt the receiver's
+@@ -955,6 +1026,10 @@
+ 
+ void RaopSender::handleResponse_(const std::string& method, int code, const Headers& headers) {
+     // Streaming-time auxiliaries first, failures are non-fatal there.
++    if (method == "NOW_PLAYING") {
++        info_("FnMusic now-playing response {}", code);
++        return;
++    }
+     if (method == "SET_PARAMETER") {
+         if (code != 200)
+             warn_("Cast: RAOP SET_PARAMETER rejected ({})", code);

@@ -22,6 +22,7 @@ include(
     ":core:network",
     ":core:designsystem",
     ":core:player",
+    ":core:airplay",
     ":data",
     ":feature:session",
     ":feature:music",

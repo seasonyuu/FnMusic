@@ -236,6 +236,7 @@ data class PlayableTrack(
 )
 
 data class PlayerState(
+    val outputDeviceName: String? = null,
     val playbackAudioSpec: AudioSpec? = null,
     val queue: List<PlayableTrack> = emptyList(),
     /** Local-only history for the active playback list. It is deliberately not persisted. */
@@ -304,7 +305,7 @@ interface SessionRepository {
     suspend fun logout(clearCredentials: Boolean)
 }
 
-interface PlayerController {
+interface PlayerController : PlaybackOutputController {
     val state: StateFlow<PlayerState>
     fun play(items: List<PlayableTrack>, startIndex: Int = 0, isRoaming: Boolean = false)
     fun restore(

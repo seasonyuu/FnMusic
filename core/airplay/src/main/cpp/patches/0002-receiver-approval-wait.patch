@@ -1,0 +1,49 @@
+--- a/src/raop_sender.h
++++ b/src/raop_sender.h
+@@ -121,6 +121,9 @@
+     // The sender identity the receiver displays / keys on. CR/LF are
+     // stripped so a caller-supplied name can't break a request line.
+     void setIdentity(const RaopIdentity& identity);
++
++    // FnMusic: bound receiver approval waits separately from TCP connection.
++    void setReceiverResponseTimeout(std::chrono::milliseconds timeout);
+ 
+     // Fail closed when the receiver's SRP proof or its pair-verify signature
+     // does not check out. Default false = log and continue (SECURITY.md).
+@@ -292,6 +295,7 @@
+     RaopLogSink  log_;
+     std::function<Clock::time_point()> clock_;
+     RaopIdentity identity_;
++    std::chrono::milliseconds receiverResponseTimeout_{10000};
+     bool         strictAuth_ = false;
+ 
+     // -- RTSP session -------------------------------------------------
+--- a/src/raop_sender.cpp
++++ b/src/raop_sender.cpp
+@@ -501,6 +501,7 @@
+     }
+ 
+     state_ = State::Connecting;
++    timeout_.interval = std::chrono::milliseconds(kHandshakeTimeoutMs);
+     rtspConnected_ = false;
+     arm_(timeout_);
+     info_("Cast: RAOP connecting to {}:{} ('{}')", host, port, name);
+@@ -563,6 +564,7 @@
+         return;
+     }
+     if (state_ != State::Connecting) return;
++    timeout_.interval = receiverResponseTimeout_;
+     rtspConnected_ = true;
+     localIp_ = local.ip;
+     hostIp_  = peer.ip;
+@@ -621,6 +623,10 @@
+ }
+ 
+ // -- host application calls ------------------------------------------
++
++void RaopSender::setReceiverResponseTimeout(std::chrono::milliseconds timeout) {
++    receiverResponseTimeout_ = std::chrono::milliseconds(std::clamp<long long>(timeout.count(), 10000, 180000));
++}
+ 
+ void RaopSender::setVolume(double pct) {
+     pct = std::clamp(pct, 0.0, 100.0);

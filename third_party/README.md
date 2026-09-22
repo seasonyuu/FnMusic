@@ -40,3 +40,13 @@ The original MIT notice is in [licenses/liquid-glass-widgets.txt](licenses/liqui
 FnMusic implements its own Compose host, Android AGSL renderer and interaction handling;
 it does not embed Flutter or import the upstream renderer.
 The independent numeric fixture generator is `scripts/generate_liquid_menu_samples.py`.
+
+# AirPlay sender
+
+`airplay2-sender/` contains a pinned source snapshot of
+[airplay2-sender-cpp](https://github.com/akustikrausch/airplay2-sender-cpp), revision
+`fc913509039412790aa2427558d35178aa7842ea`. See its `SOURCE.md`, `LICENSE`,
+`NOTICE`, and third-party notices. The FnMusic-owned CMake/JNI adapter is in
+`core/airplay`. The player integrates this module through a Media3 AudioSink
+and publishes receiver metadata and authenticated playback controls. Compatibility
+is currently verified against the local Mac receiver; see `docs/airplay.md`.

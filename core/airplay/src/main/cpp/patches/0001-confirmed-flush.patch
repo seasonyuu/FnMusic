@@ -1,0 +1,73 @@
+--- a/src/raop_sender.h
++++ b/src/raop_sender.h
+@@ -129,6 +129,9 @@
+     // Connect + handshake + stream. One session at a time. `host` is what
+     // the host's RaopIo can connect to (a dotted-quad from mDNS, or a name).
+     void start(const std::string& host, uint16_t port, const std::string& name);
++    // FnMusic: clear receiver + local PCM, fail closed if FLUSH is rejected.
++    bool flushAudio();
++    bool flushPending() const { return flushPending_; }
+     void stop();   // TEARDOWN + close
+     bool active() const { return state_ != State::Idle; }
+ 
+@@ -293,6 +296,7 @@
+     std::function<Clock::time_point()> clock_;
+     RaopIdentity identity_;
+     bool         strictAuth_ = false;
++    bool         flushPending_ = false;
+ 
+     // -- RTSP session -------------------------------------------------
+     bool        rtspConnected_ = false;  // the control socket is up
+--- a/src/raop_sender.cpp
++++ b/src/raop_sender.cpp
+@@ -447,6 +447,7 @@
+     sessionId_    = rand32();
+     dacpId_       = hexUpper(rand64());
+     activeRemote_ = rand32();
++    flushPending_ = false;
+     seq_          = rand16();
+     cseq_ = 0;
+     rxBuf_.clear();
+@@ -639,6 +640,23 @@
+             vh.push_back({"Session", rtspSession_});
+         sendRequest_("SET_PARAMETER", rtspUri_(), "text/parameters", body, vh);
+     }
++}
++
++bool RaopSender::flushAudio() {
++    if (state_ != State::Streaming || flushPending_) return false;
++    // Called only by the single network owner; the host must stop feeding PCM
++    // until flushPending() clears. No old packet may be retransmitted after this.
++    if (ring_) ring_->reset();
++    inBuf_.clear();
++    srcPhase_ = 0;
++    for (auto& packet : backlog_) packet.clear();
++    std::fill(backlogSeq_.begin(), backlogSeq_.end(), -1);
++    Extra headers{{"RTP-Info", "seq=" + std::to_string(seq_) +
++                              ";rtptime=" + std::to_string(rtptime32_())}};
++    if (!rtspSession_.empty()) headers.push_back({"Session", rtspSession_});
++    flushPending_ = true;
++    sendRequest_("FLUSH", rtspUri_(), {}, {}, headers);
++    return true;
+ }
+ 
+ void RaopSender::submitPin(const std::string& code) {
+@@ -1016,7 +1034,7 @@
+         // (500), that is NON-fatal: the FLUSH timeline anchor + the sync
+         // packets drive playback. Only a handshake-phase (pre-Streaming)
+         // failure aborts the session.
+-        if (state_ == State::Streaming && (method == "RECORD" || method == "FLUSH")) {
++        if (state_ == State::Streaming && (method == "RECORD" || (method == "FLUSH" && !flushPending_))) {
+             info_("Cast: RAOP {} not accepted ({}), non-fatal (AP2 realtime)", method, code);
+             return;
+         }
+@@ -1063,7 +1081,8 @@
+         if (state_ != State::Streaming)
+             startStreaming_();
+     } else if (method == "FLUSH") {
+-        // AP2 fire-and-forget timeline anchor, reply (if any) is informational.
++        flushPending_ = false;
++        info_("Cast: FnMusic FLUSH acknowledged");
+     }
+ }
+ 
