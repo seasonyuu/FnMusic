@@ -3978,7 +3978,7 @@ private fun PlayerPlaybackControls(
                     onValueChange = { if (remoteOutput) outputController?.setOutputVolume(it) else onVolumeChange(it) },
                     valueRange = if (remoteOutput) 0f..100f else minimumVolume.toFloat()..maximumVolume.toFloat(),
                     steps = if (remoteOutput) 0 else (maximumVolume - minimumVolume - 1).coerceAtLeast(0),
-                    enabled = maximumVolume > minimumVolume,
+                    enabled = remoteOutput || maximumVolume > minimumVolume,
                     modifier = Modifier.weight(1f).testTag("player-volume-slider")
                         .semantics { contentDescription = "媒体音量" },
                     interactionSource = volumeInteraction,
