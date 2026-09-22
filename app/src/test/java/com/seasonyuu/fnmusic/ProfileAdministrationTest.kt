@@ -26,8 +26,24 @@ class ProfileAdministrationTest {
         assertTrue(runCatching { api.users() }.isFailure)
         assertTrue(revoked)
     }
+    @Test fun allNewLibraryOperationsRequireAdministrator() = runBlocking {
+        val api = ProfileAdministration(scope, Stub(), { false }, { "member" }, {}, {}, {}, {})
+        val operations: List<suspend () -> Any?> = listOf(
+            { api.authorizedDirectories() }, { api.childDirectories("/vol1/1000/Music") },
+            { api.folderDetail("folder") }, { api.scanAllFolders() },
+            { api.cancelTask("task") }, { api.retryTask("task") }, { api.rebuildSearchIndex() },
+        )
+        operations.forEach { assertTrue(runCatching { it() }.exceptionOrNull() is IllegalStateException) }
+    }
     private class Stub : MusicAdministration {
         var denied = false
+        override suspend fun authorizedDirectories() = emptyList<AuthorizedMusicDirectory>()
+        override suspend fun childDirectories(parent: String) = emptyList<MusicDirectory>()
+        override suspend fun folderDetail(guid: String) = MusicFolder(guid)
+        override suspend fun scanAllFolders() {}
+        override suspend fun cancelTask(taskId: String) {}
+        override suspend fun retryTask(taskId: String) {}
+        override suspend fun rebuildSearchIndex() = SearchIndexResult(0, 0, 0)
         override suspend fun scanTasks() = emptyList<MusicScanTask>()
         override suspend fun folders() = emptyList<MusicFolder>()
         override suspend fun saveFolder(original: MusicFolder?, path: String, metadataPreference: String, autoDownloadLyric: Boolean) = Unit

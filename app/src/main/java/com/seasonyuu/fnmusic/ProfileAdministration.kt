@@ -22,6 +22,13 @@ internal class ProfileAdministration(
             throw failure
         }
     }.await()
+    override suspend fun authorizedDirectories() = guarded { delegate.authorizedDirectories() }
+    override suspend fun childDirectories(parent: String) = guarded { delegate.childDirectories(parent) }
+    override suspend fun folderDetail(guid: String) = guarded { delegate.folderDetail(guid) }
+    override suspend fun scanAllFolders() = guarded { delegate.scanAllFolders() }
+    override suspend fun cancelTask(taskId: String) = guarded { delegate.cancelTask(taskId) }
+    override suspend fun retryTask(taskId: String) = guarded { delegate.retryTask(taskId) }
+    override suspend fun rebuildSearchIndex() = guarded { delegate.rebuildSearchIndex() }
     override suspend fun scanTasks() = guarded { delegate.scanTasks() }
     override suspend fun folders() = guarded { delegate.folders() }
     override suspend fun saveFolder(original: MusicFolder?, path: String, metadataPreference: String, autoDownloadLyric: Boolean) = guarded { delegate.saveFolder(original, path, metadataPreference, autoDownloadLyric) }

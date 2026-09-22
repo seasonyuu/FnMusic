@@ -883,7 +883,13 @@ fun MusicShell(
                                                             if (state.user?.role != "admin" || administration == null) {
                                                                 LaunchedEffect(entry.id) { popPage() }
                                                             } else when (entry.page) {
-                                                                MusicPage.AdminLibraries -> LibraryAdministrationScreen(administration, ::popPage)
+                                                                MusicPage.AdminLibraries -> LibraryAdministrationScreen(administration, ::popPage) {
+                                                                    catalogEditVersion++
+                                                                    artistItems.refresh()
+                                                                    favoriteItems.refresh()
+                                                                    onRefresh()
+                                                                    onRetrySearch()
+                                                                }
                                                                 MusicPage.AdminUsers -> UserAdministrationScreen(administration, state.user.id, ::popPage)
                                                                 else -> ServerAdministrationScreen(administration, ::popPage)
                                                             }

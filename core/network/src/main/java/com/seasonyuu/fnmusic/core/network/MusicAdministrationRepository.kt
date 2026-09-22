@@ -9,27 +9,42 @@ class MusicAdministrationRepository(private val network: NetworkRuntime) : Music
     private val write get() = network.accountMutationApi
     override suspend fun scanTasks() = read.adminTasks().requireData().items().mapNotNull { value ->
         val item = value.jsonObject
-        if (item.string("type") !in setOf("fileScan", "cloudScrape", "cloudScrapeCorrection")) return@mapNotNull null
+        if (item.string("type") !in setOf("fileScan", "cloudScrape", "cloudScrapeCorrection", "lyricDownload")) return@mapNotNull null
         MusicScanTask(item.string("name"), (item["ext"] as? JsonObject)?.string("libraryGUID").orEmpty(),
             item["total"]?.jsonPrimitive?.intOrNull ?: 0,
             item["successCount"]?.jsonPrimitive?.intOrNull ?: 0,
             item["failCount"]?.jsonPrimitive?.intOrNull ?: 0,
             item["done"]?.jsonPrimitive?.booleanOrNull ?: false,
-            item["canceled"]?.jsonPrimitive?.booleanOrNull ?: false)
+            item["canceled"]?.jsonPrimitive?.booleanOrNull ?: false,
+            item.string("id"), item.string("type"), item["cancelling"]?.jsonPrimitive?.booleanOrNull ?: false,
+            item["retryable"]?.jsonPrimitive?.booleanOrNull ?: false, item["canceledCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            item["createdAt"]?.jsonPrimitive?.longOrNull ?: 0, item["doneAt"]?.jsonPrimitive?.longOrNull ?: 0)
     }
-    override suspend fun folders() = read.adminFolders().requireData().items().map { value ->
+    override suspend fun authorizedDirectories() = read.authorizedDirectories().requireData().items().map { value ->
         val item = value.jsonObject
-        MusicFolder(item.string("guid"), item.string("name"), item.string("path"),
-            item.string("metadataPreference").ifBlank { if (item["enableCloudMetadata"]?.jsonPrimitive?.booleanOrNull == false) "local_only" else "cloud_preferred" },
-            item["autoDownloadLyric"]?.jsonPrimitive?.booleanOrNull ?: false,
-            item["contentLastChangedAt"]?.jsonPrimitive?.longOrNull ?: 0)
+        AuthorizedMusicDirectory(item.string("path"), item["storageType"]?.jsonPrimitive?.intOrNull ?: -1,
+            item["cloudStorageType"]?.jsonPrimitive?.intOrNull ?: 0, item.string("permission"), item.string("comment"))
+    }
+    override suspend fun childDirectories(parent: String) = read.childDirectories(parent).requireData().items().map { value ->
+        val item = value.jsonObject
+        MusicDirectory(item.string("path"), item.string("name"))
+    }
+    override suspend fun folderDetail(guid: String) = parseFolder(read.folderDetail(guid).requireData())
+    override suspend fun folders() = read.adminFolders().requireData().items().map { parseFolder(it.jsonObject) }
+    override suspend fun scanAllFolders() { write.scanAllFolders().requireSuccess() }
+    override suspend fun cancelTask(taskId: String) { write.cancelTask(buildJsonObject { put("taskId", taskId) }).requireSuccess() }
+    override suspend fun retryTask(taskId: String) { write.retryTask(buildJsonObject { put("taskId", taskId) }).requireSuccess() }
+    override suspend fun rebuildSearchIndex(): SearchIndexResult {
+        val data = write.rebuildSearchIndex().requireData()
+        return SearchIndexResult(data["trackCount"]?.jsonPrimitive?.intOrNull,
+            data["albumCount"]?.jsonPrimitive?.intOrNull, data["artistCount"]?.jsonPrimitive?.intOrNull)
     }
     override suspend fun saveFolder(original: MusicFolder?, path: String, metadataPreference: String, autoDownloadLyric: Boolean) {
         require(path.isNotBlank()) { "请选择音乐文件夹" }
         require(metadataPreference in setOf("cloud_preferred", "local_preferred", "local_only"))
         val body = buildJsonObject {
             original?.let { put("guid", it.guid) }
-            put("path", path); put("metadataPreference", metadataPreference); put("autoDownloadLyric", autoDownloadLyric)
+            put("path", path); put("metadataPreference", metadataPreference); put("autoDownloadLyric", metadataPreference != "local_only" && autoDownloadLyric)
         }
         (if (original == null) write.createFolder(body) else write.editFolder(body)).requireSuccess()
     }
@@ -84,3 +99,11 @@ private fun FolderAccess.toJson() = buildJsonObject {
 }
 
 fun Throwable.isMusicPermissionDenied(): Boolean = this is retrofit2.HttpException && code() == 403 || this is MusicError.Business && code == 403
+
+private fun parseFolder(item: JsonObject) = MusicFolder(
+    item.string("guid"), item.string("name"), item.string("path"),
+    item.string("metadataPreference").ifBlank { if (item["enableCloudMetadata"]?.jsonPrimitive?.booleanOrNull == false) "local_only" else "cloud_preferred" },
+    item["autoDownloadLyric"]?.jsonPrimitive?.booleanOrNull ?: false,
+    item["contentLastChangedAt"]?.jsonPrimitive?.longOrNull ?: 0,
+    item["accessStatus"]?.jsonPrimitive?.intOrNull,
+)

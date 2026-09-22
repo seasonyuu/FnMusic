@@ -3,6 +3,9 @@ package com.seasonyuu.fnmusic.feature.music
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.seasonyuu.fnmusic.core.designsystem.FnMusicTheme
+import com.seasonyuu.fnmusic.core.model.AuthorizedMusicDirectory
+import com.seasonyuu.fnmusic.core.model.MusicDirectory
+import com.seasonyuu.fnmusic.core.model.SearchIndexResult
 import com.seasonyuu.fnmusic.core.model.FolderAccess
 import com.seasonyuu.fnmusic.core.model.ManagedMusicUser
 import com.seasonyuu.fnmusic.core.model.MusicAdministration
@@ -50,6 +53,13 @@ class UserAdministrationScreenTest {
     }
 
     private class Stub(private val usersValue: List<ManagedMusicUser>) : MusicAdministration {
+        override suspend fun authorizedDirectories() = emptyList<AuthorizedMusicDirectory>()
+        override suspend fun childDirectories(parent: String) = emptyList<MusicDirectory>()
+        override suspend fun folderDetail(guid: String) = MusicFolder(guid)
+        override suspend fun scanAllFolders() {}
+        override suspend fun cancelTask(taskId: String) {}
+        override suspend fun retryTask(taskId: String) {}
+        override suspend fun rebuildSearchIndex() = SearchIndexResult(0, 0, 0)
         override suspend fun scanTasks() = emptyList<MusicScanTask>()
         override suspend fun folders() = listOf(MusicFolder("library", "音乐库"))
         override suspend fun saveFolder(original: MusicFolder?, path: String, metadataPreference: String, autoDownloadLyric: Boolean) = Unit

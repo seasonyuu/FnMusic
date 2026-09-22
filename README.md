@@ -139,7 +139,7 @@ No open-source license has been chosen yet. The code is provided for personal le
 
 The Profile tab shows the current Music user, role, and server. It provides password changes, light/dark/system appearance, independent Liquid Glass controls, Wi-Fi/mobile streaming quality, and automatic playback cache settings. Password changes clear the old session and remembered password while retaining the server and username.
 
-Administrators can manage music folders, submit scans and view their status, create/edit users and folder permissions, configure new-user access, and rename the Music server. These controls are hidden until the administrator role is confirmed. Original streaming remains the upgrade default; standard quality uses server-side Opus 128 kbps transcoding. Temporary cache capacity and track limits take effect without restarting and do not create permanent downloads.
+Administrators can manage music folders, submit scans and view their status, create/edit users and folder permissions, configure new-user access, and rename the Music server. Music folders are selected from authorized NAS directories with breadcrumbs, storage grouping, and duplicate checks. Library management includes per-folder and full scans, task cancellation and server-approved retries, and search-index rebuilding. Metadata and automatic-lyric defaults follow the Web client; local-only metadata disables lyric downloads. These controls are hidden until the administrator role is confirmed. Original streaming remains the upgrade default; standard quality uses server-side Opus 128 kbps transcoding. Temporary cache capacity and track limits take effect without restarting and do not create permanent downloads.
 
 ### Lyrics sources
 

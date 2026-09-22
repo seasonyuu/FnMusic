@@ -283,6 +283,25 @@ interface MusicApi {
     @POST("api/v1/track/transcode/quit")
     suspend fun quitTranscode(@Body body: JsonObject): ApiEnvelope<JsonElement>
 
+    @GET("api/v1/app-center/authed-dir/list")
+    suspend fun authorizedDirectories(): ApiEnvelope<JsonElement>
+    @GET("api/v1/app-center/authed-dir/sub/list")
+    suspend fun childDirectories(@Query("parent") parent: String): ApiEnvelope<JsonElement>
+    @GET("api/v1/shared-library/detail")
+    suspend fun folderDetail(@Query("guid") guid: String): ApiEnvelope<JsonObject>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/shared-library/scan-all")
+    suspend fun scanAllFolders(): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/task/cancel")
+    suspend fun cancelTask(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/task/retry")
+    suspend fun retryTask(@Body body: JsonObject): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/search/index/rebuild")
+    suspend fun rebuildSearchIndex(): ApiEnvelope<JsonObject>
+
     @GET("api/v1/task/list")
     suspend fun adminTasks(): ApiEnvelope<JsonElement>
     @GET("api/v1/shared-library/list")

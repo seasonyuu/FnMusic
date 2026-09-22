@@ -872,3 +872,67 @@ Android 客户端对此请求关闭连接自动重试、重定向与会话恢复
 标准音质使用 POST `/api/v1/track/transcode`，请求 `{guid, output:{codec:"opus",bitrate:128,channel:2}}`；状态 ready / success 后加载 `/api/v1/track/hls/{guid}/preset.m3u8`。当前服务器已实测生成 Opus、48 kHz、双声道的 fMP4/HLS，样本码率约 126.5 kbps，AVD 使用系统 Opus 解码器持续播放超过一分钟。AAC 参数在当前服务返回 errno 8192，不作为实现方案。测试转码会话已退出。
 
 播放期间每 10 秒 POST `/api/v1/track/transcode/heartbeat`（guid、timestamp 秒数），切换后 POST `/api/v1/track/transcode/quit`（guid）。HLS 清单不缓存；音频片段按服务器、账户和歌曲隔离缓存。原始音质继续使用已有 stream 接口。Wi-Fi 和移动网络偏好独立保存，升级均保持原始音质。
+
+### 音乐库目录选择与维护（2026-09-22）
+
+从当前部署的 Music Web（资源查询版本 `181`）读取接口定义、目录选择器、
+表单和任务调用链。通过 FN Connect 激活会话，并用未跟踪的 `.env` 鉴权。
+以下“只读实测”均为 HTTP 200、业务 `code=0`；没有执行新增、编辑、移除、
+扫描、取消、重试或重建索引。写入协议由 Web 源码和本地 MockWebServer
+测试覆盖，不代表真实 NAS 写入验收。
+
+| 能力 | 方法、路径及请求 | 证据 |
+| --- | --- | --- |
+| 授权目录 | GET `/api/v1/app-center/authed-dir/list` | 只读实测 |
+| 子目录 | GET `/api/v1/app-center/authed-dir/sub/list?parent=<路径>` | 只读实测 |
+| 文件夹详情 | GET `/api/v1/shared-library/detail?guid=<guid>` | 只读实测 |
+| 文件夹、任务列表 | GET `/api/v1/shared-library/list`、`/api/v1/task/list` | 只读实测 |
+| 全部扫描 | POST `/api/v1/shared-library/scan-all`，无业务请求体 | Web 调用链 |
+| 取消任务 | POST `/api/v1/task/cancel`，`{"taskId":"<id>"}` | Web 调用链 |
+| 重试任务 | POST `/api/v1/task/retry`，`{"taskId":"<id>"}` | Web 调用链 |
+| 重建搜索索引 | POST `/api/v1/search/index/rebuild`，无业务请求体 | Web 调用链 |
+
+响应均使用已有 `code/data` envelope。脱敏结构：
+
+- 授权目录 `data.list[]`：`path`、`storageType`、`cloudStorageType`、
+  `permission`、`uname`、`address`、`comment`、`username`；Web 还兼容可选
+  `proto`、`port`。Android 仅保留目录浏览需要的字段，不持久化此列表。
+- 子目录 `data.list[]`：`{path, name}`；`parent` 作为查询参数编码，不能直接拼接。
+- 文件夹详情：`guid/name/path/metadataPreference/autoDownloadLyric/`
+  `contentLastChangedAt/accessStatus`。列表和详情均实测；`accessStatus=0`
+  表示正常，其他值只展示通用不可访问提示，不套用歌曲状态码解释。
+- 任务 `data.list[]`：`id/type/name/total/successCount/failCount/done/`
+  `retryable/canceled/cancelling/canceledCount/createdAt/doneAt/ext.libraryGUID`。
+  任务取消、重试使用 `id`，不能使用库 GUID 或任务名替代。
+- 索引重建成功结果按 Web 读取 `trackCount/albumCount/artistCount`。
+  缺少计数字段时只显示完成消息，不补造数量。
+
+Web 行为与 Android 对齐点：
+
+- 新建默认 `cloud_preferred`、`autoDownloadLyric=true`；`local_only`
+  隐藏歌词设置并提交 `false`。历史 `local_preferred` 允许保留，未知策略
+  必须由用户重新选择，不静默覆盖。
+- 最多 200 个音乐文件夹。仅禁止相同路径重复添加，不禁止父子目录重叠。
+- 普通存储路径去掉前导 `/` 后至少三段，外接 `vol00…`、远程 `vol02…`
+  至少两段才能选择；同时必须位于授权根目录内。虚拟位置和存储根不可选。
+- 无授权目录引导到 NAS「系统设置 → 应用 → 音乐」配置访问范围。
+- 子目录请求失败独立显示错误；Android 不采用 Web 将请求失败吞成空列表的行为。
+- 任务类型包含 `fileScan/cloudScrape/cloudScrapeCorrection/lyricDownload`。
+  未结束的任务进度最多 99%；只有结束且 `retryable=true` 才提供重试。
+  扫描提交后 30 秒仍未观察到任务，显示状态待确认并释放按钮，不自动重发或宣称完成。
+- 管理写入继续禁用自动连接重试、重定向及会话恢复重放。请求结果不确定时
+  保留草稿并刷新状态，不自动重新提交。所有新增接口经过管理员权限保护。
+
+源码证据（均相对 `/music/static/assets/`，SHA-256）：
+
+| 资源 | SHA-256 |
+| --- | --- |
+| `bdf49c3c3882102fc017ffb661108c63-DZvWdWoT.js` | `a9948819a1e0868c3cb0c3d05a94255dfe608eb6dd8837cb72d327e091c7e5a4` |
+| `b718f1354f7247312eca086d9a024afe-sxiaN5RJ.js` | `8c89b7b5c182e0ecbf8fce47da1c7c8bf067c9b17c1e07948a8245a97a800f98` |
+| `8a84e406c08ac9594f47222406598f75-CBjgRg68.js` | `655ac0f5a33ea180d694f79a5f554a609413fe69e156ed2e08cab88a085c9069` |
+| `1bc04b5291c26a46d918139138b992d2-LE4mTIM4.js` | `a1596e6da2fd2e53b0de4529e91044ab633a37bcb8a6256f1f59d748fd5765ca` |
+
+本地回归覆盖目录编码、写入请求形状、会话失效不重放、目录切换竞态、
+草稿保留、重复路径与上限、任务延迟出现和完成事件。
+专用测试模拟器的界面用例为 `LibraryAdministrationScreenTest`；全部使用
+本地假数据，测试 runner 可能卸载测试包，禁止在日常模拟器上运行。

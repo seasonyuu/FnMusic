@@ -9,6 +9,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -74,101 +79,27 @@ private fun AdminPage(
 }
 
 @Composable
-internal fun LibraryAdministrationScreen(api: MusicAdministration, onBack: () -> Unit) {
-    var folders by remember { mutableStateOf<List<MusicFolder>?>(null) }
-    var tasks by remember { mutableStateOf<List<MusicScanTask>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var editing by rememberSaveable { mutableStateOf<String?>(null) }
-    var deleting by remember { mutableStateOf<MusicFolder?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    suspend fun reload() { folders = api.folders(); tasks = api.scanTasks() }
-    fun action(block: suspend () -> Unit) {
-        if (busy) return
-        busy = true
-        scope.launch {
-            try { block(); error = null }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { error = failure.message ?: "操作失败，请重试" }
-            finally { busy = false }
-        }
-    }
-    LaunchedEffect(api) { try { reload() } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } }
-    LaunchedEffect(api, editing) {
-        if (editing == null) while (true) {
-            kotlinx.coroutines.delay(5000)
-            try { tasks = api.scanTasks() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { error = failure.message ?: "任务状态更新失败" }
-        }
-    }
-    BackHandler(editing != null) { if (!busy) editing = null }
-    val original = folders?.firstOrNull { it.guid == editing }
-    if (editing != null && folders != null) {
-        if (!editing.isNullOrEmpty() && original == null) {
-            AdminPage("音乐库管理", { editing = null }) { Text("这个音乐文件夹已不可用，请返回刷新。") }
-        } else key(editing) {
-            var path by rememberSaveable { mutableStateOf(original?.path.orEmpty()) }
-            var metadata by rememberSaveable { mutableStateOf(original?.metadataPreference ?: "cloud_preferred") }
-            var lyrics by rememberSaveable { mutableStateOf(original?.autoDownloadLyric ?: false) }
-            AdminPage("音乐文件夹设置", { if (!busy) editing = null }) {
-                OutlinedTextField(path, { path = it }, label = { Text("音乐文件夹路径") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = readableTextFieldColors())
-                Text("元数据刮削偏好", style = MaterialTheme.typography.titleMedium)
-                listOf("cloud_preferred" to "优先使用线上数据", "local_only" to "仅使用本地数据").let { modes ->
-                    (if (metadata == "local_preferred") modes + ("local_preferred" to "优先使用本地数据") else modes).forEach { (value, label) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(metadata == value, { metadata = value }, enabled = !busy); Text(label) }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("自动下载歌词", Modifier.weight(1f)); Switch(lyrics, { lyrics = it }, enabled = !busy) }
-                Text("为没有内置歌词或外挂歌词文件的歌曲自动获取歌词。")
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(onClick = { action { api.saveFolder(original, path, metadata, lyrics); editing = null; reload() } }, enabled = !busy && path.isNotBlank()) { Text("保存修改") }
-            }
-        }
-    } else AdminPage("音乐库管理", onBack) {
-        Button(onClick = { editing = ""; error = null }, enabled = !busy && folders != null) { Text("添加音乐文件夹") }
-        folders?.forEach { folder ->
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(folder.name.ifBlank { folder.path.trimEnd('/').substringAfterLast('/').ifBlank { folder.path } }, style = MaterialTheme.typography.titleMedium)
-                    Text(folder.path)
-                    if (folder.contentLastChangedAt > 0) Text("最近更新：${formatAdminTime(folder.contentLastChangedAt)}")
-                    Row {
-                        TextButton(colors = readableTextButtonColors(), onClick = { editing = folder.guid; error = null }, enabled = !busy) { Text("编辑") }
-                        TextButton(colors = readableTextButtonColors(), onClick = { action { api.scanFolder(folder.guid); message = "已提交扫描任务"; reload() } }, enabled = !busy) { Text("扫描音乐库") }
-                        TextButton(colors = readableTextButtonColors(), onClick = { deleting = folder }, enabled = !busy) { Text("移除") }
-                    }
-                }
-            }
-        }
-        if (folders?.isEmpty() == true) Text("尚未添加音乐文件夹")
-        if (folders == null && error == null) CircularProgressIndicator()
-        tasks.forEach { task ->
-            Text("${task.name.ifBlank { "音乐库扫描" }}：" + when {
-                task.canceled -> "已取消"
-                task.done && task.failed > 0 -> "已结束，${task.failed} 项失败"
-                task.done -> "已完成"
-                task.total > 0 -> "${task.completed + task.failed} / ${task.total}"
-                else -> "正在扫描"
-            })
-        }
-        message?.let { Text(it) }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        TextButton(colors = readableTextButtonColors(), onClick = { action { reload() } }, enabled = !busy) { Text("刷新") }
-    }
-    deleting?.let { folder -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("移除音乐文件夹？") }, text = { Text("从音乐库移除 ${folder.name.ifBlank { folder.path.trimEnd('/').substringAfterLast('/').ifBlank { folder.path } }}，不会删除原始音乐文件。") }, confirmButton = { TextButton(colors = readableTextButtonColors(), onClick = { deleting = null; action { api.removeFolder(folder.guid); reload() } }) { Text("移除") } }, dismissButton = { TextButton(colors = readableTextButtonColors(), onClick = { deleting = null }) { Text("取消") } }) }
-}
-
-@Composable
 private fun FolderAccessEditor(value: FolderAccess, folders: List<MusicFolder>, enabled: Boolean, onChange: (FolderAccess) -> Unit) {
     Text("音乐文件夹权限", style = MaterialTheme.typography.titleMedium)
     listOf("all" to "允许访问全部（包含将来新增的文件夹）", "partial" to "仅允许所选文件夹", "none" to "不允许访问").forEach { (mode, label) ->
-        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(value.mode == mode, { onChange(value.copy(mode = mode)) }, enabled = enabled); Text(label) }
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .selectable(value.mode == mode, enabled = enabled, role = Role.RadioButton) { onChange(value.copy(mode = mode)) }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) { RadioButton(value.mode == mode, onClick = null, enabled = enabled); Text(label) }
     }
     if (value.mode == "partial") folders.forEach { folder ->
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(folder.guid in value.guids, { selected -> onChange(value.copy(guids = if (selected) (value.guids + folder.guid).distinct() else value.guids - folder.guid)) }, enabled = enabled)
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .toggleable(folder.guid in value.guids, enabled = enabled, role = Role.Checkbox) { selected ->
+                    onChange(value.copy(guids = if (selected) (value.guids + folder.guid).distinct() else value.guids - folder.guid))
+                }.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Checkbox(folder.guid in value.guids, onCheckedChange = null, enabled = enabled)
             Text(folder.name.ifBlank { folder.path.trimEnd('/').substringAfterLast('/').ifBlank { folder.path } })
         }
     }
@@ -322,4 +253,4 @@ internal fun ServerAdministrationScreen(api: MusicAdministration, onBack: () -> 
     }
 }
 
-private fun formatAdminTime(value: Long): String = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(if (value > 1_000_000_000_000) value else value * 1000))
+internal fun formatAdminTime(value: Long): String = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(if (value > 1_000_000_000_000) value else value * 1000))
