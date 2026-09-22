@@ -2757,6 +2757,12 @@ private fun NowPlayingLyricsScreen(
     val expressiveMotion = remember { MotionScheme.expressive() }
     val controlsVisibility = remember(current.track.id) { Animatable(1f) }
     var controlsShown by remember(current.track.id) { mutableStateOf(true) }
+    var queueDragging by remember(state.playbackSessionId, current.queueEntryId) { mutableStateOf(false) }
+    val queueControlsVisibility by animateFloatAsState(
+        targetValue = if (displayedQueueMode && queueDragging) 0f else 1f,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "queue-drag-controls-visibility",
+    )
     val defaultContentVisibility = remember { Animatable(if (immersiveMode) 0f else 1f) }
     val lyricsHeaderVisibility = remember {
         Animatable(if (splitLayout || immersiveMode) 1f else 0f)
@@ -3040,7 +3046,7 @@ private fun NowPlayingLyricsScreen(
         val lyricsHeaderAlpha = lyricsHeaderVisibility.value.coerceIn(0f, 1f)
         val lyricsListAlpha = lyricsListVisibility.value.coerceIn(0f, 1f)
         val lyricsChromeAlpha = lyricsChromeVisibility.value.coerceIn(0f, 1f)
-        val controlsAlpha = if (splitLayout) 1f else lerpFloat(1f, controlsVisibility.value, p)
+        val controlsAlpha = if (splitLayout) 1f else lerpFloat(1f, controlsVisibility.value, p) * queueControlsVisibility
         val controlsTranslationPx = with(density) { 176.dp.toPx() } * (1f - controlsAlpha)
         var bottomControlsTopPx by remember { mutableFloatStateOf(Float.NaN) }
         var controlsHeight by remember { mutableStateOf(244.dp) }
@@ -3165,7 +3171,7 @@ private fun NowPlayingLyricsScreen(
                 coverViewportModifier = coverViewportModifier,
                 onControlsPositioned = {
                     controlsHeight = with(density) { it.size.height.toDp() }
-                    if (!displayedLyricsMode || controlsAlpha >= 0.995f)
+                    if (controlsAlpha >= 0.995f)
                         bottomControlsTopPx = it.boundsInRoot().top
                 },
                 modifier =
@@ -3178,7 +3184,8 @@ private fun NowPlayingLyricsScreen(
                 adaptiveUtilitiesGap = portraitPhoneLayout,
             )
         val landscapeFooterAlpha =
-            if (landscapeLayout && displayedLyricsMode && !displayedQueueMode) controlsVisibility.value else 1f
+            if (landscapeLayout && displayedQueueMode) queueControlsVisibility
+            else if (landscapeLayout && displayedLyricsMode) controlsVisibility.value else 1f
         Column(
             (if (splitLayout)
                     Modifier.offset(x = safeLeft + geometry.detailStart, y = safeTop + playerTopPadding)
@@ -3267,7 +3274,7 @@ private fun NowPlayingLyricsScreen(
                                 )
                                 .toDp()
                         }
-                val queueBottomPadding =
+                val restingQueueBottomPadding =
                     if (splitLayout) 0.dp
                     else
                         bottomControlsTopPx.takeIf { it.isFinite() }?.let {
@@ -3277,7 +3284,14 @@ private fun NowPlayingLyricsScreen(
                                     .toDp() + 16.dp
                             }
                         }
-                            ?: controlsBottomPadding
+                            ?: (safeBottom + controlsHeight + 20.dp)
+                val queueBottomPadding = if (splitLayout) 0.dp else with(density) {
+                    lerpFloat(
+                        (safeBottom + 16.dp).toPx(),
+                        restingQueueBottomPadding.toPx(),
+                        queueControlsVisibility,
+                    ).toDp()
+                }
                 val headerTapInteractionSource =
                     remember(current.track.id) { MutableInteractionSource() }
                 FollowLyricPosition(
@@ -3438,6 +3452,7 @@ private fun NowPlayingLyricsScreen(
                             topPadding = lyricsHeaderTop,
                             bottomPadding = queueBottomPadding,
                             contentInsets = if (portraitPhoneLayout) portraitInsets else null,
+                            onDraggingChanged = { queueDragging = it },
                             alpha = 1f,
                             onSelect = { index ->
                                 revealControls()
@@ -3601,7 +3616,7 @@ private fun NowPlayingLyricsScreen(
             }
             if (landscapeLayout) {
                 val footerAlpha = landscapeFooterAlpha
-                // Return the footer space to the lyrics as the controls disappear.
+                // Return the footer space to lyrics or an actively reordered queue.
                 Box(
                     Modifier.fillMaxWidth().height(56.dp * footerAlpha).graphicsLayer {
                         alpha = footerAlpha
@@ -4527,6 +4542,7 @@ private fun QueuePlayerContent(
     bottomPadding: Dp,
     alpha: Float,
     contentInsets: PlayerContentInsets? = null,
+    onDraggingChanged: (Boolean) -> Unit,
     onSelect: (Int) -> Unit,
     onSelectHistoryItem: (Int) -> Unit,
     onClearPlaybackHistory: () -> Unit,
@@ -4555,6 +4571,12 @@ private fun QueuePlayerContent(
     val latestState by rememberUpdatedState(state)
     val latestMove by rememberUpdatedState(onMove)
     var revealedKey by remember { mutableStateOf<String?>(null) }
+    val latestDraggingChanged by rememberUpdatedState(onDraggingChanged)
+    DisposableEffect(draggedKey != null) {
+        latestDraggingChanged(draggedKey != null)
+        // Also release the parent when navigation or a session change disposes the list.
+        onDispose { latestDraggingChanged(false) }
+    }
 
     val snapBehavior = rememberQueueSnapBehavior(
         listState = listState,

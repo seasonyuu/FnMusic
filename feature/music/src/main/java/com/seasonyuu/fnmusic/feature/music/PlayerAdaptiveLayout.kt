@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -220,6 +221,14 @@ internal fun PlayerPrimaryPane(
                                 if (geometry.short && immersiveMode) availableHeight * .55f
                                 else availableHeight - minOf(72.dp, availableHeight * .2f)
                         )
+                        // Keep measuring the controls for a stable height budget, but do not
+                        // leave invisible interactive children over the expanded list.
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) {
+                                if (controlsAlpha > 0.01f) placeable.placeRelative(0, 0)
+                            }
+                        }
                         .graphicsLayer {
                             alpha = controlsAlpha
                             translationY = controlsTranslationPx

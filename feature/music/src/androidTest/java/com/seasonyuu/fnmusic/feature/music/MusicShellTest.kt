@@ -1817,6 +1817,113 @@ class MusicShellTest {
     }
 
     @Test
+    fun queueDragExpandsViewportAndRestoresControlsAfterDropAndCancel() {
+        verifyQueueDragViewport("drop")
+    }
+
+    @Test
+    fun queueDragRestoresControlsWhenQueueChanges() {
+        verifyQueueDragViewport("queue-change")
+    }
+
+    @Test
+    fun queueDragRestoresControlsWhenLeavingQueue() {
+        verifyQueueDragViewport("navigation")
+    }
+
+    @Test
+    fun landscapeQueueDragReclaimsFooterSpace() {
+        verifyQueueDragViewport("drop", landscape = true)
+    }
+
+    private fun verifyQueueDragViewport(ending: String, landscape: Boolean = false) {
+        val tracks = (0..18).map {
+            PlayableTrack(Track(TrackId("drag-space-$it"), "拖动空间 $it"), "https://music.invalid/$it")
+        }
+        val player = mutableStateOf(PlayerState(queue = tracks, currentIndex = 0, durationMs = 180_000,
+            playbackStatus = PlaybackStatus.Paused))
+        val moves = mutableListOf<Pair<Int, Int>>()
+        setContent(
+            windowSize = { if (landscape) androidx.compose.ui.unit.DpSize(850.dp, 411.dp)
+                else androidx.compose.ui.unit.DpSize(390.dp, 693.dp) },
+            playerStateProvider = { player.value },
+            onMoveQueueItem = { from, to ->
+                moves += from to to
+                val reordered = player.value.queue.toMutableList()
+                reordered.add(to, reordered.removeAt(from))
+                player.value = player.value.copy(queue = reordered)
+            },
+        )
+        compose.onNodeWithText("拖动空间 0").performClick()
+        compose.onNodeWithTag("player-queue-entry").performClick()
+        compose.waitForIdle()
+        fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val original = bounds("player-queue-list")
+        val utilities = bounds("player-bottom-utilities")
+        compose.mainClock.autoAdvance = false
+        try {
+            val start = compose.onNodeWithContentDescription("长按拖动排序：拖动空间 2")
+                .fetchSemanticsNode().boundsInRoot.center
+            compose.onRoot().performTouchInput { down(start) }
+            compose.mainClock.advanceTimeBy(400)
+            compose.waitForIdle()
+            val expanded = bounds("player-queue-list")
+            assertEquals(original.top, expanded.top, 1f)
+            assertTrue("Dragging must reclaim real viewport height", expanded.bottom > original.bottom + 20f)
+            compose.onNodeWithTag("player-bottom-utilities").assertDoesNotExist()
+            if (!landscape) compose.onNodeWithTag("player-volume-control").assertDoesNotExist()
+            when (ending) {
+                "queue-change" -> {
+                    compose.runOnIdle { player.value = player.value.copy(queue = player.value.queue.dropLast(1)) }
+                    compose.mainClock.advanceTimeBy(400)
+                    compose.waitForIdle()
+                    // The controls recover even before the interrupted pointer is released.
+                    compose.onNodeWithTag("player-bottom-utilities").assertIsDisplayed()
+                    compose.onRoot().performTouchInput { cancel() }
+                }
+                "navigation" -> {
+                    compose.onNodeWithTag("player-queue-header").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
+                    compose.mainClock.advanceTimeBy(1_200)
+                    compose.onRoot().performTouchInput { cancel() }
+                    compose.onNodeWithTag("player-bottom-utilities").assertIsDisplayed()
+                    compose.onNodeWithTag("player-queue-entry").performClick()
+                }
+                else -> {
+                    // Move through the former control area while the viewport grows.
+                    val target = Offset(start.x, minOf(original.bottom + 30f, expanded.bottom - 30f))
+                    for (step in 1..8) {
+                        compose.onRoot().performTouchInput { moveTo(start + (target - start) * (step / 8f), delayMillis = 32) }
+                        compose.mainClock.advanceTimeBy(32)
+                        compose.waitForIdle()
+                    }
+                    compose.onRoot().performTouchInput { up() }
+                }
+            }
+            compose.mainClock.advanceTimeBy(1_200)
+            compose.waitForIdle()
+            compose.onNodeWithTag("player-bottom-utilities").assertIsDisplayed()
+            assertEquals(utilities.bottom, bounds("player-bottom-utilities").bottom, 1f)
+            assertEquals(original.bottom, bounds("player-queue-list").bottom, 1f)
+            if (ending == "drop") {
+                assertTrue("Drop must still dispatch reordering", moves.isNotEmpty())
+                // A subsequent cancellation must also release the hidden-controls state.
+                val handle = compose.onAllNodes(hasContentDescription("长按拖动排序：", substring = true)).fetchSemanticsNodes()
+                    .first { it.boundsInRoot.height > 0f }.boundsInRoot.center
+                compose.onRoot().performTouchInput { down(handle) }
+                compose.mainClock.advanceTimeBy(400)
+                compose.onNodeWithTag("player-bottom-utilities").assertDoesNotExist()
+                compose.onRoot().performTouchInput { cancel() }
+                compose.mainClock.advanceTimeBy(400)
+                compose.waitForIdle()
+                compose.onNodeWithTag("player-bottom-utilities").assertIsDisplayed()
+                assertEquals(original.bottom, bounds("player-queue-list").bottom, 1f)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun draggedQueueRowFollowsPointerAcrossReordering() {
         val tracks = (1..6).map {
             PlayableTrack(Track(TrackId("drag-frame-$it"), "逐帧拖动 $it"), "https://music.invalid/$it")
@@ -1933,6 +2040,7 @@ class MusicShellTest {
             swipe(start = Offset(width * .7f, center.y), end = Offset(width * .2f, center.y), durationMillis = 450)
         }
         compose.waitForIdle()
+        compose.onNodeWithTag("player-bottom-utilities").assertIsDisplayed()
         assertEquals(null, selected)
         compose.onNodeWithContentDescription("从待播队列移除：左滑曲目 1").assertIsDisplayed()
         captureQueueScreenshot("queue-swipe")
@@ -2226,10 +2334,11 @@ class MusicShellTest {
         compose.onNodeWithContentDescription("打开待播队列").performClick()
         compose.waitForIdle()
         val handle = compose.onNodeWithContentDescription("长按拖动排序：边缘拖动 2").fetchSemanticsNode().boundsInRoot
-        val viewport = compose.onNodeWithTag("player-queue-list").fetchSemanticsNode().boundsInRoot
         compose.mainClock.autoAdvance = false
+        compose.onRoot().performTouchInput { down(handle.center) }
+        compose.mainClock.advanceTimeBy(400)
+        val viewport = compose.onNodeWithTag("player-queue-list").fetchSemanticsNode().boundsInRoot
         compose.onRoot().performTouchInput {
-            down(handle.center)
             moveTo(Offset(handle.center.x, viewport.bottom - 12f), delayMillis = 700)
         }
         compose.mainClock.advanceTimeBy(2400)
