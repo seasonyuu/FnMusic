@@ -2409,7 +2409,7 @@ class MusicShellTest {
         compose.onNodeWithText("测试曲目").performClick()
         val largeCover = compose.onNodeWithTag("player-morph-cover").fetchSemanticsNode().boundsInRoot
         val defaultProgress = compose.onNodeWithTag("player-playback-progress").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithTag("player-center-entry-placeholder").assertIsDisplayed()
+        compose.onNodeWithTag("player-airplay").assertIsDisplayed()
         compose.onNodeWithTag("player-queue-entry").assertIsDisplayed()
 
         compose.onNodeWithTag("player-lyrics-entry").performClick()
@@ -4226,6 +4226,7 @@ private fun MusicTestWindow(
                     constraints.maxHeight / size.height.value,
                 )
         androidx.compose.runtime.CompositionLocalProvider(
+            LocalPlaybackOutput provides androidx.compose.runtime.remember { object : com.seasonyuu.fnmusic.core.model.PlaybackOutputController {} },
             androidx.compose.ui.platform.LocalDensity provides
                 androidx.compose.ui.unit.Density(fitDensity, fontScale),
         ) {

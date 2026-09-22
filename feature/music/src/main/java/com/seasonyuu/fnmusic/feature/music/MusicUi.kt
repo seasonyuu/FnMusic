@@ -1,4 +1,5 @@
 package com.seasonyuu.fnmusic.feature.music
+import androidx.compose.runtime.collectAsState
 
 import androidx.compose.ui.graphics.asImageBitmap
 
@@ -3896,6 +3897,9 @@ private fun PlayerPlaybackControls(
     onLyricsClick: () -> Unit,
     onQueueClick: () -> Unit,
 ) {
+    val outputController = LocalPlaybackOutput.current
+    val outputState = outputController?.outputState?.collectAsState()?.value
+    val remoteOutput = outputState?.output is com.seasonyuu.fnmusic.core.model.PlaybackOutput.AirPlay
     val volumeExpansion = playerSliderExpansion(volumeInteraction, maximumVolume > minimumVolume)
     val volumeMotion = rememberPlayerSliderMotion()
     val startOnLeft = LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Ltr
@@ -3970,10 +3974,10 @@ private fun PlayerPlaybackControls(
                         .testTag("player-volume-low-icon"),
                 )
                 PlayerSlider(
-                    value = systemVolume,
-                    onValueChange = onVolumeChange,
-                    valueRange = minimumVolume.toFloat()..maximumVolume.toFloat(),
-                    steps = (maximumVolume - minimumVolume - 1).coerceAtLeast(0),
+                    value = if (remoteOutput) outputState!!.volume else systemVolume,
+                    onValueChange = { if (remoteOutput) outputController?.setOutputVolume(it) else onVolumeChange(it) },
+                    valueRange = if (remoteOutput) 0f..100f else minimumVolume.toFloat()..maximumVolume.toFloat(),
+                    steps = if (remoteOutput) 0 else (maximumVolume - minimumVolume - 1).coerceAtLeast(0),
                     enabled = maximumVolume > minimumVolume,
                     modifier = Modifier.weight(1f).testTag("player-volume-slider")
                         .semantics { contentDescription = "媒体音量" },
@@ -4035,7 +4039,9 @@ private fun PlayerPageControls(
                 )
             }
         }
-        Spacer(Modifier.weight(1f).height(48.dp).testTag("player-center-entry-placeholder"))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            AirPlayOutputEntry(state.current)
+        }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             PlayerQueueOrRoamEntry(
                 isRoaming = state.isRoaming,

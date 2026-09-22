@@ -326,7 +326,7 @@ fun MiniPlayer(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        current.track.artists.joinToString(" / ") { it.name },
+                        state.outputDeviceName?.let { "AirPlay · $it" } ?: current.track.artists.joinToString(" / ") { it.name },
                         style = MaterialTheme.typography.bodySmall,
                         color = FnTextSecondary,
                         maxLines = 1,

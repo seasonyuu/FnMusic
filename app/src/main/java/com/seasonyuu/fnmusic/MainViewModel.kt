@@ -54,6 +54,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
     val loginForm = graph.session.loginForm
 
     fun updateLoginForm(form: com.seasonyuu.fnmusic.core.model.LoginForm) = graph.session.updateLoginForm(form)
+    val outputController: com.seasonyuu.fnmusic.core.model.PlaybackOutputController = graph.player
     val player: StateFlow<PlayerState> = graph.player.state
     private val mutableMusic = kotlinx.coroutines.flow.MutableStateFlow(MusicUiState())
     val music: StateFlow<MusicUiState> = mutableMusic

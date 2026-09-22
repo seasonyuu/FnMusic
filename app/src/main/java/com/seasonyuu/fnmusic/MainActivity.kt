@@ -45,6 +45,19 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
+            var permissionResult by androidx.compose.runtime.remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+            val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+                permissionResult?.invoke(granted); permissionResult = null
+            }
+            val requestNetwork: ((Boolean) -> Unit) -> Unit = { callback ->
+                if (android.os.Build.VERSION.SDK_INT < 37 || checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) == android.content.pm.PackageManager.PERMISSION_GRANTED) callback(true)
+                else { permissionResult = callback; permissionLauncher.launch(android.Manifest.permission.ACCESS_LOCAL_NETWORK) }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.seasonyuu.fnmusic.feature.music.LocalPlaybackOutput provides viewModel.outputController,
+                com.seasonyuu.fnmusic.feature.music.LocalNetworkPermissionRequest provides requestNetwork,
+            ) {
             FnMusicTheme(darkTheme = dark, accent = androidx.compose.ui.graphics.Color(music.themeColor.argb)) {
                 val player by viewModel.player.collectAsState()
                 if (session is SessionState.Ready) {
@@ -111,8 +124,14 @@ class MainActivity : ComponentActivity() {
                     )
                 } else {
                     val loginForm by viewModel.loginForm.collectAsState()
-                    ConnectionScreen(session, viewModel::connect, loginForm, viewModel::updateLoginForm)
+                    ConnectionScreen(session, { profile, password ->
+                        requestNetwork { granted -> if (granted) viewModel.connect(profile, password) else {
+                            password.fill('\u0000')
+                            android.widget.Toast.makeText(this@MainActivity, "需要本地网络权限才能连接局域网 NAS，请重新连接并授权", android.widget.Toast.LENGTH_LONG).show()
+                        } }
+                    }, loginForm, viewModel::updateLoginForm)
                 }
+            }
             }
         }
     }
