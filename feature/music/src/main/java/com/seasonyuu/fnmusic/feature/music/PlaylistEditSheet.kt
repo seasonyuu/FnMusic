@@ -1,5 +1,7 @@
 package com.seasonyuu.fnmusic.feature.music
 
+import androidx.compose.ui.draw.alpha
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -253,9 +255,10 @@ private fun PlaylistEditContent(
                 Icon(if (track.id in draft.selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
                     null, Modifier.size(32.dp).padding(4.dp), tint = if (track.id in draft.selected) FnAccentIcon else FnTextSecondary)
                 Spacer(Modifier.width(10.dp))
-                CoverImage(coverUrl(track.coverId, 120), null, Modifier.size(44.dp))
+                CoverImage(coverUrl(track.coverId, 120), null, Modifier.size(44.dp).alpha(if (track.isAvailable) 1f else .4f))
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.title, color = if (track.isAvailable) FnTextPrimary else FnTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!track.isAvailable) Text(track.unavailableLabel, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
                     Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary,
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

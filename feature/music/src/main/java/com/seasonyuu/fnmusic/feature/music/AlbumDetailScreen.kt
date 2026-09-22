@@ -6,6 +6,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -375,13 +376,15 @@ internal fun PlaylistDetailScreen(
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = horizontal - 8.dp)
                             .clip(RoundedCornerShape(12.dp)).heightIn(min = 56.dp)
-                            .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("playlist-track-$index").padding(horizontal = 8.dp),
+                            .clickable(enabled = enabled && track.isAvailable) {
+                                onPlay(tracks.filter { it.isAvailable }, tracks.take(index).count { it.isAvailable })
+                            }.testTag("playlist-track-$index").padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.padding(vertical = 6.dp).size(44.dp).clip(RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
                             CoverImage(coverUrl(track.coverId, 120), null,
-                                Modifier.fillMaxSize().testTag("playlist-track-cover-$index"))
-                            if (playerState.current?.track?.id == track.id) {
+                                Modifier.fillMaxSize().alpha(if (track.isAvailable) 1f else .4f).testTag("playlist-track-cover-$index"))
+                            if (track.isAvailable && playerState.current?.track?.id == track.id) {
                                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .4f)), contentAlignment = Alignment.Center) {
                                     AlbumPlayingIndicator(playerState.isPlaying)
                                 }
@@ -389,9 +392,13 @@ internal fun PlaylistDetailScreen(
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                            Text(track.title, color = Color.White, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(track.title, color = Color.White.copy(alpha = if (track.isAvailable) 1f else .45f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (!track.isAvailable) Text(
+                                track.unavailableLabel,
+                                color = Color.White.copy(alpha = .65f), fontSize = 13.sp,
+                            )
                             track.artists.joinToString(" / ") { it.name }.takeIf { it.isNotBlank() }?.let { artists ->
-                                Text(artists, color = Color.White.copy(alpha = .7f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(artists, color = Color.White.copy(alpha = if (track.isAvailable) .7f else .4f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         TrackMoreMenu(track, sourcePlaylist = playlist.id, backdrop = backdrop, enabled = enabled,
@@ -426,6 +433,7 @@ internal fun PlaylistDetailScreen(
 
 @Composable
 private fun PlaylistHeading(playlist: Playlist, tracks: List<Track>, onPlay: (List<Track>, Int) -> Unit) {
+    val playableTracks = tracks.filter { it.isAvailable }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(playlist.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(6.dp))
@@ -434,7 +442,7 @@ private fun PlaylistHeading(playlist: Playlist, tracks: List<Track>, onPlay: (Li
         Text(listOfNotNull(playlist.trackCount?.let { "$it 首歌曲" }, albumDurationLabel(tracks)).joinToString(" · "), color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
         Spacer(Modifier.height(18.dp))
         Button(
-            onClick = { onPlay(tracks, 0) }, enabled = tracks.isNotEmpty(),
+            onClick = { onPlay(playableTracks, 0) }, enabled = playableTracks.isNotEmpty(),
             modifier = Modifier.width(160.dp).heightIn(min = 48.dp).testTag("playlist-play"),
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF332A27)),

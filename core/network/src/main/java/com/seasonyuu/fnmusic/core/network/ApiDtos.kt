@@ -98,6 +98,7 @@ data class TrackDto(
     val discNo: Int? = null,
     val createdAt: Long? = null,
     val genres: List<Genre> = emptyList(),
+    val accessStatus: Int? = null,
 ) {
     fun toDomain(favoriteOverride: Boolean? = null) = Track(
         id = TrackId(guid),
@@ -113,6 +114,7 @@ data class TrackDto(
         discNo = discNo,
         createdAt = createdAt,
         genres = genres,
+        accessStatus = accessStatus,
     )
 }
 

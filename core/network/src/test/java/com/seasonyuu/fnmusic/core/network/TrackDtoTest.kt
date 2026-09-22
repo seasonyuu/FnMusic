@@ -4,6 +4,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TrackDtoTest {
+    @Test fun `access status survives parsing and cached domain round trip`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        for (status in listOf(null, 0, 1, 2, 3, 4, 99)) {
+            val field = status?.let { ",\"accessStatus\":$it" }.orEmpty()
+            val track = json.decodeFromString<TrackDto>("""{"guid":"song","title":"Song"$field}""").toDomain()
+            assertEquals(status, track.accessStatus)
+            assertEquals(status == null || status == 0, track.isAvailable)
+            val restored = json.decodeFromString<com.seasonyuu.fnmusic.core.model.Track>(
+                json.encodeToString(com.seasonyuu.fnmusic.core.model.Track.serializer(), track))
+            assertEquals(track, restored)
+        }
+        assertEquals(true, json.decodeFromString<TrackDto>("""{"guid":"song","accessStatus":null}""").toDomain().isAvailable)
+    }
+
     @Test
     fun `metadata preserves file details and editable tags`() {
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

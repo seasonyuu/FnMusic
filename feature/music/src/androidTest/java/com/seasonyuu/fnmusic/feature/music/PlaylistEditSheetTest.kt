@@ -272,6 +272,51 @@ class PlaylistEditSheetTest {
         }
     }
 
+    @Test fun unavailablePlaylistTracksStayVisibleAndCanBeRemovedButNeverPlayed() {
+        val tracks = listOf(songs[0].copy(accessStatus = 1), songs[1], songs[2].copy(accessStatus = 2), songs[1])
+        var plays = 0
+        var selectedIndex = -1
+        var removed = 0
+        compose.setContent {
+            FnMusicTheme { LiquidMenuHost {
+                CompositionLocalProvider(LocalTrackMenuActions provides { _, _ -> listOf(
+                    TrackMenuAction(LiquidMenuItem("next", "下一首播放"), invoke = { error("Unavailable track played") }),
+                    TrackMenuAction(LiquidMenuItem("remove-playlist", "从歌单移除"), invoke = { removed++ }),
+                ) }) {
+                    PlaylistDetailScreen(playlist, MusicUiState(detailTracks = tracks), PlayerState(), { _, _ -> null },
+                        { queue, selected -> assertEquals(listOf(songs[1], songs[1]), queue); selectedIndex = selected; plays++ }, {}, {}, {}, {})
+                }
+            } }
+        }
+        compose.onNodeWithTag("playlist-play").performClick()
+        assertEquals(0, selectedIndex)
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("playlist-track-0"))
+        compose.onNodeWithTag("playlist-track-0").assertIsNotEnabled().assertTextContains("已失效 · 文件不存在").performClick()
+        assertEquals(1, plays)
+        compose.onNodeWithTag("playlist-track-0").onChildren().filter(hasClickAction()).onLast().performClick()
+        compose.onNodeWithText("下一首播放").assertIsNotEnabled()
+        compose.onNodeWithText("从歌单移除").assertIsEnabled().performClick()
+        assertEquals(1, removed)
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("playlist-track-2"))
+        compose.onNodeWithTag("playlist-track-2").assertTextContains("不可用 · 无访问权限").assertIsNotEnabled()
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("playlist-track-3"))
+        compose.onNodeWithTag("playlist-track-3").performClick()
+        assertEquals(1, selectedIndex)
+        assertEquals(2, plays)
+    }
+
+    @Test fun playlistWithOnlyUnavailableTracksDisablesPlay() {
+        compose.setContent {
+            FnMusicTheme { LiquidMenuHost {
+                PlaylistDetailScreen(playlist, MusicUiState(detailTracks = listOf(songs[0].copy(accessStatus = 99))),
+                    PlayerState(), { _, _ -> null }, { _, _ -> error("No playable tracks") }, {}, {}, {}, {})
+            } }
+        }
+        compose.onNodeWithTag("playlist-play").assertIsNotEnabled().performClick()
+        compose.onNodeWithTag("library-detail-list").performScrollToNode(hasTestTag("playlist-track-0"))
+        compose.onNodeWithTag("playlist-track-0").assertTextContains("歌曲暂不可用").assertIsNotEnabled()
+    }
+
     @Test fun playlistPlaybackUsesDisplayedLocalOrder() {
         val ordered = PlaylistOrder(true, songs.playlistKeys().reversed()).apply(songs)
         var index = -1

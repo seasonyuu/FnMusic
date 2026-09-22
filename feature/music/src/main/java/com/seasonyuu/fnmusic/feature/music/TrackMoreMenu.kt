@@ -57,8 +57,11 @@ internal fun TrackMoreMenu(
     androidx.compose.runtime.key(track.id, sourcePlaylist, generation) {
         var expanded by remember { mutableStateOf(false) }
         val availableActions = LocalTrackMenuActions.current(track, sourcePlaylist)
-        val actions = actionIds?.mapNotNull { id -> availableActions.firstOrNull { it.item.id == id } }
-            ?: availableActions
+        val actions = (actionIds?.mapNotNull { id -> availableActions.firstOrNull { it.item.id == id } }
+            ?: availableActions).map { action ->
+            if (track.isAvailable || action.item.id == "remove-playlist") action
+            else action.copy(item = action.item.copy(enabled = false))
+        }
         val notify = rememberUpdatedState(onOpenChange)
         LaunchedEffect(enabled) {
             if (!enabled && expanded) {

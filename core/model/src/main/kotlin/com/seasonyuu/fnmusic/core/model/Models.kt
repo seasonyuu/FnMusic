@@ -124,7 +124,11 @@ data class Track(
     val discNo: Int? = null,
     val createdAt: Long? = null,
     val genres: List<Genre> = emptyList(),
-)
+    val accessStatus: Int? = null,
+) {
+    // Older servers/cached tracks omit this field; only an explicit nonzero status blocks playback.
+    val isAvailable: Boolean get() = accessStatus == null || accessStatus == 0
+}
 
 @Serializable
 data class Playlist(
