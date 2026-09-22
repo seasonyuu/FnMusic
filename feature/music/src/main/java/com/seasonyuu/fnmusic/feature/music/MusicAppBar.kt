@@ -92,9 +92,9 @@ internal fun MusicAppBar(
             val reserve = maxOf(left.width, right.width) + 8.dp.roundToPx()
             val title = measurables[2].measure(loose.copy(maxWidth = (constraints.maxWidth - reserve * 2).coerceAtLeast(0)))
             layout(constraints.maxWidth, constraints.maxHeight) {
-                left.placeRelative(0, (contentHeight - left.height) / 2)
-                right.placeRelative(constraints.maxWidth - right.width, (contentHeight - right.height) / 2)
-                title.placeRelative((constraints.maxWidth - title.width) / 2, (contentHeight - title.height) / 2)
+                left.placeRelative(0, (constraints.maxHeight - left.height) / 2)
+                right.placeRelative(constraints.maxWidth - right.width, (constraints.maxHeight - right.height) / 2)
+                title.placeRelative((constraints.maxWidth - title.width) / 2, (constraints.maxHeight - title.height) / 2)
             }
         }
     }
@@ -121,6 +121,7 @@ internal fun AppBarButton(
 internal fun AppBarMenu(
     items: List<LiquidMenuEntry>,
     onSelect: (String) -> Unit,
+    showBackground: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -132,7 +133,15 @@ internal fun AppBarMenu(
         backdrop = backdrop,
         items = items,
         onSelect = onSelect,
-        transition = LiquidMenuTransition.Attached,
-        trigger = { toggle -> AppBarButton(toggle, menuAnchor = this, content = content) },
+        transition = if (showBackground) LiquidMenuTransition.Attached else LiquidMenuTransition.Transient,
+        trigger = { toggle ->
+            if (showBackground) {
+                AppBarButton(toggle, menuAnchor = this, content = content)
+            } else {
+                IconButton(onClick = toggle, modifier = Modifier.size(48.dp).then(surfaceModifier())) {
+                    Row(Modifier.then(foregroundModifier), verticalAlignment = Alignment.CenterVertically, content = content)
+                }
+            }
+        },
     )
 }

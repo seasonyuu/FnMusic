@@ -1,7 +1,7 @@
 /*
  * Adapted from Kyant0's AndroidLiquidGlass catalog LiquidToggle (Apache-2.0):
  * https://github.com/Kyant0/AndroidLiquidGlass/blob/kmp/app/src/commonMain/kotlin/com/kyant/backdrop/catalog/components/LiquidToggle.kt
- * Changes: standard toggle/drag semantics, app accent, global glass fallback, and minimum touch target.
+ * Changes: standard toggle/drag semantics, app accent, global glass fallback, minimum touch target, and track-only capture.
  * License: res/raw/android_liquid_glass_license.txt
  */
 package com.seasonyuu.fnmusic.core.designsystem
@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.rememberBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -52,7 +51,6 @@ fun LiquidToggle(
 ) {
     val accent = FnAccent
     val glass = currentLiquidGlassMaterial()
-    val backdrop = LocalFnBackdrop.current
     val trackBackdrop = rememberLayerBackdrop()
     val scope = rememberCoroutineScope()
     val currentChecked by rememberUpdatedState(checked)
@@ -129,7 +127,10 @@ fun LiquidToggle(
                             ) { drawBackdrop() }
                         }
                         Modifier.drawBackdrop(
-                            backdrop = if (backdrop != null) rememberCombinedBackdrop(backdrop, thumbBackdrop) else thumbBackdrop,
+                            // The ambient scene may capture this entire control. Sampling it
+                            // here would make its RenderNode contain itself and crash HWUI.
+                            // Only the sibling track is safe to sample, as in LiquidSlider.
+                            backdrop = thumbBackdrop,
                             shape = { Capsule() },
                             effects = {
                                 val progress = motion.pressProgress

@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.seasonyuu.fnmusic.core.designsystem.LiquidToggle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
@@ -33,7 +34,7 @@ internal fun CacheSettingsScreen(value: PlaybackCachePreference, usage: Pair<Lon
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("自动缓存播放中的歌曲", Modifier.weight(1f))
-            Switch(value.enabled, { perform { onChange(value.copy(enabled = it)) } }, enabled = !busy)
+            LiquidToggle(value.enabled, { perform { onChange(value.copy(enabled = it)) } }, enabled = !busy)
         }
         Text("关闭后仍可读取已有缓存。缓存用于临时播放，不是永久下载。")
         Text("缓存容量上限", style = MaterialTheme.typography.titleMedium)

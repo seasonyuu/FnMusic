@@ -29,6 +29,10 @@ and do not modify NAS settings. The appearance menu contains two inline illustra
 and Liquid Glass. Color swatches have no ripple and do not navigate; old direct Liquid Glass navigation restores with an
 appearance parent inserted. Previously saved display mode and theme color subpages restore to appearance. Existing system-mode preferences remain active until an explicit light/dark selection is made.
 
+Filled accent buttons use a light foreground in dark mode (`onPrimary`,
+`onSecondary`, and `onTertiary`). Light mode retains the accent contrast calculation;
+text-only buttons continue using the readable surface foreground.
+
 Source SHA-256 checksums:
 
 - Catalog JS: `a9948819a1e0868c3cb0c3d05a94255dfe608eb6dd8837cb72d327e091c7e5a4`

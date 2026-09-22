@@ -57,10 +57,10 @@ fun FnMusicTheme(darkTheme: Boolean = true, accent: Color = FnAccent, content: @
     CompositionLocalProvider(LocalFnPalette provides palette, LocalFnAccent provides accent, LocalContentColor provides palette.primary) {
         MaterialTheme(
             colorScheme = base.copy(
-                primary = accent, onPrimary = contrastingForeground(accent),
+                primary = accent, onPrimary = if (darkTheme) Color.White else contrastingForeground(accent),
                 primaryContainer = accent.copy(alpha = .14f).compositeOver(palette.surface), onPrimaryContainer = palette.primary,
-                secondary = accent, onSecondary = contrastingForeground(accent),
-                tertiary = accent, onTertiary = contrastingForeground(accent),
+                secondary = accent, onSecondary = if (darkTheme) Color.White else contrastingForeground(accent),
+                tertiary = accent, onTertiary = if (darkTheme) Color.White else contrastingForeground(accent),
                 secondaryContainer = accent.copy(alpha = .14f).compositeOver(palette.surface), onSecondaryContainer = palette.primary,
                 tertiaryContainer = accent.copy(alpha = .14f).compositeOver(palette.surface), onTertiaryContainer = palette.primary,
                 background = palette.surface, onBackground = palette.primary,

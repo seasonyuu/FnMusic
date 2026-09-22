@@ -21,7 +21,7 @@ import org.junit.Test
 class MusicAppBarTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun toolbarReservesTenDpBelowTopAlignedControls() {
+    @Test fun toolbarCentersControlsWithSafeVisualMargins() {
         compose.setContent {
             FnMusicTheme {
                 MusicAppBar("标题", modifier = Modifier.testTag("toolbar"), onBack = {})
@@ -32,7 +32,7 @@ class MusicAppBarTest {
         val bar = compose.onNodeWithTag("toolbar").fetchSemanticsNode().boundsInRoot
         val button = compose.onNodeWithContentDescription("返回").fetchSemanticsNode().boundsInRoot
         val title = compose.onNodeWithText("标题").fetchSemanticsNode().boundsInRoot
-        assertEquals(bar.top, button.top, 1f)
+        assertEquals(bar.top + 5f * compose.density.density, button.top, 1f)
         assertEquals(button.center.y, title.center.y, 1f)
     }
 
