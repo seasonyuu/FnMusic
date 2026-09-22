@@ -40,6 +40,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
 import androidx.compose.foundation.gestures.DraggableAnchors
@@ -60,6 +62,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -175,6 +178,7 @@ import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -1149,7 +1153,7 @@ private fun HomeScreen(
                 item { FlowFeatureCard("最近添加", FlowingLightStyle.RecentlyAdded, FnIcons.Library, onRecentlyAdded) }
             }
           }
-        item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("最近添加", onRecentlyAdded) } }
+        item { Box(Modifier.padding(horizontal = 8.dp)) { SectionTitle("最近添加", onRecentlyAdded) } }
         item {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val cardWidth = if (maxWidth < 420.dp) maxWidth - 48.dp else 340.dp
@@ -1165,13 +1169,13 @@ private fun HomeScreen(
                 }
             }
         }
-        item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("专辑", onAlbums) } }
+        item { Box(Modifier.padding(horizontal = 8.dp)) { SectionTitle("专辑", onAlbums) } }
         item {
             HomeSectionContent(state, CatalogSection.Albums, state.albums.isNotEmpty(), onRefresh) {
                 AlbumRow(state.albums, coverUrl, onAlbum)
             }
         }
-        item { Box(Modifier.padding(horizontal = 20.dp)) { SectionTitle("歌单", onPlaylists) } }
+        item { Box(Modifier.padding(horizontal = 8.dp)) { SectionTitle("歌单", onPlaylists) } }
         item {
             HomeSectionContent(state, CatalogSection.Playlists, state.playlists.isNotEmpty(), onRefresh) {
                 PlaylistRow(state.playlists, coverUrl, onPlaylist)
@@ -1249,6 +1253,7 @@ private fun RecentTracksGrid(
 @Composable
 private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
+    val interactions = remember { MutableInteractionSource() }
     // The Web card clips only its base/mask layer. Its cover-and-vinyl stack is
     // a sibling layer so it can protrude above the rounded card boundary.
     Box(Modifier.width(260.dp).height(140.dp)) {
@@ -1258,7 +1263,7 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .height(132.dp)
                 .semantics { contentDescription = "随机漫游" }
-                .clickable(enabled = !loading, onClick = onClick),
+                .clickable(interactionSource = interactions, indication = null, enabled = !loading, onClick = onClick),
         ) {
             Box(
                 Modifier
@@ -1332,6 +1337,8 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // Clip only the feedback layer so the raised artwork and shadow stay intact.
+            Box(Modifier.matchParentSize().clip(shape).indication(interactions, LocalIndication.current))
             if (loading) {
                 androidx.compose.material3.CircularProgressIndicator(
                     modifier = Modifier
@@ -1391,7 +1398,11 @@ private fun FlowFeatureCard(
 @Composable
 private fun SectionTitle(title: String, onClick: (() -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)).padding(vertical = 4.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -1598,6 +1609,32 @@ private fun AlbumRow(albums: List<Album>, coverUrl: (String?, Int) -> String?, o
     }
 }
 
+/** The whole item is interactive, but only its artwork draws press/focus feedback. */
+@Composable
+private fun CollectionCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    artwork: @Composable (MutableInteractionSource) -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val interactions = remember { MutableInteractionSource() }
+    Column(
+        modifier.clickable(interactionSource = interactions, indication = null, onClick = onClick)
+            .padding(bottom = 8.dp),
+        horizontalAlignment = horizontalAlignment,
+    ) {
+        artwork(interactions)
+        content()
+    }
+}
+
+private fun Modifier.coverFeedback(interactions: MutableInteractionSource, radius: Dp = 8.dp): Modifier =
+    clip(RoundedCornerShape(radius))
+        // Center the ripple: presses on labels use coordinates outside the artwork.
+        // The explicit clip keeps the unbounded indication inside the visible cover.
+        .indication(interactions, ripple(bounded = false))
+
 /** The parent chooses the card width; artwork always keeps its square album format. */
 @Composable
 private fun AlbumCard(
@@ -1606,21 +1643,23 @@ private fun AlbumCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.clickable(onClick = onClick)) {
+    CollectionCard(onClick = onClick, modifier = modifier, artwork = { interactions ->
         CoverImage(
             coverUrl(album.coverId, 640), album.name,
-            Modifier.fillMaxWidth().aspectRatio(1f),
+            Modifier.fillMaxWidth().aspectRatio(1f).coverFeedback(interactions),
         )
+    }) {
         Text(
             album.name,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
         )
         Text(
             album.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" },
             color = FnTextSecondary,
             style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 8.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1642,18 +1681,20 @@ private fun PlaylistRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(playlists, key = { it.id.value }) { playlist ->
-            Column(Modifier.width(142.dp).clickable { onPlaylist(playlist) }) {
-                PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.size(142.dp))
+            CollectionCard(onClick = { onPlaylist(playlist) }, modifier = Modifier.width(142.dp), artwork = { interactions ->
+                PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.size(142.dp), interactionSource = interactions)
+            }) {
                 Text(
                     playlist.name,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
                 )
                 Text(
                     playlist.trackCount.countLabel(),
                     color = FnTextSecondary,
                     style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     maxLines = 1,
                 )
             }
@@ -1829,10 +1870,15 @@ private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String
             }
             items(count = artists.itemCount, key = artists.itemKey { it.id.value }) { index ->
                 artists[index]?.let { artist ->
-                    Column(Modifier.clickable { onArtist(artist) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                        CoverImage(coverUrl(artist.coverId, 640), artist.name, Modifier.size(142.dp))
-                        Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                        Text("${artist.trackCount} 首歌曲", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
+                    CollectionCard(
+                        onClick = { onArtist(artist) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        artwork = { interactions ->
+                            CoverImage(coverUrl(artist.coverId, 640), artist.name, Modifier.size(142.dp).coverFeedback(interactions))
+                        },
+                    ) {
+                        Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
+                        Text("${artist.trackCount} 首歌曲", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
                     }
                 }
             }
@@ -1870,10 +1916,11 @@ private fun PlaylistGridScreen(
                 }
             }
             items(playlists, key = { it.id.value }) { playlist ->
-                Column(Modifier.clickable { onPlaylist(playlist) }) {
-                    PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.fillMaxWidth().height(142.dp))
-                    Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-                    Text(playlist.trackCount.countLabel(), color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
+                CollectionCard(onClick = { onPlaylist(playlist) }, artwork = { interactions ->
+                    PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.fillMaxWidth().height(142.dp), interactionSource = interactions)
+                }) {
+                    Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
+                    Text(playlist.trackCount.countLabel(), color = FnTextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
                 }
             }
         }
@@ -1887,13 +1934,16 @@ internal fun PlaylistCoverImage(
     title: String,
     modifier: Modifier,
     onBitmapLoaded: ((Bitmap) -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val defaultIndex = coverId
         ?.takeIf { it.startsWith("playlist_default_") }
         ?.substringAfterLast('_')
         ?.toIntOrNull()
+    val artworkModifier = if (interactionSource == null) modifier else
+        modifier.coverFeedback(interactionSource, if (defaultIndex == null) 8.dp else 12.dp)
     if (defaultIndex == null) {
-        CoverImage(coverUrl(coverId, 640), title, modifier, onBitmapLoaded = onBitmapLoaded)
+        CoverImage(coverUrl(coverId, 640), title, artworkModifier, onBitmapLoaded = onBitmapLoaded)
         return
     }
     val context = LocalContext.current
@@ -1904,7 +1954,7 @@ internal fun PlaylistCoverImage(
     LaunchedEffect(bitmap, onBitmapLoaded != null) { onLoaded?.invoke(bitmap) }
     androidx.compose.foundation.Image(
         bitmap = bitmap.asImageBitmap(), contentDescription = title,
-        modifier = modifier.clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop,
+        modifier = artworkModifier.clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop,
     )
 }
 
@@ -2030,9 +2080,11 @@ private fun PlaylistPickerSheet(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
+                                    .padding(horizontal = 12.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                                     .semantics { contentDescription = "添加到歌单：${playlist.name}" }
                                     .clickable(enabled = !disabled) { onSelect(playlist) }
-                                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
@@ -2058,7 +2110,8 @@ private fun PlaylistPickerSheet(
 @Composable
 private fun ActionSheetRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {

@@ -239,8 +239,9 @@ internal fun AlbumDetailScreen(
                             }
                         }
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = horizontal).heightIn(min = 56.dp)
-                                .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("album-track-$index"),
+                            Modifier.fillMaxWidth().padding(horizontal = horizontal - 8.dp)
+                                .clip(RoundedCornerShape(12.dp)).heightIn(min = 56.dp)
+                                .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("album-track-$index").padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.width(30.dp), contentAlignment = Alignment.CenterStart) {
@@ -372,8 +373,9 @@ internal fun PlaylistDetailScreen(
                         }
                     }
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = horizontal).heightIn(min = 56.dp)
-                            .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("playlist-track-$index"),
+                        Modifier.fillMaxWidth().padding(horizontal = horizontal - 8.dp)
+                            .clip(RoundedCornerShape(12.dp)).heightIn(min = 56.dp)
+                            .clickable(enabled = enabled) { onPlay(tracks, index) }.testTag("playlist-track-$index").padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.padding(vertical = 6.dp).size(44.dp).clip(RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {

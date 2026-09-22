@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -243,10 +244,11 @@ private fun PlaylistEditContent(
                     if (isDragging) listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key.rowKey() }?.let {
                         translationY = dragCenter - (it.offset + it.size / 2f)
                     }
-                }.background(if (isDragging) FnCard else Color.Transparent)
+                }.padding(horizontal = 8.dp).clip(RoundedCornerShape(12.dp))
+                .background(if (isDragging) FnCard else Color.Transparent)
                 .clickable(enabled = editable) { update(draft.select(track.id)) }
                 .semantics { selected = track.id in draft.selected }
-                .testTag("playlist-edit-track-$index").padding(start = 16.dp, end = 8.dp).heightIn(min = 72.dp),
+                .testTag("playlist-edit-track-$index").padding(start = 8.dp).heightIn(min = 72.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (track.id in draft.selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
                     null, Modifier.size(32.dp).padding(4.dp), tint = if (track.id in draft.selected) FnAccentIcon else FnTextSecondary)
@@ -347,7 +349,7 @@ private fun PlaylistCoverPagerContent(
             ) { page ->
                 val choice = pages[page]
                 val label = choice.label
-                Box(Modifier.size(cardSize).testTag("playlist-cover-page-$page")
+                Box(Modifier.size(cardSize).clip(RoundedCornerShape(if (page == 0) 12.dp else 8.dp)).testTag("playlist-cover-page-$page")
                     .clickable(enabled = editable) {
                         if (page == 0) choosePhoto()
                         else scope.launch { pager.animateScrollToPage(page) }
@@ -390,7 +392,7 @@ private fun PlaylistCoverPagerContent(
         }
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
             repeat(pager.pageCount) { page ->
-                Box(Modifier.size(40.dp).testTag("playlist-cover-indicator").clickable(enabled = editable) { scope.launch { pager.animateScrollToPage(page) } }
+                Box(Modifier.size(48.dp).clip(CircleShape).testTag("playlist-cover-indicator").clickable(enabled = editable) { scope.launch { pager.animateScrollToPage(page) } }
                     .semantics { contentDescription = pages[page].label + "页"; selected = pager.settledPage == page },
                     contentAlignment = Alignment.Center) {
                     Box(Modifier.size(if (pager.settledPage == page) 7.dp else 5.dp)

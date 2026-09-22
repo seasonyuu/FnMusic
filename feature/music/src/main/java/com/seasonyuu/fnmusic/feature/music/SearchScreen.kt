@@ -457,9 +457,9 @@ private fun SearchResultRow(
     }
     Column(modifier) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 76.dp).testTag("search-row-${item.searchKey()}")
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(RoundedCornerShape(12.dp)).heightIn(min = 76.dp).testTag("search-row-${item.searchKey()}")
                 .clickable(onClickLabel = if (item is SearchItem.TrackItem) "播放$title" else "打开$title", onClick = onClick)
-                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val shape = if (item is SearchItem.ArtistItem) CircleShape else RoundedCornerShape(6.dp)

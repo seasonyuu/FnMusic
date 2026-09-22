@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -137,7 +135,7 @@ internal fun OpenSourceLibrariesScreen(actions: AboutActions, onLibrary: (String
                     item { Text("感谢这些开源项目 · ${libraries.size} 项", color = FnTextSecondary, style = MaterialTheme.typography.bodySmall) }
                     if (libraries.isEmpty()) item { Text("暂无开源库资料") }
                     items(libraries, key = { it.id }) { library ->
-                        SettingsCard(Modifier.clickable(role = Role.Button) { onLibrary(library.id) }) {
+                        SettingsCard(onClick = { onLibrary(library.id) }) {
                             Text(library.name, style = MaterialTheme.typography.titleMedium)
                             if (library.version.isNotBlank()) Text(library.version, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
                             Text(library.licenses.joinToString(" · ") { it.name }.ifBlank { "许可信息待补充" },

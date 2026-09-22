@@ -288,6 +288,13 @@ internal fun SettingsCard(modifier: Modifier = Modifier, content: @Composable Co
 }
 
 
+@Composable
+internal fun SettingsCard(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(onClick = onClick, colors = settingsCardColors(), modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
 internal data class SettingsEntry(
     val title: String,
     val onClick: (() -> Unit)?,
