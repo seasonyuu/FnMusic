@@ -68,6 +68,7 @@ import com.seasonyuu.fnmusic.core.model.SessionState
 private val LoginSwitchEasing = CubicBezierEasing(.2f, 0f, 0f, 1f)
 private const val LoginSwitchDuration = 260
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ConnectionScreen(
     state: SessionState,
@@ -128,7 +129,7 @@ fun ConnectionScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        CircularProgressIndicator(Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                        LoadingIndicator(Modifier.size(40.dp), color = Color.White)
                         Text(connectionMessage(state), color = FnTextSecondary)
                     }
                 } else {

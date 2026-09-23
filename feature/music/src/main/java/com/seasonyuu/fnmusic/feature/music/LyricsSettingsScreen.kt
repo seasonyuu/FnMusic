@@ -47,6 +47,7 @@ internal fun lyricBytes(bytes: Long): String = when {
     else -> String.format(Locale.ROOT, "%.2f MiB", bytes / (1024.0 * 1024))
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun AmllSettingsContent(actions: LyricsActions, cacheContent: @Composable () -> Unit) {
     val uriHandler = LocalUriHandler.current
@@ -149,10 +150,12 @@ internal fun AmllSettingsContent(actions: LyricsActions, cacheContent: @Composab
                     else -> FnTextSecondary
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (index.status == LyricsIndexStatus.Checking) {
-                        CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp, color = FnTextSecondary)
-                    } else {
-                        Box(Modifier.size(6.dp).background(statusColor, CircleShape))
+                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                        if (index.status == LyricsIndexStatus.Checking) {
+                            LoadingIndicator(color = FnTextSecondary)
+                        } else {
+                            Box(Modifier.size(6.dp).background(statusColor, CircleShape))
+                        }
                     }
                     Text(when (index.status) {
                         LyricsIndexStatus.Missing -> "尚未下载索引"

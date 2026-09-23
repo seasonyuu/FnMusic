@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 
 private fun PlaylistTrackKey.rowKey() = "${id.value.length}:${id.value}:$occurrence"
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun PlaylistEditSheet(
     id: PlaylistId,
@@ -105,7 +105,7 @@ internal fun PlaylistEditSheet(
                         tint = FnAccent, surfaceColor = FnSurface,
                         contentPadding = PaddingValues(0.dp),
                         modifier = Modifier.size(48.dp).testTag("playlist-editor-done")) {
-                        if (current.busy) CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = if (current.preparingCover) "读取照片中" else "保存中" }, color = FnTextPrimary, strokeWidth = 2.dp)
+                        if (current.busy) LoadingIndicator(Modifier.size(28.dp).semantics { contentDescription = if (current.preparingCover) "读取照片中" else "保存中" }, color = FnTextPrimary)
                         else Icon(Icons.Rounded.Done, if (current.error != null && draft != null) "重试保存" else "完成",
                             tint = FnTextPrimary.copy(alpha = if (draft?.valid == true) 1f else .38f))
                     }
@@ -116,7 +116,7 @@ internal fun PlaylistEditSheet(
             }
             if (draft == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    if (current.loading) CircularProgressIndicator()
+                    if (current.loading) LoadingIndicator()
                     else TextButton(onClick = actions::retryLoad) { Text("重新加载") }
                 }
             } else {

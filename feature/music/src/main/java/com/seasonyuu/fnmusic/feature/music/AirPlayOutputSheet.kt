@@ -61,7 +61,7 @@ private fun AirPlayAudioIcon(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AirPlayOutputEntry(current: PlayableTrack? = null) {
     val controller = LocalPlaybackOutput.current ?: return
@@ -179,7 +179,7 @@ fun AirPlayOutputEntry(current: PlayableTrack? = null) {
                     } else {
                         if (state.scanning && state.connecting == null) Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CircularProgressIndicator(Modifier.size(12.dp), color = Color.White.copy(alpha = .5f), strokeWidth = 1.5.dp)
+                            LoadingIndicator(Modifier.size(24.dp), color = Color.White.copy(alpha = .75f))
                             Text("正在查找 AirPlay 设备", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = .55f))
                         }
                         if (state.devices.isEmpty() && remote == null) Text("请确认接收设备已开启 AirPlay，并与手机连接同一网络。",
@@ -207,6 +207,7 @@ fun AirPlayOutputEntry(current: PlayableTrack? = null) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun DeviceOutputRow(name: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit,
     tag: String, enabled: Boolean = true, connecting: Boolean = false, subtitle: String? = null) {
@@ -220,7 +221,7 @@ private fun DeviceOutputRow(name: String, icon: ImageVector, selected: Boolean, 
                 Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall)
             }
-            if (connecting) CircularProgressIndicator(Modifier.padding(start = 10.dp).size(20.dp), color = foreground, strokeWidth = 2.dp)
+            if (connecting) LoadingIndicator(Modifier.padding(start = 10.dp).size(24.dp), color = foreground)
             else if (selected) Box(Modifier.padding(start = 10.dp).size(22.dp).background(foreground, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, "当前播放设备", Modifier.size(16.dp), tint = Color(0xFFE9E9EC))
             }

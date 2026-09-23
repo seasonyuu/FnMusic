@@ -510,9 +510,10 @@ private fun SearchMessage(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SearchLoading() {
     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(Modifier.size(24.dp).testTag("search-loading"), color = FnTextSecondary, strokeWidth = 2.dp)
+        LoadingIndicator(Modifier.testTag("search-loading"), color = FnTextSecondary)
     }
 }

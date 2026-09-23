@@ -214,7 +214,7 @@ internal fun LyricsPickerDialog(track: Track, actions: LyricsActions, playing: L
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: LyricsSheetVisual, sheetState: SheetState,
     saving: Boolean, saveError: String?, onBack: () -> Unit, onApply: (LyricsCandidate) -> Unit) {
@@ -337,7 +337,7 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
                                         result?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                                     }
                                     result?.loading == true || !ready -> Row(Modifier.padding(vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("正在搜索…", color = SheetSecondary)
+                                        LoadingIndicator(Modifier.size(32.dp)); Text("正在搜索…", color = SheetSecondary)
                                     }
                                     result?.error != null -> Column(Modifier.padding(vertical = 24.dp)) {
                                         Text(result.error, color = SheetSecondary)
@@ -370,7 +370,7 @@ private fun LyricsSearchSheet(track: Track, actions: LyricsActions, visual: Lyri
                             Text("${row.onlineSource?.label ?: "AMLL"}${preview?.let { " · " + if (it.hasAccurateWords) "逐词歌词" else "逐行歌词" }.orEmpty()}", color = SheetSecondary, style = MaterialTheme.typography.bodySmall)
                             if (row.authors.isNotEmpty()) Text("制作者：${row.authors.joinToString("、")}", color = SheetSecondary, style = MaterialTheme.typography.bodySmall)
                         }
-                        if (previewing) item { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+                        if (previewing) item { LoadingIndicator() }
                         previewError?.let { message -> item { Text(message, color = SheetSecondary); TextButton(onClick = { previewAttempt++ }) { Text("重试") } } }
                         items(preview?.lines.orEmpty()) { line -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(line.text, style = MaterialTheme.typography.titleMedium)

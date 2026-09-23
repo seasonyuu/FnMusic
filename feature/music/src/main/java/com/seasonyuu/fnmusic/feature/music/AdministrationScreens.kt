@@ -105,6 +105,7 @@ private fun FolderAccessEditor(value: FolderAccess, folders: List<MusicFolder>, 
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun UserAdministrationScreen(api: MusicAdministration, currentUserId: String?, onBack: () -> Unit) {
     var users by remember { mutableStateOf<List<ManagedMusicUser>?>(null) }
@@ -220,13 +221,16 @@ internal fun UserAdministrationScreen(api: MusicAdministration, currentUserId: S
                         }
                     }
                 }
-                if (users == null && error == null) CircularProgressIndicator()
+                if (users == null && error == null) Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    LoadingIndicator()
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ServerAdministrationScreen(api: MusicAdministration, onBack: () -> Unit) {
     var settings by remember { mutableStateOf<MusicServerSettings?>(null) }
@@ -247,7 +251,9 @@ internal fun ServerAdministrationScreen(api: MusicAdministration, onBack: () -> 
                 finally { busy = false }
             } }, enabled = !busy && !name.isNullOrBlank()) { Text("保存修改") }
             if (saved) Text("已保存")
-        } else if (error == null) CircularProgressIndicator()
+        } else if (error == null) Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+            LoadingIndicator()
+        }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (settings == null) TextButton(colors = readableTextButtonColors(), onClick = { scope.launch { try { load(); error = null } catch (cancelled: CancellationException) { throw cancelled } catch (failure: Exception) { error = failure.message ?: "加载失败" } } }) { Text("重试") }
     }

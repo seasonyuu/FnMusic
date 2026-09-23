@@ -175,6 +175,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MotionScheme
@@ -1257,6 +1258,7 @@ private fun RecentTracksGrid(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
@@ -1347,14 +1349,13 @@ private fun RoamFeatureCard(loading: Boolean, onClick: () -> Unit) {
             // Clip only the feedback layer so the raised artwork and shadow stay intact.
             Box(Modifier.matchParentSize().clip(shape).indication(interactions, LocalIndication.current))
             if (loading) {
-                androidx.compose.material3.CircularProgressIndicator(
+                androidx.compose.material3.LoadingIndicator(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = 16.dp, bottom = 16.dp)
-                        .size(28.dp)
+                        .size(32.dp)
                         .semantics { contentDescription = "正在启动漫游" },
                     color = Color.White,
-                    strokeWidth = 2.dp,
                 )
             }
         }

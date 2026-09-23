@@ -22,7 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -351,11 +353,12 @@ fun MiniPlayer(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LoadingPane(message: String = "正在加载…") {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = FnAccent)
+            LoadingIndicator(color = FnAccent)
             Spacer(Modifier.height(12.dp))
             Text(message, color = FnTextSecondary)
         }
