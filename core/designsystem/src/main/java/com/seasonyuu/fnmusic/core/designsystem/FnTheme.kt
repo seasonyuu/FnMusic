@@ -1,11 +1,13 @@
 package com.seasonyuu.fnmusic.core.designsystem
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.unit.dp
 
 fun contrastRatio(foreground: Color, background: Color): Float {
     val a = foreground.luminance()
@@ -76,6 +78,7 @@ fun FnMusicTheme(darkTheme: Boolean = true, accent: Color = FnAccent, content: @
                 outline = palette.secondary, outlineVariant = palette.border,
                 error = if (darkTheme) Color(0xFFFF6B7F) else Color(0xFFB51E3B),
             ),
+            shapes = Shapes(extraSmall = RoundedCornerShape(12.dp)),
             motionScheme = MotionScheme.expressive(), content = content,
         )
     }

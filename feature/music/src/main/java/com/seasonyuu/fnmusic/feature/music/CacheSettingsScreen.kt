@@ -6,9 +6,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import com.seasonyuu.fnmusic.core.designsystem.LiquidToggle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.seasonyuu.fnmusic.core.designsystem.FnTextSecondary
+import com.seasonyuu.fnmusic.core.designsystem.LiquidToggle
+import com.seasonyuu.fnmusic.core.designsystem.LocalFnBackdrop
 import com.seasonyuu.fnmusic.core.model.PlaybackCachePreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -31,27 +33,43 @@ internal fun CacheSettingsScreen(value: PlaybackCachePreference, usage: Pair<Lon
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
         Box(Modifier.padding(horizontal = 20.dp)) { PageTitle("自动缓存歌曲", onBack) }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(edgeToEdgeContentPadding(horizontal = 20.dp, top = 12.dp, bottom = 20.dp, includeTopInset = false)), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("自动缓存播放中的歌曲", Modifier.weight(1f))
-            LiquidToggle(value.enabled, { perform { onChange(value.copy(enabled = it)) } }, enabled = !busy)
-        }
-        Text("关闭后仍可读取已有缓存。缓存用于临时播放，不是永久下载。")
-        Text("缓存容量上限", style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(128L, 512L, 1024L, 2048L).forEach { mib ->
-                FilterChip(value.bytes == mib * 1024 * 1024, { perform { onChange(value.copy(bytes = mib * 1024 * 1024)) } }, enabled = !busy, label = { Text(if (mib < 1024) "$mib MiB" else "${mib / 1024} GiB") })
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(
+                edgeToEdgeContentPadding(horizontal = 20.dp, top = 20.dp, bottom = 20.dp, includeTopInset = false),
+            ),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            SettingsCard {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("自动缓存播放中的歌曲", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    CompositionLocalProvider(LocalFnBackdrop provides null) {
+                        LiquidToggle(value.enabled, { perform { onChange(value.copy(enabled = it)) } }, enabled = !busy)
+                    }
+                }
+                Text("关闭后仍可读取已有缓存。缓存用于临时播放，不是永久下载。", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
             }
-        }
-        Text("缓存歌曲数上限", style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(0, 100, 500, 1000).forEach { count ->
-                FilterChip(value.tracks == count, { perform { onChange(value.copy(tracks = count)) } }, enabled = !busy, label = { Text(if (count == 0) "不限制" else "$count 首") })
+            SettingsCard {
+                Text("缓存容量上限", style = MaterialTheme.typography.titleMedium)
+                SettingsChoiceGrid(
+                    listOf(128L to "128 MiB", 512L to "512 MiB", 1024L to "1 GiB", 2048L to "2 GiB"),
+                    value.bytes / (1024 * 1024), !busy,
+                ) { mib -> perform { onChange(value.copy(bytes = mib * 1024 * 1024)) } }
             }
-        }
-        Text("已缓存 ${usage.second} 首 · ${usage.first / (1024 * 1024)} MiB")
-        Text("修改上限立即生效，优先清理较久未使用的歌曲。播放中的歌曲可能重新缓存。")
-        OutlinedButton(colors = readableOutlinedButtonColors(), onClick = { confirm = true }, enabled = !busy) { Text("清除已缓存歌曲") }
+            SettingsCard {
+                Text("缓存歌曲数上限", style = MaterialTheme.typography.titleMedium)
+                SettingsChoiceGrid(
+                    listOf(0 to "不限制", 100 to "100 首", 500 to "500 首", 1000 to "1000 首"),
+                    value.tracks, !busy,
+                ) { count -> perform { onChange(value.copy(tracks = count)) } }
+            }
+            SettingsCard {
+                Text("已缓存 ${usage.second} 首 · ${usage.first / (1024 * 1024)} MiB", style = MaterialTheme.typography.titleMedium)
+                Text("修改上限立即生效，优先清理较久未使用的歌曲。播放中的歌曲可能重新缓存。", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
+                OutlinedButton(
+                    colors = readableOutlinedButtonColors(), onClick = { confirm = true },
+                    enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                ) { Text("清除已缓存歌曲") }
+            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
