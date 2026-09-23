@@ -12,7 +12,7 @@ class OpenSourcePackagingTest {
         val libraries = Libs.Builder().withJson(data).build().libraries
         assertTrue(libraries.any { it.uniqueId == "com.squareup.okhttp3:okhttp" })
         assertTrue(libraries.any { it.uniqueId.startsWith("com.squareup.okio:") })
-        listOf("accompanist-lyrics-core", "accompanist-lyrics-ui", "liquid-glass-widgets", "airplay2-sender", "mbedtls", "ed25519", "pyatv", "pair_ap").forEach { id ->
+        listOf("project", "accompanist-lyrics-core", "accompanist-lyrics-ui", "liquid-glass-widgets", "airplay2-sender", "mbedtls", "ed25519", "pyatv", "pair_ap").forEach { id ->
             assertTrue("Missing manual notice: $id", libraries.any { it.uniqueId == "fnmusic-$id" })
         }
         libraries.forEach { library ->

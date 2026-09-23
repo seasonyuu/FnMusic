@@ -44,4 +44,4 @@ AMLL distinguishes contributor-authored CC0 material from externally sourced mat
 
 **Profile → About** shows the installed version, source repository, and a manual stable-release update check. New versions open the matching GitHub Release in a browser; the app does not download or install APKs. Development builds compare their base version and label stable releases as a reference. Update requests use a separate unauthenticated client and never carry NAS credentials.
 
-**About → Open-source licenses** provides an offline dependency list with full license texts and native/source attributions. AboutLibraries generates variant-specific metadata at build time; maintenance details are in [`config/aboutlibraries/README.md`](../config/aboutlibraries/README.md).
+**About → Open-source licenses** provides the FnMusic code license and an offline dependency list with full license texts and native/source attributions. AboutLibraries generates variant-specific metadata at build time; maintenance details are in [`config/aboutlibraries/README.md`](../config/aboutlibraries/README.md). The project's [license scope](../LICENSE-SCOPE.md) distinguishes code from third-party assets.

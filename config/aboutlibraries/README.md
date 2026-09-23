@@ -7,12 +7,16 @@ no remote license request is made by the installed application.
 `libraries/` and `licenses/` are maintained source inputs, not generated reports.
 They supplement dependencies discovered from Gradle with source submodules,
 ported algorithms and native dependencies that Maven metadata cannot describe.
+The `fnmusic-project` entry packages the root [Apache-2.0 license](../../LICENSE)
+for the app's own code; its [scope statement](../../LICENSE-SCOPE.md) excludes
+third-party material and assets.
 The original license and notice texts are copied verbatim from:
 
 - `third_party/accompanist-lyrics-{core,ui}/LICENSE`
 - `third_party/licenses/liquid-glass-widgets.txt`
 - `third_party/airplay2-sender/{LICENSE,NOTICE,licenses/THIRD-PARTY-NOTICES.txt}`
 - `third_party/airplay2-sender/third_party/ed25519/LICENSE.txt`
+- `LICENSE` (FnMusic-authored code and documentation)
 
 Each license must explicitly set `hash` to the ID referenced by its library.
 Without it the exporter hashes the content, leaving the library reference unresolved.

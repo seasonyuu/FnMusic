@@ -1,0 +1,15 @@
+{
+  "uniqueId": "fnmusic-project",
+  "name": "FnMusic",
+  "artifactVersion": "",
+  "developers": [
+    {
+      "name": "seasonyuu and contributors"
+    }
+  ],
+  "website": "https://github.com/seasonyuu/FnMusic",
+  "licenses": [
+    "fnmusic-project"
+  ],
+  "description": "项目原创代码与文档采用 Apache-2.0；第三方素材和组件不在此授权范围内，详见仓库 LICENSE-SCOPE.md。"
+}
