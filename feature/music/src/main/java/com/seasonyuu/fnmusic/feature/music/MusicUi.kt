@@ -881,6 +881,7 @@ fun MusicShell(
                                                         MusicPage.Playlists -> PlaylistGridScreen(
                                                             state.playlists, state.playlistMessage, state, coverUrl, ::popPage,
                                                             { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
+                                                            onRefresh,
                                                         ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
                                                         MusicPage.LiquidGlass -> LiquidGlassSettingsScreen(
                                                             multiplier = state.liquidGlassBlur, saveError = state.liquidGlassSaveError,
@@ -1698,24 +1699,39 @@ private fun PlaylistRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(playlists, key = { it.id.value }) { playlist ->
-            CollectionCard(onClick = { onPlaylist(playlist) }, modifier = Modifier.width(142.dp), artwork = { interactions ->
-                PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.size(142.dp), interactionSource = interactions)
-            }) {
-                Text(
-                    playlist.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
-                )
-                Text(
-                    playlist.trackCount.countLabel(),
-                    color = FnTextSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    maxLines = 1,
-                )
-            }
+            PlaylistCard(playlist, coverUrl, { onPlaylist(playlist) }, Modifier.width(142.dp))
         }
+    }
+}
+
+@Composable
+private fun PlaylistCard(
+    playlist: Playlist,
+    coverUrl: (String?, Int) -> String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    titleLines: Int = 1,
+) {
+    CollectionCard(onClick = onClick, modifier = modifier, artwork = { interactions ->
+        PlaylistCoverImage(
+            playlist.coverId, coverUrl, playlist.name,
+            Modifier.fillMaxWidth().aspectRatio(1f), interactionSource = interactions,
+        )
+    }) {
+        Text(
+            playlist.name,
+            minLines = titleLines,
+            maxLines = titleLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
+        )
+        Text(
+            playlist.trackCount.countLabel(),
+            color = FnTextSecondary,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 8.dp),
+            maxLines = 1,
+        )
     }
 }
 
@@ -1913,10 +1929,18 @@ private fun PlaylistGridScreen(
     coverUrl: (String?, Int) -> String?,
     onBack: () -> Unit,
     onCreate: () -> Unit,
+    onRefresh: () -> Unit,
     onPlaylist: (Playlist) -> Unit,
 ) {
     val gridState = rememberLazyGridState()
-    CollectionPage("歌单", onBack, { gridState.firstVisibleItemIndex > 0 }) { heading, top ->
+    CollectionPage("歌单", onBack, { gridState.firstVisibleItemIndex > 0 }, actions = {
+        AppBarButton(onClick = onCreate, modifier = Modifier.clearAndSetSemantics {
+            contentDescription = "新建歌单"
+            onClick("新建歌单") { onCreate(); true }
+        }) {
+            Icon(Icons.Rounded.Add, null)
+        }
+    }) { heading, top ->
         LazyVerticalGrid(
             modifier = Modifier.testTag("playlist-grid"),
             state = gridState,
@@ -1928,22 +1952,37 @@ private fun PlaylistGridScreen(
             item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     CollectionHeading("歌单", catalogTotalLabel(state.playlistTotal, CatalogSection.Playlists, state, "个歌单"), heading)
-                    OutlinedButton(colors = readableOutlinedButtonColors(), onClick = onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Icon(Icons.Rounded.Add, "新建歌单")
-                        Text("新建歌单")
-                    }
                     message?.let { Text(it, color = FnTextSecondary) }
                 }
             }
             items(playlists, key = { it.id.value }) { playlist ->
-                CollectionCard(onClick = { onPlaylist(playlist) }, artwork = { interactions ->
-                    PlaylistCoverImage(playlist.coverId, coverUrl, playlist.name, Modifier.fillMaxWidth().height(142.dp), interactionSource = interactions)
-                }) {
-                    Text(playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
-                    Text(playlist.trackCount.countLabel(), color = FnTextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
+                PlaylistCard(playlist, coverUrl, { onPlaylist(playlist) }, Modifier.fillMaxWidth(), titleLines = 2)
+            }
+            if (playlists.isEmpty()) item(key = "playlist-empty", span = { GridItemSpan(maxLineSpan) }) {
+                when {
+                    state.loading && CatalogSection.Playlists in state.pendingSections -> EmptyPane("正在加载歌单…")
+                    CatalogSection.Playlists in state.sectionErrors || (state.playlistTotal ?: 0) > 0 ->
+                        PlaylistEmptyState("暂时无法显示歌单", "请刷新后重试", "刷新", onRefresh)
+                    else -> PlaylistEmptyState("还没有歌单", "创建歌单，整理想听的音乐", "创建歌单", onCreate)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PlaylistEmptyState(title: String, description: String, action: String, onAction: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 64.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, modifier = Modifier.size(36.dp), tint = FnTextSecondary)
+        Spacer(Modifier.height(16.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(description, color = FnTextSecondary, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = onAction, modifier = Modifier.heightIn(min = 48.dp)) { Text(action) }
     }
 }
 
