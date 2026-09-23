@@ -24,6 +24,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -122,6 +126,7 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -432,7 +437,7 @@ fun MusicShell(
     onLoadAlbum: (AlbumId) -> Unit,
     onLoadArtist: (ArtistId) -> Unit,
     onLoadPlaylist: (PlaylistId) -> Unit,
-    onCreatePlaylist: (String, String?, TrackId?) -> Unit,
+    onCreatePlaylist: suspend (String, String?, String?, TrackId?) -> Boolean,
     onUpdatePlaylist: (PlaylistId, String, String?) -> Unit,
     onDeletePlaylist: (PlaylistId) -> Unit,
     onAddTrackToPlaylist: (PlaylistId, TrackId) -> Unit,
@@ -808,13 +813,12 @@ fun MusicShell(
                                                             busy = state.playlistBusy,
                                                             message = state.playlistMessage,
                                                             coverUrl = coverUrl,
-                                                            onBack = {
-                                                                popPage()
-                                                            },
-                                                            onSave = { name, coverId ->
-                                                                selected.playlist?.let { onUpdatePlaylist(it.id, name, coverId) }
-                                                                    ?: onCreatePlaylist(name, coverId, selected.initialTrackId)
-                                                                popPage()
+                                                            onBack = ::popPage,
+                                                            onSave = { name, coverId, photoUri ->
+                                                                selected.playlist?.let {
+                                                                    onUpdatePlaylist(it.id, name, coverId)
+                                                                    true
+                                                                } ?: onCreatePlaylist(name, coverId, photoUri, selected.initialTrackId)
                                                             },
                                                         )
                                                         is LibraryDetail.AlbumPage -> FnMusicTheme(darkTheme = true) { AlbumDetailScreen(
@@ -2024,16 +2028,23 @@ private fun PlaylistEditorScreen(
     message: String?,
     coverUrl: (String?, Int) -> String?,
     onBack: () -> Unit,
-    onSave: (String, String?) -> Unit,
+    onSave: suspend (String, String?, String?) -> Boolean,
 ) {
     var name by rememberSaveable(playlist?.id?.value) { mutableStateOf(playlist?.name.orEmpty()) }
     var selectedCoverId by rememberSaveable(playlist?.id?.value) {
         mutableStateOf(playlist?.coverId ?: "playlist_default_1")
     }
+    var selectedPhotoUri by rememberSaveable(playlist?.id?.value) { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) selectedPhotoUri = uri.toString()
+    }
     val normalized = name.trim()
     val valid = normalized.isNotEmpty() && normalized.length <= 32
     val defaultCovers = remember { (1..4).map { "playlist_default_$it" } }
-    DetailPageFrame(if (playlist == null) "新建歌单" else "编辑歌单", onBack) {
+    BackHandler(enabled = saving) { }
+    DetailPageFrame(if (playlist == null) "新建歌单" else "编辑歌单", { if (!saving) onBack() }) {
         LazyColumn(
             Modifier
                 .fillMaxSize()
@@ -2047,9 +2058,13 @@ private fun PlaylistEditorScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    PlaylistCoverImage(selectedCoverId, coverUrl, normalized.ifBlank { "新歌单" }, Modifier.size(220.dp))
+                    if (selectedPhotoUri != null && playlist == null) {
+                        CoverImage(selectedPhotoUri, normalized.ifBlank { "新歌单" }, Modifier.size(220.dp))
+                    } else {
+                        PlaylistCoverImage(selectedCoverId, coverUrl, normalized.ifBlank { "新歌单" }, Modifier.size(220.dp))
+                    }
                     Text(
-                        if (playlist == null) "为这组音乐取个名字" else "更新名称与默认封面",
+                        if (playlist == null) "为这组音乐取个名字，选一张封面" else "更新名称与默认封面",
                         color = FnTextSecondary,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -2060,6 +2075,7 @@ private fun PlaylistEditorScreen(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { if (it.length <= 32) name = it },
+                        enabled = !busy && !saving,
                         label = { Text("歌单名称") },
                         placeholder = { Text("请输入歌单名称") },
                         singleLine = true,
@@ -2071,12 +2087,33 @@ private fun PlaylistEditorScreen(
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("默认封面", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
+                    Text("歌单封面", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(defaultCovers) { coverId ->
-                            val selected = selectedCoverId == coverId
+                        if (playlist == null) item(key = "photo") {
+                            val selected = selectedPhotoUri != null
                             Card(
-                                onClick = { selectedCoverId = coverId },
+                                onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                enabled = !busy && !saving,
+                                colors = CardDefaults.cardColors(containerColor = if (selected) FnAccent.copy(alpha = .22f) else FnCard),
+                                shape = RoundedCornerShape(18.dp),
+                                modifier = Modifier.testTag("playlist-create-photo"),
+                            ) {
+                                Box(Modifier.padding(6.dp).size(88.dp), contentAlignment = Alignment.Center) {
+                                    if (selected) CoverImage(selectedPhotoUri, "已选择的照片", Modifier.fillMaxSize())
+                                    else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(Icons.Rounded.AddPhotoAlternate, null, tint = FnAccentIcon)
+                                        Text("相册", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (selected) Icon(Icons.Rounded.CheckCircle, "已选择", tint = FnAccentIcon,
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp))
+                                }
+                            }
+                        }
+                        items(defaultCovers) { coverId ->
+                            val selected = selectedPhotoUri == null && selectedCoverId == coverId
+                            Card(
+                                onClick = { selectedCoverId = coverId; selectedPhotoUri = null },
+                                enabled = !busy && !saving,
                                 colors = CardDefaults.cardColors(containerColor = if (selected) FnAccent.copy(alpha = .22f) else FnCard),
                                 shape = RoundedCornerShape(18.dp),
                             ) {
@@ -2097,11 +2134,18 @@ private fun PlaylistEditorScreen(
             message?.let { item { Text(it, color = FnTextSecondary, modifier = Modifier.padding(horizontal = 24.dp)) } }
             item {
                 Button(
-                    onClick = { onSave(normalized, selectedCoverId) },
-                    enabled = valid && !busy,
+                    onClick = {
+                        scope.launch {
+                            saving = true
+                            try {
+                                if (onSave(normalized, selectedCoverId, selectedPhotoUri)) onBack()
+                            } finally { saving = false }
+                        }
+                    },
+                    enabled = valid && !busy && !saving,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(52.dp),
                 ) {
-                    Text(if (busy) "正在保存…" else "保存歌单")
+                    Text(if (busy || saving) "正在保存…" else "保存歌单")
                 }
             }
         }

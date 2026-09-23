@@ -43,7 +43,7 @@ class HomeLoadingTest {
                     onLoadAlbum = { _ -> },
                     onLoadArtist = { _ -> },
                     onLoadPlaylist = { _ -> },
-                    onCreatePlaylist = { _, _, _ -> },
+                    onCreatePlaylist = { _, _, _, _ -> true },
                     onUpdatePlaylist = { _, _, _ -> },
                     onDeletePlaylist = { _ -> },
                     onAddTrackToPlaylist = { _, _ -> },

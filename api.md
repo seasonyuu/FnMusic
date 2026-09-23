@@ -593,7 +593,7 @@ track/metadata
 {"guid":"{playlistGuid}"}
 ```
 
-写操作中的歌单参数名是 `guid`，不是列表接口使用的 `playlistGUID`。当前 Web UI 允许 1–32 个字符的名称，识别业务码 `160001`（名称已存在）和 `160002`（达到数量上限）。2026-09-21 重新核对 Web 包后确认：默认封面也先作为图片上传，再把返回的真实 `coverId` 传给 create/edit；`playlist_default_1` 至 `playlist_default_4` 仅是 Android 本地模板标识，不能直接当作服务端封面 ID。支持上传 JPG、JPEG、PNG 或 WEBP，Web UI 限制为 5 MiB。Android 已内置 Web 的 `static/assets/img/playlist-covers/1.png` 至 `4.png` 原始资源（344×344），预览与上传共用这些文件，上传不重新编码。来源和 SHA-256 记录于 `docs/web-assets/playlist-covers.json`。上传成功的 ID 沿用编辑草稿检查点用于失败重试。
+写操作中的歌单参数名是 `guid`，不是列表接口使用的 `playlistGUID`。当前 Web UI 允许 1–32 个字符的名称，识别业务码 `160001`（名称已存在）和 `160002`（达到数量上限）。2026-09-21 重新核对 Web 包后确认：默认封面也先作为图片上传，再把返回的真实 `coverId` 传给 create/edit；`playlist_default_1` 至 `playlist_default_4` 仅是 Android 本地模板标识，不能直接当作服务端封面 ID。支持上传 JPG、JPEG、PNG 或 WEBP，Web UI 限制为 5 MiB。Android 已内置 Web 的 `static/assets/img/playlist-covers/1.png` 至 `4.png` 原始资源（344×344），预览与上传共用这些文件，上传不重新编码。来源和 SHA-256 记录于 `docs/web-assets/playlist-covers.json`。创建和编辑流程都保留已上传的封面 ID，用于创建或更新失败后的重试。
 
 ## 10. 标识符、分页和排序
 
@@ -782,7 +782,7 @@ python3 scripts/test_verify_fn_connect.py -v
 | 歌单 | list/detail + create/edit/add/remove/purge/delete | 读取、写入 V | 自定义封面、冲突、恢复 |
 | 风格 | `genre/list` | V | 详情和曲目筛选 |
 
-Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录、曲库分页、元数据、封面、歌词、Range 播放、收藏、`track_play` 上报，以及歌单创建、改名、默认封面、删除、添加曲目、逐首/批量移除和失效曲目清理。已有歌单的编辑面板支持通过系统照片选择器选择 JPG、PNG、WEBP（最多 5 MiB），点击完成才上传。2026-09-21 经 FN Connect 中继读取当前 Web 静态包确认：上传使用 multipart `file` 字段，响应信封中的 `data.coverId` 用于后续歌单 edit；Authx 按 `JSON.stringify(FormData)` 即 `{}` 签名，而不是对二进制 multipart 请求体签名。上传成功后的 coverId 在编辑草稿内作检查点，后续 edit 失败重试不重复上传。上传协议已添加模拟服务测试，尚未做实服上传回归。
+Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录、曲库分页、元数据、封面、歌词、Range 播放、收藏、`track_play` 上报，以及歌单创建、改名、默认或相册封面、删除、添加曲目、逐首/批量移除和失效曲目清理。新建页和已有歌单的编辑面板均支持通过系统照片选择器选择 JPG、PNG、WEBP（最多 5 MiB），保存时才上传。2026-09-21 经 FN Connect 中继读取当前 Web 静态包确认：上传使用 multipart `file` 字段，响应信封中的 `data.coverId` 用于后续歌单 create/edit；Authx 按 `JSON.stringify(FormData)` 即 `{}` 签名，而不是对二进制 multipart 请求体签名。上传成功后的 coverId 会保留供创建或编辑失败重试使用，避免重复上传。上传协议已添加模拟服务测试，尚未做实服上传回归。
 
 ## 14. 待验证清单
 
@@ -819,7 +819,7 @@ Android 客户端当前已经开放 FN Connect resolver、relay Cookie、登录�
 - [x] `trackGUIDs` 批量请求结构；Android 端已支持批量移除。
 - [ ] 重复添加/移除、同名、数量上限、并发编辑等冲突和失败恢复。
 - [ ] 曲目重排；当前 Web 构建未观测到对应端点或交互。
-- [ ] 歌单封面生成与自定义封面上传。
+- [ ] 歌单封面生成；自定义封面上传仍待实服回归。
 - [x] `event/report` 的 `track_play` 事件类型与请求体。
 - [ ] `event/report` 的播放阈值、服务端去重和重试规则。
 

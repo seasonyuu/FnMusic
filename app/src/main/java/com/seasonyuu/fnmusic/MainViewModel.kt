@@ -369,36 +369,66 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
         copy(detailTracks = tracks, detailPlaylist = metadata.copy(trackCount = metadata.trackCount ?: tracks.size))
     }
 
-    fun createPlaylist(name: String, coverId: String?, initialTrackId: TrackId? = null) {
+    suspend fun createPlaylist(name: String, coverId: String?, photoUri: String?, initialTrackId: TrackId? = null): Boolean = viewModelScope.async {
         val normalized = name.trim()
         if (normalized.isEmpty() || normalized.length > 32) {
             mutableMusic.value = mutableMusic.value.copy(playlistMessage = "歌单名称需为 1–32 个字符")
-            return
+            return@async false
         }
-        viewModelScope.launch {
-            mutableMusic.value = mutableMusic.value.copy(playlistBusy = true, playlistMessage = null)
-            runCatching {
-                val created = graph.catalog.createPlaylist(normalized, coverId)
+        if (mutableMusic.value.playlistBusy) return@async false
+        mutableMusic.value = mutableMusic.value.copy(playlistBusy = true, playlistMessage = null)
+        try {
+            val owner = playlistAccount()
+            val coverSelection = "$owner|${photoUri ?: coverId.orEmpty()}"
+            val uploadedCoverId = savedState.get<String>("playlistCreateCoverId")
+                ?.takeIf { savedState.get<String>("playlistCreateCoverSelection") == coverSelection }
+            val created = createPlaylistWithCover(
+                name = normalized,
+                defaultCoverId = coverId,
+                photoUri = photoUri,
+                prepare = graph.playlistCoverFiles::prepare,
+                upload = graph.playlistCoverFiles::upload,
+                uploadDefault = graph.playlistCoverFiles::uploadDefault,
+                discard = graph.playlistCoverFiles::discard,
+                uploadedCoverId = uploadedCoverId,
+                onCoverUploaded = { id ->
+                    savedState["playlistCreateCoverSelection"] = coverSelection
+                    savedState["playlistCreateCoverId"] = id
+                },
+                create = { title, selectedCover ->
+                    check(owner == playlistAccount()) { "账号已切换，请重新创建歌单" }
+                    graph.catalog.createPlaylist(title, selectedCover)
+                },
+            )
+            savedState.remove<String>("playlistCreateCoverSelection")
+            savedState.remove<String>("playlistCreateCoverId")
+            val addError = try {
                 initialTrackId?.let { graph.catalog.addPlaylistTracks(created.id, listOf(it)) }
-                created
-            }
-                .onSuccess {
-                    val page = graph.catalog.playlistPage()
-                    mutableMusic.value = mutableMusic.value.copy(
-                        playlistBusy = false,
-                        playlists = page.items,
-                        playlistTotal = page.total,
-                        playlistMessage = if (initialTrackId == null) "歌单已创建" else "歌单已创建并添加歌曲",
-                    )
-                }
-                .onFailure { error ->
-                    mutableMusic.value = mutableMusic.value.copy(
-                        playlistBusy = false,
-                        playlistMessage = error.message ?: "创建歌单失败",
-                    )
-                }
+                null
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { e }
+            val page = try { graph.catalog.playlistPage() }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { null }
+            mutableMusic.value = mutableMusic.value.copy(
+                playlistBusy = false,
+                playlists = page?.items ?: (mutableMusic.value.playlists.filterNot { it.id == created.id } + created),
+                playlistTotal = page?.total ?: mutableMusic.value.playlistTotal?.plus(1),
+                playlistMessage = when {
+                    addError != null -> "歌单已创建，但添加歌曲失败：${addError.message ?: "请稍后重试"}"
+                    page == null -> "歌单已创建，列表刷新失败"
+                    initialTrackId != null -> "歌单已创建并添加歌曲"
+                    else -> "歌单已创建"
+                },
+            )
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            mutableMusic.value = mutableMusic.value.copy(playlistBusy = false, playlistMessage = e.message ?: "创建歌单失败")
+            false
         }
-    }
+    }.await()
 
     fun updatePlaylist(id: PlaylistId, name: String, coverId: String?) {
         val normalized = name.trim()

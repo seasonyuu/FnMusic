@@ -41,7 +41,7 @@ Current version `0.1.0`, early development stage — APIs and build setup may ch
 **Favorites & playlists**
 
 - Favorite writes and `track_play` recently-played reporting.
-- Playlist creation, rename, default covers, deletion, adding tracks, single/bulk track removal, and cleanup of dead tracks.
+- Playlist creation and editing with bundled or custom photo covers, deletion, adding tracks, single/bulk track removal, and cleanup of dead tracks.
 
 **Adaptive layout**
 

@@ -3797,7 +3797,10 @@ class MusicShellTest {
         var createdWith: Triple<String, String?, TrackId?>? = null
         setContent(
             state = MusicUiState(loading = false, tracks = listOf(track)),
-            onCreatePlaylist = { name, coverId, initialTrackId -> createdWith = Triple(name, coverId, initialTrackId) },
+            onCreatePlaylist = { name, coverId, _, initialTrackId ->
+                createdWith = Triple(name, coverId, initialTrackId)
+                true
+            },
         )
 
         compose.onNodeWithContentDescription("更多操作").performClick()
@@ -4378,7 +4381,7 @@ class MusicShellTest {
         onClearPlaybackHistory: () -> Unit = {},
         onMoveQueueItem: (Int, Int) -> Unit = { _, _ -> },
         onRemoveFromQueue: (Int) -> Unit = {},
-        onCreatePlaylist: (String, String?, TrackId?) -> Unit = { _, _, _ -> },
+        onCreatePlaylist: suspend (String, String?, String?, TrackId?) -> Boolean = { _, _, _, _ -> true },
         onAddTrackToPlaylist: (PlaylistId, TrackId) -> Unit = { _, _ -> },
         onRemoveTracksFromPlaylist: (PlaylistId, List<TrackId>) -> Unit = { _, _ -> },
         onSaveTrackMetadata:
