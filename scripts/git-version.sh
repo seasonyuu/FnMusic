@@ -33,14 +33,14 @@ done < <(git tag --list --sort=-version:refname)
 
 if [[ -n "$best_tag" ]]; then
     base_version_code=$((10#$best_major * 1000000 + 10#$best_minor * 1000 + 10#$best_patch))
+    # Commit count keeps a new release above all preceding development builds.
+    version_code=$((base_version_code + commit_count))
 
     if (( best_distance == 0 )); then
         version_name="${best_major}.${best_minor}.${best_patch}"
-        version_code="$base_version_code"
         exact_tag=true
     else
         version_name="${best_major}.${best_minor}.${best_patch}-dev.${best_distance}+${commit_sha}"
-        version_code=$((base_version_code + best_distance))
         exact_tag=false
     fi
     tag_name="$best_tag"
