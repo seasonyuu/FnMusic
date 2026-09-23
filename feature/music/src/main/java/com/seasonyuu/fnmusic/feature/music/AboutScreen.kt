@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -99,19 +102,32 @@ internal fun AboutScreen(actions: AboutActions, onLibraries: () -> Unit, onBack:
                 is AppUpdateState.Available -> item {
                     val release = result.release
                     SettingsCard {
-                        Text(when {
-                            release.newer -> "发现新版本 ${release.version}"
-                            actions.info.developmentBuild -> "最新正式版 ${release.version}"
-                            else -> "当前已是最新版本"
-                        }, style = MaterialTheme.typography.titleMedium)
-                        if (!release.newer && actions.info.developmentBuild) Text("当前为开发构建，正式版供参考。", color = FnTextSecondary)
                         val date = remember(release.publishedAt) {
                             DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault()).format(Instant.parse(release.publishedAt))
                         }
-                        Text("正式版 ${release.version} · $date", color = FnTextSecondary)
-                        SelectionContainer { Text(release.notes.ifBlank { "此版本未提供更新说明。" }, style = MaterialTheme.typography.bodyMedium) }
-                        TextButton(onClick = { openLink(release.url) }, colors = readableTextButtonColors()) {
-                            Text(if (release.newer) "前往下载" else "查看正式版")
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(releaseTitle(release.version, release.newer, actions.info.developmentBuild),
+                                style = MaterialTheme.typography.titleLarge)
+                            Text("$date 发布", style = MaterialTheme.typography.labelMedium, color = FnTextTertiary)
+                        }
+                        if (actions.info.developmentBuild) {
+                            Text("当前为开发构建，正式版供参考", style = MaterialTheme.typography.bodySmall, color = FnTextSecondary)
+                        }
+                        HorizontalDivider(color = FnTextSecondary.copy(alpha = 0.12f))
+                        val notes = remember(release.notes) { releaseNotesPreview(release.notes) }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("更新摘要", style = MaterialTheme.typography.labelMedium, color = FnTextSecondary)
+                            SelectionContainer {
+                                Text(notes.ifBlank { "完整更新内容请查看发布页。" },
+                                    style = MaterialTheme.typography.bodyMedium, color = FnTextSecondary,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        FilledTonalButton(onClick = { openLink(release.url) }, modifier = Modifier.align(Alignment.End),
+                            colors = ButtonDefaults.filledTonalButtonColors(contentColor = FnTextPrimary)) {
+                            Text("查看发布页")
+                            Spacer(Modifier.width(8.dp))
+                            Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
                     }
                 }

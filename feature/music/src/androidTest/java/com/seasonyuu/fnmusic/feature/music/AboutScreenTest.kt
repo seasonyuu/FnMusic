@@ -100,11 +100,19 @@ class AboutScreenTest {
 
     @Test fun developmentVersionShowsStableReferenceWithoutUpgradePrompt() {
         val actions = Stub().apply {
-            update.value = AppUpdateState.Available(AppRelease("1.2.3", "2026-09-20T12:00:00Z", "Release notes", "$RELEASES_URL/tag/v1.2.3", false))
+            update.value = AppUpdateState.Available(AppRelease("1.2.3", "2026-09-20T12:00:00Z",
+                "首个公开版本，支持 AirPlay 输出与外部在线歌词搜索。\n\n本次亮点：\n• AirPlay 输出：连接接收设备。",
+                "$RELEASES_URL/tag/v1.2.3", false))
         }
         compose.setContent { FnMusicTheme { Surface { AboutScreen(actions, {}, {}) } } }
         compose.onNodeWithText("最新正式版 1.2.3").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("前往下载").assertDoesNotExist()
+        compose.onNodeWithText("更新摘要").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("首个公开版本，支持 AirPlay 输出与外部在线歌词搜索。").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("查看发布页").performScrollTo().assertIsDisplayed()
+        val image = compose.onRoot().captureToImage()
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val file = java.io.File(context.getExternalFilesDir(null), "about-update-dark.png")
+        file.outputStream().use { image.asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     @Test fun capturesAboutAndLicensesForVisualReview() {
