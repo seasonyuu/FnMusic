@@ -4,6 +4,10 @@
 
 **简体中文** · [English](README-en.md)
 
+[![主线构建](https://github.com/seasonyuu/FnMusic/actions/workflows/release.yml/badge.svg?branch=main&event=push)](https://github.com/seasonyuu/FnMusic/actions/workflows/release.yml?query=branch%3Amain)
+[![最新版本](https://img.shields.io/github/v/release/seasonyuu/FnMusic?display_name=tag)](https://github.com/seasonyuu/FnMusic/releases/latest)
+[![代码许可](https://img.shields.io/github/license/seasonyuu/FnMusic?label=code%20license)](LICENSE-SCOPE.md)
+
 把飞牛音乐库带到 Android，再加上 AirPlay 输出和外部在线歌词搜索。连接自己的 NAS，按喜欢的方式听歌。
 
 FnMusic 是非官方第三方客户端，适用于 Android 8.0 及以上设备。项目仍在开发中，功能和界面可能调整。
@@ -42,7 +46,7 @@ FnMusic 是非官方第三方客户端，适用于 Android 8.0 及以上设备�
 
 ## 获取与使用
 
-目前请[从源码构建 APK](docs/development.md#build-from-source)。安装后，使用已有的 fnOS 音乐服务账号连接自己的 NAS；Android 最低版本为 8.0。
+从[最新 Release](https://github.com/seasonyuu/FnMusic/releases/latest) 下载 `app-release.apk`，发布页也提供 SHA-256 校验文件；或[从源码构建 APK](docs/development.md#build-from-source)。安装后，使用已有的 fnOS 音乐服务账号连接自己的 NAS；Android 最低版本为 8.0。
 
 FnMusic 根据当前飞牛音乐 Web 客户端的行为实现连接，**并非飞牛官方应用，也没有使用官方公开 API**。不同 fnOS 版本的兼容性可能有所差异。
 

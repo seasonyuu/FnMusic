@@ -4,6 +4,10 @@
 
 [简体中文](README.md) · **English**
 
+[![Main build](https://github.com/seasonyuu/FnMusic/actions/workflows/release.yml/badge.svg?branch=main&event=push)](https://github.com/seasonyuu/FnMusic/actions/workflows/release.yml?query=branch%3Amain)
+[![Latest release](https://img.shields.io/github/v/release/seasonyuu/FnMusic?display_name=tag)](https://github.com/seasonyuu/FnMusic/releases/latest)
+[![Code license](https://img.shields.io/github/license/seasonyuu/FnMusic?label=code%20license)](LICENSE-SCOPE.md)
+
 Bring your fnOS music library to Android, with AirPlay output and online lyric search added to the experience. Connect to your own NAS and listen your way.
 
 FnMusic is an unofficial third-party client for Android 8.0 and later. It is still in development, so features and interface details may change.
@@ -42,7 +46,7 @@ Music stored on your own NAS deserves an easy way to reach AirPlay devices and b
 
 ## Get started
 
-For now, [build the APK from source](docs/development.md#build-from-source). Then connect to your own NAS with an existing fnOS Music account. Android 8.0 or later is required.
+Download `app-release.apk` from the [latest GitHub Release](https://github.com/seasonyuu/FnMusic/releases/latest), which also includes a SHA-256 checksum file, or [build the APK from source](docs/development.md#build-from-source). Then connect to your own NAS with an existing fnOS Music account. Android 8.0 or later is required.
 
 FnMusic follows the observed behavior of the current fnOS Music web client. **It is not an official fnOS app and does not use an official public API.** Compatibility may vary between fnOS versions.
 
