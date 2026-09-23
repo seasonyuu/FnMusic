@@ -3,7 +3,7 @@
 ## Task Scope and Context
 
 - Complete the requested behavior and relevant verification; fix failures caused by the change before handing it back. Report unrelated failures and unavailable checks without expanding into unrelated refactors.
-- Load documentation when it applies: [README.md](README.md) for setup and module boundaries; [api.md](api.md) for fnOS protocol changes; [third_party/README.md](third_party/README.md) for pinned dependencies and adapters.
+- Load documentation when it applies: [docs/development.md](docs/development.md) for setup and module boundaries; [api.md](api.md) for fnOS protocol changes; [third_party/README.md](third_party/README.md) for pinned dependencies and adapters.
 - For UI contracts, use [liquid-menu.md](docs/liquid-menu.md), [appearance-theme-colors.md](docs/appearance-theme-colors.md), or [cover-placeholders.md](docs/cover-placeholders.md) as relevant. For output routing, use [local-audio-output.md](docs/local-audio-output.md) or [airplay.md](docs/airplay.md).
 
 ## Validation

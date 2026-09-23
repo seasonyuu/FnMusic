@@ -1,7 +1,8 @@
 # Choosing verification
 
 Use checks that exercise the changed behavior. The commands below are alternatives,
-not a checklist to run for every edit. Build prerequisites are in [README.md](../README.md).
+not a checklist to run for every edit. Build prerequisites are in the
+[development guide](development.md#build-from-source).
 
 ## Local checks
 
