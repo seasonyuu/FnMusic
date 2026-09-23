@@ -1788,7 +1788,9 @@ private fun DetailPageFrame(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(FnBackgroundTop, FnBackgroundBottom))),
     ) {
         MusicAppBar(title, onBack = onBack, actions = actions,
-            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            // Liquid controls stretch past their layout bounds while pressed; keep them above the content surface.
+            modifier = Modifier.zIndex(1f)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 20.dp).testTag("detail-app-bar"))
         Box(Modifier.fillMaxWidth().weight(1f)) { content() }
     }
