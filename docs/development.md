@@ -76,4 +76,4 @@ The [README icon](assets/fnmusic-icon.svg) is a vector adaptation of the origina
 
 The [README screenshots](assets/screenshots/) were captured from a development emulator. They contain music-library artwork returned by a NAS; the APK does not bundle those covers. Artwork and trademarks remain the property of their respective owners. Before distributing the app publicly, re-check the licensing of fnOS branding, logo, fonts, icons, and decoration assets.
 
-The project has not selected an open-source license and is provided for personal learning and use only. It is not affiliated with or endorsed by fnOS.
+FnMusic-authored code and original documentation are licensed under [Apache License 2.0](../LICENSE), with the covered material and exceptions explained in the [license scope](../LICENSE-SCOPE.md). Third-party components retain their own licenses. The project is not affiliated with or endorsed by fnOS.

@@ -53,6 +53,8 @@ FnMusic follows the observed behavior of the current fnOS Music web client. **It
 - [Protocol notes](api.md) (Chinese)
 - [Testing guide](docs/testing.md)
 
-## Notice
+## License and notice
 
-This project is for personal learning and use; no open-source license has been selected. fnOS trademarks, interface assets, and music artwork belong to their respective owners. This project is not affiliated with fnOS. See the [development guide](docs/development.md#assets-and-trademarks) for asset sources and usage notes.
+FnMusic-authored code and documentation are licensed under the [Apache License 2.0](LICENSE). It permits use, modification, and redistribution, including commercial use, subject to conditions such as retaining license and copyright notices and marking changes. It also includes a patent grant. See the [license scope](LICENSE-SCOPE.md) for what is covered.
+
+fnOS trademarks, web-derived assets, fonts, music artwork, and screenshots containing that artwork **are not covered by this grant**. Third-party components retain their own licenses. This project is not affiliated with fnOS; see the [development guide](docs/development.md#assets-and-trademarks) for asset sources.
