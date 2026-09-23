@@ -51,6 +51,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
+data class CatalogPage<T>(val items: List<T>, val total: Int)
+
 interface CatalogRepository {
     fun tracks(sort: TrackSort = TrackSort.Default): Flow<PagingData<Track>>
     /** Returns the server-reported number of tracks without loading the entire catalog. */
@@ -61,10 +63,11 @@ interface CatalogRepository {
     suspend fun firstTracks(size: Int = 24, sort: TrackSort = TrackSort.Default): List<Track>
     suspend fun allTracks(sort: TrackSort = TrackSort.Default): List<Track>
     suspend fun allFavorites(): List<Track>
-    suspend fun firstAlbums(size: Int = 12, sort: AlbumSort = AlbumSort.Default): List<Album>
-    suspend fun firstArtists(size: Int = 24): List<Artist>
-    suspend fun recent(size: Int = 24): List<Track>
-    suspend fun favoritePage(size: Int = 100): List<Track>
+    suspend fun firstAlbumPage(size: Int = 12, sort: AlbumSort = AlbumSort.Default): CatalogPage<Album>
+    suspend fun firstArtistPage(size: Int = 24): CatalogPage<Artist>
+    suspend fun recentPage(size: Int = 24): CatalogPage<Track>
+    suspend fun favoritePage(size: Int = 100): CatalogPage<Track>
+    suspend fun playlistPage(): CatalogPage<Playlist>
     suspend fun playlists(): List<Playlist>
     suspend fun playlistDetail(id: PlaylistId): Playlist
     suspend fun createPlaylist(name: String, coverId: String?): Playlist
@@ -135,13 +138,21 @@ class MusicCatalogRepository(private val api: MusicApi) : CatalogRepository {
         .map(TrackDto::toDomain)
     override suspend fun allFavorites() = loadAll { page, size -> api.favorites(page, size).requireData() }
         .map { it.toDomain(favoriteOverride = true) }
-    override suspend fun firstAlbums(size: Int, sort: AlbumSort) = api.albums(1, size, sort.wireValue).requireData().list.map(AlbumDto::toDomain)
-    override suspend fun firstArtists(size: Int) = api.artists(1, size).requireData().list.map { it.toDomain() }
-    override suspend fun recent(size: Int) = api.history(1, size).requireData().list.map(TrackDto::toDomain)
-    override suspend fun favoritePage(size: Int) = api.favorites(1, size).requireData().list.map { it.toDomain(true) }
-    override suspend fun playlists(): List<Playlist> = coroutineScope {
+    override suspend fun firstAlbumPage(size: Int, sort: AlbumSort): CatalogPage<Album> =
+        api.albums(1, size, sort.wireValue).requireData().let { page ->
+            CatalogPage(page.list.map(AlbumDto::toDomain), page.total)
+        }
+    override suspend fun firstArtistPage(size: Int): CatalogPage<Artist> =
+        api.artists(1, size).requireData().let { page -> CatalogPage(page.list.map { it.toDomain() }, page.total) }
+    override suspend fun recentPage(size: Int): CatalogPage<Track> =
+        api.history(1, size).requireData().let { page -> CatalogPage(page.list.map(TrackDto::toDomain), page.total) }
+    override suspend fun favoritePage(size: Int): CatalogPage<Track> =
+        api.favorites(1, size).requireData().let { page -> CatalogPage(page.list.map { it.toDomain(true) }, page.total) }
+    override suspend fun playlists(): List<Playlist> = playlistPage().items
+    override suspend fun playlistPage(): CatalogPage<Playlist> = coroutineScope {
         val details = Semaphore(4)
-        api.playlists().requireData().list.map { summary ->
+        val page = api.playlists().requireData()
+        val playlists = page.list.map { summary ->
             async {
                 if (summary.trackCount != null) summary.toDomain()
                 else details.withPermit {
@@ -151,6 +162,7 @@ class MusicCatalogRepository(private val api: MusicApi) : CatalogRepository {
                 }
             }
         }.awaitAll()
+        CatalogPage(playlists, page.total)
     }
     override suspend fun playlistDetail(id: PlaylistId) = api.playlistDetail(id.value).requireData().toDomain()
     override suspend fun createPlaylist(name: String, coverId: String?): Playlist {

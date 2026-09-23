@@ -1086,11 +1086,11 @@ class MusicShellTest {
 
     @Test
     fun homeFavoriteCardOpensPagedFavorites() {
-        setContent()
+        setContent(state = MusicUiState(loading = false, favoriteTotal = 17))
 
         compose.onNodeWithContentDescription("收藏 快捷入口").performClick()
 
-        compose.onNodeWithText("0 首已加载歌曲").assertIsDisplayed()
+        compose.onNodeWithText("共 17 首歌曲").assertIsDisplayed()
     }
 
     @Test
@@ -1145,12 +1145,12 @@ class MusicShellTest {
     @Test
     fun moreRecentEntryOpensRecentTracksAndProvidesBackAction() {
         val recent = Track(TrackId("track-placeholder"), "测试曲目")
-        setContent(MusicUiState(loading = false, recent = listOf(recent)))
+        setContent(MusicUiState(loading = false, recent = listOf(recent), recentTotal = 81))
 
         compose.onNodeWithContentDescription("音乐库").performClick()
         compose.onNodeWithText("最近播放").performClick()
 
-        compose.onNodeWithText("1 首歌曲").assertIsDisplayed()
+        compose.onNodeWithText("共 81 首歌曲").assertIsDisplayed()
         compose.onNodeWithContentDescription("返回").assertIsDisplayed()
     }
 
@@ -3715,6 +3715,47 @@ class MusicShellTest {
 
         compose.onNodeWithText("共 128 首歌曲").assertIsDisplayed()
         compose.onNodeWithText("0 首已加载歌曲").assertDoesNotExist()
+    }
+
+    @Test
+    fun albumLibraryShowsServerReportedTotalInsteadOfLoadedItemCount() {
+        setContent(state = MusicUiState(loading = false, albumTotal = 128))
+
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部专辑").performClick()
+
+        compose.onNodeWithText("共 128 张专辑").assertIsDisplayed()
+        compose.onNodeWithText("0 张已加载").assertDoesNotExist()
+    }
+
+    @Test
+    fun artistLibraryShowsServerReportedTotalInsteadOfLoadedItemCount() {
+        setContent(state = MusicUiState(loading = false, artistTotal = 42))
+
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌手").performClick()
+
+        compose.onNodeWithText("共 42 位歌手").assertIsDisplayed()
+    }
+
+    @Test
+    fun playlistLibraryShowsServerReportedTotal() {
+        setContent(state = MusicUiState(loading = false, playlistTotal = 6))
+
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("歌单").performClick()
+
+        compose.onNodeWithText("共 6 个歌单").assertIsDisplayed()
+    }
+
+    @Test
+    fun trackLibraryDoesNotPresentLoadedItemsAsTotalWhenServerCountIsUnavailable() {
+        setContent(state = MusicUiState(loading = false, pendingSections = emptySet()))
+
+        compose.onNodeWithContentDescription("音乐库").performClick()
+        compose.onNodeWithText("全部歌曲").performClick()
+
+        compose.onNodeWithText("曲目总数暂不可用").assertIsDisplayed()
     }
 
     @Test

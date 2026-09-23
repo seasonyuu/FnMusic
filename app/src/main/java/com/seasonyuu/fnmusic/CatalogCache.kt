@@ -21,6 +21,11 @@ data class CatalogCacheSnapshot(
     val recent: List<Track> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
     val trackTotal: Int? = null,
+    val albumTotal: Int? = null,
+    val artistTotal: Int? = null,
+    val favoriteTotal: Int? = null,
+    val recentTotal: Int? = null,
+    val playlistTotal: Int? = null,
     val serverName: String = "飞牛音乐",
 )
 
@@ -44,6 +49,11 @@ class CatalogCache(context: Context, private val json: Json) {
             recent = state.recent.take(MAX_RECENT),
             playlists = state.playlists.take(MAX_PLAYLISTS),
             trackTotal = state.trackTotal,
+            albumTotal = state.albumTotal,
+            artistTotal = state.artistTotal,
+            favoriteTotal = state.favoriteTotal,
+            recentTotal = state.recentTotal,
+            playlistTotal = state.playlistTotal,
             serverName = state.serverName,
         )
         runCatching { json.encodeToString(snapshot) }.onSuccess { payload ->
@@ -100,6 +110,11 @@ fun CatalogCacheSnapshot.toMusicState(previous: MusicUiState = MusicUiState()): 
     recent = recent,
     playlists = playlists,
     trackTotal = trackTotal,
+    albumTotal = albumTotal,
+    artistTotal = artistTotal,
+    favoriteTotal = favoriteTotal,
+    recentTotal = recentTotal,
+    playlistTotal = playlistTotal,
     serverName = serverName,
     error = null,
 )

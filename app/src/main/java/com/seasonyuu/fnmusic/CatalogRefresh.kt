@@ -47,28 +47,28 @@ internal class CatalogRefresh(
             return@load { it: MusicUiState -> it.copy(tracks = tracks) }
         } }
         launch { load(CatalogSection.Albums) {
-            val albums = catalog.firstAlbums(20, AlbumSort.RecentlyUpdated)
-            return@load { it: MusicUiState -> it.copy(albums = albums) }
+            val page = catalog.firstAlbumPage(20, AlbumSort.RecentlyUpdated)
+            return@load { it: MusicUiState -> it.copy(albums = page.items, albumTotal = page.total) }
         } }
         launch { load(CatalogSection.Artists) {
-            val artists = catalog.firstArtists(30)
-            return@load { it: MusicUiState -> it.copy(artists = artists) }
+            val page = catalog.firstArtistPage(30)
+            return@load { it: MusicUiState -> it.copy(artists = page.items, artistTotal = page.total) }
         } }
         launch { load(CatalogSection.Favorites) {
-            val favorites = catalog.favoritePage(100)
+            val page = catalog.favoritePage(100)
             currentCoroutineContext().ensureActive()
-            seedFavorites(favorites)
-            return@load { it: MusicUiState -> it.copy(favorites = favorites) }
+            seedFavorites(page.items)
+            return@load { it: MusicUiState -> it.copy(favorites = page.items, favoriteTotal = page.total) }
         } }
         launch { load(CatalogSection.Recent) {
-            val recent = catalog.recent(30)
+            val page = catalog.recentPage(30)
             currentCoroutineContext().ensureActive()
-            seedFavorites(recent)
-            return@load { it: MusicUiState -> it.copy(recent = recent) }
+            seedFavorites(page.items)
+            return@load { it: MusicUiState -> it.copy(recent = page.items, recentTotal = page.total) }
         } }
         launch { load(CatalogSection.Playlists) {
-            val playlists = catalog.playlists()
-            return@load { it: MusicUiState -> it.copy(playlists = playlists) }
+            val page = catalog.playlistPage()
+            return@load { it: MusicUiState -> it.copy(playlists = page.items, playlistTotal = page.total) }
         } }
         launch { load(CatalogSection.TrackTotal) {
             val total = catalog.trackCount(TrackSort.RecentlyAdded)

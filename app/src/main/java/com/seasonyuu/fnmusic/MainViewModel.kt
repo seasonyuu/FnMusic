@@ -383,9 +383,11 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
                 created
             }
                 .onSuccess {
+                    val page = graph.catalog.playlistPage()
                     mutableMusic.value = mutableMusic.value.copy(
                         playlistBusy = false,
-                        playlists = graph.catalog.playlists(),
+                        playlists = page.items,
+                        playlistTotal = page.total,
                         playlistMessage = if (initialTrackId == null) "歌单已创建" else "歌单已创建并添加歌曲",
                     )
                 }
@@ -436,6 +438,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
                     mutableMusic.value = mutableMusic.value.copy(
                         playlistBusy = false,
                         playlists = mutableMusic.value.playlists.filterNot { it.id == id },
+                        playlistTotal = mutableMusic.value.playlistTotal?.let { count -> (count - 1).coerceAtLeast(0) },
                         detailPlaylist = mutableMusic.value.detailPlaylist?.takeUnless { it.id == id },
                         detailTracks = if (mutableMusic.value.detailKey == DetailRequestKey("playlist", id.value)) emptyList() else mutableMusic.value.detailTracks,
                         detailCache = mutableMusic.value.detailCache - DetailRequestKey("playlist", id.value),
@@ -511,7 +514,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
         val metadata = graph.catalog.playlistDetail(id)
         val tracks = orderedPlaylistTracks(id)
         graph.favorites.seed(tracks)
-        val playlists = graph.catalog.playlists()
+        val page = graph.catalog.playlistPage()
         check(owner == playlistAccount()) { "账号已切换" }
         val current = mutableMusic.value
         val active = current.detailKey == DetailRequestKey("playlist", id.value)
@@ -521,7 +524,8 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
             detailJob?.cancel()
         }
         mutableMusic.value = current.copy(
-            playlists = playlists,
+            playlists = page.items,
+            playlistTotal = page.total,
             detailLoading = if (active) false else current.detailLoading,
             detailError = if (active) null else current.detailError,
             detailPlaylist = if (active) metadata.copy(trackCount = metadata.trackCount ?: tracks.size) else current.detailPlaylist,
@@ -595,8 +599,8 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             val target = !(graph.favorites.overrides.value[track.id] ?: track.isFavorite)
             graph.favorites.setFavorite(track.id, target).onSuccess {
-                val favorites = graph.catalog.favoritePage(100)
-                mutableMusic.value = mutableMusic.value.copy(favorites = favorites)
+                val page = graph.catalog.favoritePage(100)
+                mutableMusic.value = mutableMusic.value.copy(favorites = page.items, favoriteTotal = page.total)
             }.onFailure {
                 mutableMusic.value = mutableMusic.value.copy(error = "收藏操作失败，请重试")
             }

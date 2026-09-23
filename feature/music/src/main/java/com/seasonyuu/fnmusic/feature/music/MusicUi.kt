@@ -349,10 +349,15 @@ data class MusicUiState(
     val tracks: List<Track> = emptyList(),
     val trackTotal: Int? = null,
     val albums: List<Album> = emptyList(),
+    val albumTotal: Int? = null,
     val artists: List<Artist> = emptyList(),
+    val artistTotal: Int? = null,
     val favorites: List<Track> = emptyList(),
+    val favoriteTotal: Int? = null,
     val recent: List<Track> = emptyList(),
+    val recentTotal: Int? = null,
     val playlists: List<Playlist> = emptyList(),
+    val playlistTotal: Int? = null,
     val search: SearchUiState = SearchUiState(),
     val favoriteOverrides: Map<TrackId, Boolean> = emptyMap(),
     val serverName: String = "飞牛音乐",
@@ -853,12 +858,14 @@ fun MusicShell(
                                                             LaunchedEffect(catalogEditVersion) { if (catalogEditVersion > 0) items.refresh() }
                                                             PagingTrackScreen(
                                                                 "全部歌曲", items, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
-                                                                sort = sort, totalCount = state.trackTotal, showServerTotal = true, pullRefreshEnabled = true,
+                                                                sort = sort, totalCount = state.trackTotal, totalSection = CatalogSection.TrackTotal,
+                                                                pullRefreshEnabled = true,
                                                                 onSort = { sort = it }, onPlayAll = { onPlayAllTracks(sort) }, onBack = ::popPage,
                                                             )
                                                         }
                                                         MusicPage.Favorites -> PagingTrackScreen(
                                                             "收藏", favoriteItems, state, coverUrl, onPlay, onToggleFavorite, onRefresh,
+                                                            totalCount = state.favoriteTotal, totalSection = CatalogSection.Favorites,
                                                             onPlayAll = onPlayAllFavorites, onBack = ::popPage,
                                                         )
                                                         MusicPage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, ::popPage)
@@ -866,13 +873,13 @@ fun MusicShell(
                                                             var sort by rememberSaveable { mutableStateOf(AlbumSort.RecentlyUpdated) }
                                                             val items = remember(entry.id, sort) { pagedAlbums(sort) }.collectAsLazyPagingItems()
                                                             LaunchedEffect(catalogEditVersion) { if (catalogEditVersion > 0) items.refresh() }
-                                                            AlbumGridScreen(items, coverUrl, sort, { sort = it }, ::popPage) {
+                                                            AlbumGridScreen(items, state.albumTotal, state, coverUrl, sort, { sort = it }, ::popPage) {
                                                                 pushDetail(LibraryDetail.AlbumPage(it))
                                                             }
                                                         }
-                                                        MusicPage.Artists -> ArtistGridScreen(artistItems, coverUrl, ::popPage) { pushDetail(LibraryDetail.ArtistPage(it)) }
+                                                        MusicPage.Artists -> ArtistGridScreen(artistItems, state, coverUrl, ::popPage) { pushDetail(LibraryDetail.ArtistPage(it)) }
                                                         MusicPage.Playlists -> PlaylistGridScreen(
-                                                            state.playlists, state.playlistMessage, coverUrl, ::popPage,
+                                                            state.playlists, state.playlistMessage, state, coverUrl, ::popPage,
                                                             { pushDetail(LibraryDetail.PlaylistEditorPage(null)) },
                                                         ) { pushDetail(LibraryDetail.PlaylistPage(it)) }
                                                         MusicPage.LiquidGlass -> LiquidGlassSettingsScreen(
@@ -1418,6 +1425,12 @@ private fun SectionTitle(title: String, onClick: (() -> Unit)? = null) {
     }
 }
 
+private fun catalogTotalLabel(total: Int?, section: CatalogSection, state: MusicUiState, unit: String): String {
+    if (total != null) return "共 $total $unit"
+    val subject = if (section == CatalogSection.TrackTotal) "曲目" else section.title
+    return if (state.loading && section in state.pendingSections) "正在获取${subject}总数…" else "${subject}总数暂不可用"
+}
+
 @Composable
 private fun TrackListScreen(
     title: String,
@@ -1436,7 +1449,7 @@ private fun TrackListScreen(
         ) {
             item(key = "collection-header") {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-                    CollectionHeading(title, "${tracks.size} 首歌曲", heading)
+                    CollectionHeading(title, catalogTotalLabel(state.recentTotal, CatalogSection.Recent, state, "首歌曲"), heading)
                     Spacer(Modifier.height(20.dp))
                     CollectionPlayButton(tracks.isNotEmpty()) { onPlay(tracks, 0) }
                 }
@@ -1460,7 +1473,7 @@ internal fun PagingTrackScreen(
     onRefresh: () -> Unit,
     sort: TrackSort? = null,
     totalCount: Int? = null,
-    showServerTotal: Boolean = false,
+    totalSection: CatalogSection? = null,
     pullRefreshEnabled: Boolean = false,
     onSort: ((TrackSort) -> Unit)? = null,
     onPlayAll: (() -> Unit)? = null,
@@ -1509,12 +1522,8 @@ internal fun PagingTrackScreen(
             ) {
                 item(key = "collection-header") {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-                        CollectionHeading(title, when {
-                            totalCount != null -> "共 $totalCount 首歌曲"
-                            showServerTotal && state.loading -> "正在获取曲目总数…"
-                            showServerTotal -> "${tracks.itemCount} 首歌曲"
-                            else -> "${tracks.itemCount} 首已加载歌曲"
-                        }, heading)
+                        CollectionHeading(title, totalSection?.let { catalogTotalLabel(totalCount, it, state, "首歌曲") }
+                            ?: "${tracks.itemCount} 首已加载歌曲", heading)
                         Spacer(Modifier.height(20.dp))
                         CollectionPlayButton(tracks.itemCount > 0) {
                             if (onPlayAll != null) onPlayAll()
@@ -1781,6 +1790,8 @@ internal fun PageTitle(
 @Composable
 private fun AlbumGridScreen(
     albums: LazyPagingItems<Album>,
+    totalCount: Int?,
+    state: MusicUiState,
     coverUrl: (String?, Int) -> String?,
     sort: AlbumSort,
     onSort: (AlbumSort) -> Unit,
@@ -1807,7 +1818,7 @@ private fun AlbumGridScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
-                Column { CollectionHeading("专辑", "${albums.itemCount} 张已加载", heading) }
+                Column { CollectionHeading("专辑", catalogTotalLabel(totalCount, CatalogSection.Albums, state, "张专辑"), heading) }
             }
             items(count = albums.itemCount, key = albums.itemKey { it.id.value }) { index ->
                 albums[index]?.let { album ->
@@ -1859,7 +1870,7 @@ internal fun PlaylistActionsMenu(busy: Boolean, onEdit: () -> Unit, onPurge: () 
 }
 
 @Composable
-private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String?, Int) -> String?, onBack: () -> Unit, onArtist: (Artist) -> Unit) {
+private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, state: MusicUiState, coverUrl: (String?, Int) -> String?, onBack: () -> Unit, onArtist: (Artist) -> Unit) {
     val gridState = rememberLazyGridState()
     CollectionPage("歌手", onBack, { gridState.firstVisibleItemIndex > 0 }) { heading, top ->
         if (artists.itemCount == 0 && artists.loadState.refresh is LoadState.Loading &&
@@ -1874,7 +1885,7 @@ private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
-                Column { CollectionHeading("歌手", "${artists.itemCount} 位已加载", heading) }
+                Column { CollectionHeading("歌手", catalogTotalLabel(state.artistTotal, CatalogSection.Artists, state, "位歌手"), heading) }
             }
             items(count = artists.itemCount, key = artists.itemKey { it.id.value }) { index ->
                 artists[index]?.let { artist ->
@@ -1898,6 +1909,7 @@ private fun ArtistGridScreen(artists: LazyPagingItems<Artist>, coverUrl: (String
 private fun PlaylistGridScreen(
     playlists: List<Playlist>,
     message: String?,
+    state: MusicUiState,
     coverUrl: (String?, Int) -> String?,
     onBack: () -> Unit,
     onCreate: () -> Unit,
@@ -1915,7 +1927,7 @@ private fun PlaylistGridScreen(
         ) {
             item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    CollectionHeading("歌单", "${playlists.size} 个", heading)
+                    CollectionHeading("歌单", catalogTotalLabel(state.playlistTotal, CatalogSection.Playlists, state, "个歌单"), heading)
                     OutlinedButton(colors = readableOutlinedButtonColors(), onClick = onCreate, modifier = Modifier.heightIn(min = 48.dp)) {
                         Icon(Icons.Rounded.Add, "新建歌单")
                         Text("新建歌单")
