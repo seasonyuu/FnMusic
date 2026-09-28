@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="external" viewBox="0 0 24 24">
+    <path d="M13 5h6v6M19 5l-9 9"/>
+    <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>
+  </symbol>
+  <symbol id="download" viewBox="0 0 24 24">
+    <path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3"/>
+  </symbol>
+  <symbol id="arrow-right" viewBox="0 0 24 24">
+    <path d="M4 12h16m-6-6 6 6-6 6"/>
+  </symbol>
+  <symbol id="arrow-left" viewBox="0 0 24 24">
+    <path d="M20 12H4m6 6-6-6 6-6"/>
+  </symbol>
+  <symbol id="library" viewBox="0 0 24 24">
+    <path d="M4 4v16m4-16v16m4-14 3-1 5 14-3 1-5-14ZM3 20h7"/>
+  </symbol>
+  <symbol id="output" viewBox="0 0 24 24">
+    <path d="M4 9v6h4l5 4V5L8 9H4Zm13-1a5 5 0 0 1 0 8m2.5-11a9 9 0 0 1 0 14"/>
+  </symbol>
+  <symbol id="lyrics" viewBox="0 0 24 24">
+    <path d="M4 5h10M4 9h7M4 13h6m7-5v10a2.5 2.5 0 1 1-2.5-2.5c.9 0 1.7.4 2.5.5V8l4-1v3l-4 1"/>
+  </symbol>
+  <symbol id="play" viewBox="0 0 24 24">
+    <path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="plus" viewBox="0 0 24 24">
+    <path d="M5 12h14M12 5v14"/>
+  </symbol>
+  <symbol id="minus" viewBox="0 0 24 24">
+    <path d="M5 12h14"/>
+  </symbol>
+</svg>
