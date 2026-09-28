@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#19191c">
+  <meta name="description" content="了解 FnMusic 的后台播放、本机设备切换、AirPlay 输出与缓存设置。">
+  <link rel="canonical" href="https://seasonyuu.github.io/FnMusic/guide/playback.html">
+  <link rel="icon" href="../assets/brand-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/site.css">
+  <title>播放与音频输出 · FnMusic 使用指南</title>
+</head>
+<body class="docs-page" data-root="../">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header"><div class="container site-header-inner">
+    <a class="brand" href="../" aria-label="FnMusic 首页"><img src="../assets/brand-mark.svg" alt=""><span>FnMusic</span><small>for Android</small></a>
+    <nav class="header-nav" aria-label="主导航"><a href="../">首页</a><a href="./" aria-current="page">使用指南</a><a class="nav-github" href="https://github.com/seasonyuu/FnMusic" target="_blank" rel="noopener noreferrer">GitHub ↗</a></nav>
+    <div class="header-actions"><button class="search-trigger" type="button" aria-label="搜索使用指南" aria-expanded="false" data-search-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.8"/><path d="m16 16 5 5"/></svg></button><a class="header-download" href="https://github.com/seasonyuu/FnMusic/releases/latest">下载 APK <span aria-hidden="true">↗</span></a></div>
+  </div></header>
+  <main id="main" class="container docs-shell">
+    <aside class="docs-sidebar" aria-label="指南目录"><div class="docs-sidebar-inner"><h2>使用指南 / INDEX</h2><nav aria-label="指南页面">
+      <a href="index.html">指南首页</a>
+      <a href="install.html">开始使用</a>
+      <a href="library.html">浏览曲库与歌单</a>
+      <a href="playback.html" aria-current="page">播放与音频输出</a>
+      <a href="lyrics.html">歌词与个性化</a>
+      <a href="faq.html">常见问题</a>
+    </nav></div></aside>
+    <article class="docs-content"><div class="breadcrumbs"><a href="../">FnMusic</a><span>/</span><a href="./">使用指南</a><span>/</span><span>播放与音频输出</span></div>
+      <h1>让声音，<br>去它该去的地方。</h1>
+<p class="docs-lead">音乐从你的 NAS 传来，由手机播放和控制。播放器支持后台播放、通知与锁屏控制，也提供本机和实验性 AirPlay 输出。</p>
+<h2>日常播放</h2>
+<p>播放器提供上一首、下一首、暂停、进度控制和播放队列。离开应用后，可继续通过系统通知或锁屏媒体控件控制播放。原音质为默认选择；设置中也可以选择标准音质。</p>
+<h2>选择本机输出</h2>
+<p>播放器底部的设备入口会列出 Android 已连接的扬声器、蓝牙媒体设备、有线耳机、USB 或 HDMI 音频设备。请先在系统设置中连接或配对外部设备；FnMusic 不负责扫描和配对蓝牙设备。</p>
+<p>设备切换要以播放时的实际音频路由为准。若系统无法完成切换，应用会暂停并提示重试或打开系统输出选择器。设备断开后也会暂停，不会自行改用扬声器继续播放。</p>
+<h2>AirPlay 输出</h2>
+<p>同一局域网中出现兼容接收端时，可从设备面板选择 AirPlay。手机仍控制队列、暂停、切歌、进度和接收端音量，并能切回本机播放。</p>
+<div class="notice"><p><strong>当前验证范围：</strong>AirPlay 是实验性功能，已在 macOS 接收端完成实际听音与控制验证。HomePod、Apple TV、多房间播放和其他接收设备的兼容性尚未确认。连接时可能需要在接收端批准或输入配对码。</p></div>
+<h2>音质和缓存</h2>
+<p>播放设置提供 Wi-Fi 与移动网络音质选项，以及临时播放缓存容量和曲目数量设置。缓存用于改善流式播放，不会创建永久离线下载。</p>
+<p>想了解更细的设备行为，可阅读仓库中的 <a href="https://github.com/seasonyuu/FnMusic/blob/main/docs/local-audio-output.md">本地音频输出说明</a> 和 <a href="https://github.com/seasonyuu/FnMusic/blob/main/docs/airplay.md">AirPlay 验证记录</a>。</p>
+<a class="page-next" href="lyrics.html"><span><small>下一步 / NEXT</small><br>歌词与个性化</span><span aria-hidden="true">↗</span></a>
+    </article>
+  </main>
+  <footer class="site-footer"><div class="container"><div class="footer-main"><div><a class="brand" href="../"><img src="../assets/brand-mark.svg" alt=""><span>FnMusic</span></a><p>你的音乐，随时聆听。FnMusic 是独立开发的非官方第三方客户端，与飞牛官方无关联。连接和兼容性取决于你的 fnOS 音乐服务版本。</p></div><div class="footer-column"><strong>网站</strong><a href="./">使用指南</a><a href="faq.html">常见问题</a><a href="https://github.com/seasonyuu/FnMusic/releases/latest">最新版本</a></div><div class="footer-column"><strong>项目</strong><a href="https://github.com/seasonyuu/FnMusic">GitHub 仓库</a><a href="https://github.com/seasonyuu/FnMusic/blob/main/LICENSE-SCOPE.md">许可范围</a><a href="https://github.com/seasonyuu/FnMusic/issues">反馈问题</a></div></div><div class="footer-bottom"><span>© 2026 FnMusic contributors. 本网站仅介绍非官方项目。</span><span>Made for the music you already own.</span></div></div></footer>
+  <div class="search-overlay" data-search hidden><div class="search-panel" role="dialog" aria-modal="true" aria-label="搜索使用指南"><div class="search-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.8"/><path d="m16 16 5 5"/></svg><input type="search" placeholder="搜索连接、AirPlay、歌词…" aria-label="搜索关键词" data-search-input><button type="button" data-search-close>关闭 Esc</button></div><div class="search-results"><p data-search-count>输入关键词搜索使用指南</p><div data-search-results></div></div></div></div>
+  <script src="../assets/site.js" defer></script>
+</body>
+</html>

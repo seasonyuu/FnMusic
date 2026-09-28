@@ -1,0 +1,7 @@
+[
+  {"title":"开始使用","description":"下载 APK、安装 FnMusic，并连接自己的飞牛音乐服务。","keywords":"安装 下载 Release APK SHA-256 Android fnOS NAS FN Connect 登录 地址","url":"guide/install.html"},
+  {"title":"浏览曲库与歌单","description":"从首页和音乐库找到歌曲，管理收藏、最近播放与歌单。","keywords":"首页 搜索 歌曲 歌手 专辑 收藏 最近播放 歌单 管理","url":"guide/library.html"},
+  {"title":"播放与音频输出","description":"后台播放、本机设备选择、AirPlay 输出及已知限制。","keywords":"播放器 通知 锁屏 蓝牙 耳机 USB HDMI AirPlay 接收器 音质 缓存","url":"guide/playback.html"},
+  {"title":"歌词与个性化","description":"在线逐词歌词、手动匹配、时间偏移、外观及缓存设置。","keywords":"歌词 网易云 QQ 酷狗 AMLL TTML fnOS 主题 深色 浅色","url":"guide/lyrics.html"},
+  {"title":"常见问题","description":"兼容性、隐私、更新、开源许可和非官方声明。","keywords":"FAQ 帮助 兼容 更新 隐私 权限 开源 许可 非官方","url":"guide/faq.html"}
+]
