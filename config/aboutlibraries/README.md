@@ -17,6 +17,7 @@ The original license and notice texts are copied verbatim from:
 - `third_party/airplay2-sender/{LICENSE,NOTICE,licenses/THIRD-PARTY-NOTICES.txt}`
 - `third_party/airplay2-sender/third_party/ed25519/LICENSE.txt`
 - `LICENSE` (FnMusic-authored code and documentation)
+- [Shizuku API's LICENSE](https://github.com/RikkaApps/Shizuku-API/blob/master/LICENSE)
 
 Each license must explicitly set `hash` to the ID referenced by its library.
 Without it the exporter hashes the content, leaving the library reference unresolved.
@@ -37,3 +38,7 @@ The BSD-3-Clause override supplies Protocol Buffers' actual copyright notice
 (from its upstream v3.25.5 LICENSE) for AndroidX's repackaged protobuf library,
 instead of the SPDX template's placeholder fields. Revisit this override if a
 second unrelated BSD dependency is added; give each project its own license ID.
+
+The Shizuku API/provider/aidl/shared override uses `shizuku-mit` to include
+RikkaW's actual copyright notice alongside the license, rather than MIT's SPDX
+placeholder. Review the copied text when updating the Shizuku SDK.
