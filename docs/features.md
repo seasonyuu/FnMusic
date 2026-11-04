@@ -26,6 +26,12 @@ The Profile tab shows the current Music user, role, and server. It offers passwo
 
 After administrator status is confirmed, additional controls allow music-folder management, scans and task status, user and folder permissions, new-user access, and server renaming. Music folders are selected from authorized NAS directories with breadcrumbs, storage grouping, and duplicate checks. Library management includes per-folder and full scans, task cancellation and server-approved retries, and search-index rebuilding. Metadata and automatic-lyric defaults follow the web client; local-only metadata disables lyric downloads.
 
+**Profile → 投屏到车机** discovers connected external displays and opens FnMusic's
+existing interface on the selected screen through Shizuku. Jovi's main car display
+is recommended when available. Start Shizuku and grant FnMusic access before
+projecting; phone-only wireless-debugging setup is supported. See
+[car projection](car-projection.md) for setup and device verification.
+
 ## Lyrics
 
 FnMusic automatically searches enabled online providers (NetEase Cloud Music, QQ Music, and Kugou by default), then [AMLL TTML DB](https://github.com/amll-dev/amll-ttml-db), then the fnOS lyrics endpoint. It prefers online word-timed lyrics, AMLL word-timed lyrics, online line-timed lyrics, and finally fnOS lyrics. Equally suitable online results follow the saved provider order (NetEase, QQ, Kugou by default). Matching checks title, artists, recording version, duration when available, and album. Phonetic, background-vocal, and duet layouts are not currently supported.

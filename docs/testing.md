@@ -49,6 +49,7 @@ module that contains them.
 For feature-specific verification:
 
 - [Local audio output](local-audio-output.md): routing tests and physical-output acceptance.
+- [Car projection](car-projection.md): Shizuku authorization and external-display acceptance.
 - [Liquid menu](liquid-menu.md#repeatable-verification): rendering and interaction matrix.
   Its script currently selects the first connected device for each API level and
   does not honor `ANDROID_SERIAL`; ensure all eligible connected devices are
