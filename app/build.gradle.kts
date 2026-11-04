@@ -60,6 +60,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -97,6 +98,9 @@ android {
 }
 
 dependencies {
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.aboutlibraries.core)
     testImplementation(libs.mockwebserver)
     implementation(project(":core:model"))

@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: MainViewModel = hiltViewModel()
             val aboutViewModel: AboutViewModel = hiltViewModel()
+            val carProjectionViewModel: CarProjectionViewModel = hiltViewModel()
             val music by viewModel.music.collectAsState()
             val session by viewModel.session.collectAsState()
             val dark = when (music.appearance) {
@@ -126,6 +127,7 @@ class MainActivity : ComponentActivity() {
                         onClearCache = viewModel::clearCache,
                         lyricsActions = viewModel.lyricsActions,
                         aboutActions = aboutViewModel,
+                        carProjectionActions = carProjectionViewModel,
                         serverVersion = readySession.serverVersion,
                         mediasrvVersion = readySession.mediasrvVersion,
                         openPlayerRequested = openPlayerRequested,
