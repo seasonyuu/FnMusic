@@ -482,6 +482,7 @@ fun MusicShell(
     onClearCache: suspend () -> Unit = {},
     lyricsActions: com.seasonyuu.fnmusic.core.model.LyricsActions? = null,
     aboutActions: com.seasonyuu.fnmusic.core.model.AboutActions? = null,
+    carProjectionActions: com.seasonyuu.fnmusic.core.model.CarProjectionActions? = null,
     serverVersion: String? = null,
     mediasrvVersion: String? = null,
     playlistEditing: com.seasonyuu.fnmusic.core.model.PlaylistEditActions? = null,
@@ -540,6 +541,10 @@ fun MusicShell(
         val playerMorphProgress = remember { Animatable(0f) }
         val lyricsMorphProgress = remember { Animatable(0f) }
         var pickerSourcePlaylist by remember { mutableStateOf<PlaylistId?>(null) }
+        var showCarProjection by remember { mutableStateOf(false) }
+        if (showCarProjection) carProjectionActions?.let { actions ->
+            CarProjectionDialog(actions) { showCarProjection = false }
+        }
         var playlistPickerTrack by remember { mutableStateOf<Track?>(null) }
         var deletePlaylistCandidate by remember { mutableStateOf<Playlist?>(null) }
         var editingPlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -975,6 +980,10 @@ fun MusicShell(
                                                             onLyrics = { openPage(MusicPage.LyricsSettings) },
                                                             onQuality = { openPage(MusicPage.Quality) },
                                                             onAbout = { openPage(MusicPage.About) },
+                                                            onCarProjection = carProjectionActions?.let { actions -> {
+                                                                actions.refresh()
+                                                                showCarProjection = true
+                                                            } },
                                                             onAdminLibraries = administration?.let { { openPage(MusicPage.AdminLibraries) } },
                                                             onAdminUsers = administration?.let { { openPage(MusicPage.AdminUsers) } },
                                                             onAdminServer = administration?.let { { openPage(MusicPage.AdminServer) } },

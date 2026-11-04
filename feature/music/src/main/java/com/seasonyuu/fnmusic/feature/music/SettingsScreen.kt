@@ -45,6 +45,7 @@ internal fun SettingsScreen(
     onLyrics: () -> Unit = {},
     onQuality: () -> Unit = {},
     onAbout: () -> Unit = {},
+    onCarProjection: (() -> Unit)? = null,
     onAdminLibraries: (() -> Unit)? = null,
     onAdminUsers: (() -> Unit)? = null,
     onAdminServer: (() -> Unit)? = null,
@@ -97,6 +98,7 @@ internal fun SettingsScreen(
                 add(SettingsEntry("音质偏好", onQuality))
                 add(SettingsEntry("自动缓存歌曲", onCache))
                 add(SettingsEntry("歌词", onLyrics))
+                onCarProjection?.let { add(SettingsEntry("投屏到车机", it)) }
 
             })
         }
