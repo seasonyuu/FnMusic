@@ -21,6 +21,7 @@ class AppGraph(context: Context) {
     private val vault = CredentialVault(context, network.json)
     val session = SessionCoordinator(network, vault, ConnectionPolicy())
     val administration = com.seasonyuu.fnmusic.core.network.MusicAdministrationRepository(network)
+    val folderBrowser = com.seasonyuu.fnmusic.core.network.FolderBrowserRepository(network)
     val catalog = MusicCatalogRepository(network.api)
     val search = MusicSearchRepository(network.api)
     val favorites = OptimisticFavoriteRepository(network.api)

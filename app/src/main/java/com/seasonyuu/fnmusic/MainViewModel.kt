@@ -118,6 +118,31 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
         }.await() },
         onServerChanged = { name -> graph.session.updateServerName(name); mutableMusic.value = mutableMusic.value.copy(serverName = name) },
     )
+    private val folderMetadataPending = mutableSetOf<TrackId>()
+    val folderBrowser: FolderBrowserActions = ProfileFolderBrowser(
+        account = ::playlistAccount,
+        enabled = { (session.value as? SessionState.Ready)?.folderViewEnabled == true },
+        canManage = { mutableMusic.value.user?.role == "admin" },
+        delegate = graph.folderBrowser,
+        playTracks = { tracks, mode ->
+            folderMetadataPending.addAll(tracks.filter { it.audioSpec == null }.map { it.id })
+            exitRoamMode()
+            when (mode) {
+                FolderPlaybackMode.Play -> graph.player.play(tracks.map(graph::playable))
+                FolderPlaybackMode.Next -> graph.player.playNext(tracks.map(graph::playable))
+                FolderPlaybackMode.Append -> graph.player.append(tracks.map(graph::playable))
+            }
+        },
+        loadPlaylists = graph.catalog::playlists,
+        newPlaylist = { name -> graph.catalog.createPlaylist(name, null) },
+        catalogChanged = { playlistId ->
+            clearDetailCache()
+            if (playlistId != null) refreshPlaylistAfterMembershipChange(playlistId)
+            refresh()
+        },
+        onForbidden = ::refreshProfile,
+    )
+
     private val trackPages = mutableMapOf<TrackSort, Flow<PagingData<Track>>>()
     private val albumPages = mutableMapOf<AlbumSort, Flow<PagingData<Album>>>()
     fun pagedTracks(sort: TrackSort) = trackPages.getOrPut(sort) { graph.catalog.tracks(sort).cachedIn(viewModelScope) }
@@ -172,6 +197,7 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
     private val catalogRefresh = CatalogRefresh(graph.catalog, mutableMusic, graph.favorites::seed)
 
     private fun resetCatalog() {
+        folderMetadataPending.clear()
         searchController.reset()
         refreshJob?.cancel()
         val previous = mutableMusic.value
@@ -226,6 +252,34 @@ class MainViewModel @Inject constructor(private val graph: AppGraph, private val
     private val roamPrefetchMutex = Mutex()
 
     init {
+        // Folder expansion returns compact tracks. Reuse catalog metadata reads for the current
+        // and upcoming song, rather than issuing up to 1000 requests before playback can start.
+        viewModelScope.launch {
+            combine(
+                player.map { state ->
+                    Triple(state.playbackSessionId, state.current?.track?.id,
+                        state.upcomingQueueIndices.firstOrNull()?.let { state.queue.getOrNull(it)?.track?.id })
+                }.distinctUntilChanged(),
+                session.map { (it as? SessionState.Ready)?.profile }.distinctUntilChanged(),
+            ) { queue, profile -> queue to profile }.collectLatest { (queue, profile) ->
+                if (profile == null) return@collectLatest
+                val owner = playlistAccount()
+                for (id in listOfNotNull(queue.second, queue.third).distinct()) {
+                    if (id !in folderMetadataPending) continue
+                    try {
+                        val metadata = graph.catalog.trackMetadata(id)
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        if (owner != playlistAccount()) return@collectLatest
+                        if (player.value.queue.any { it.track.id == id }) {
+                            val track = metadata.track.copy(audioSpec = metadata.audioSpec ?: metadata.track.audioSpec)
+                            graph.player.updateTracks(listOf(graph.playable(track)))
+                        }
+                        folderMetadataPending.remove(id)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Streaming can continue; a later queue transition retries. */ }
+                }
+            }
+        }
         viewModelScope.launch {
             liquidGlassSettings.state.collect { setting ->
                 mutableMusic.value = mutableMusic.value.copy(

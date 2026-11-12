@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
                         onRefreshProfile = viewModel::refreshProfile,
                         administration = viewModel.administration,
                         folderAuthorizationTarget = viewModel.folderAuthorizationTarget(),
+                        folderBrowser = viewModel.folderBrowser.takeIf { readySession.folderViewEnabled },
                         onStreamingQualityChange = viewModel::setStreamingQuality,
                         onAppearanceChange = viewModel::setAppearance,
                         onThemeColorChange = viewModel::setThemeColor,

@@ -119,6 +119,7 @@ import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
@@ -478,6 +479,7 @@ fun MusicShell(
     onStreamingQualityChange: suspend (com.seasonyuu.fnmusic.core.model.StreamingQualityPreference) -> Unit = {},
     administration: com.seasonyuu.fnmusic.core.model.MusicAdministration? = null,
     folderAuthorizationTarget: FolderAuthorizationTarget? = null,
+    folderBrowser: com.seasonyuu.fnmusic.core.model.FolderBrowserActions? = null,
     onCachePreferenceChange: suspend (PlaybackCachePreference) -> Unit = {},
     onClearCache: suspend () -> Unit = {},
     lyricsActions: com.seasonyuu.fnmusic.core.model.LyricsActions? = null,
@@ -827,6 +829,11 @@ fun MusicShell(
                                                             onBack = { popPage() },
                                                             onAlbum = { album -> pushDetail(LibraryDetail.AlbumPage(album)) },
                                                             onArtist = { artist -> pushDetail(LibraryDetail.ArtistPage(artist)) },
+                                                            onViewInFolder = if (folderBrowser == null) null else { track ->
+                                                                track.audioSpec?.path?.substringBeforeLast('/', "")?.takeIf { it.isNotEmpty() }?.let { path ->
+                                                                    navigation.push(page = MusicPage.Folders, folderPath = path, folderTrackId = track.id.value)
+                                                                }
+                                                            },
                                                         )
                                                         is LibraryDetail.PlaylistEditorPage -> PlaylistEditorScreen(
                                                             playlist = selected.playlist,
@@ -897,6 +904,21 @@ fun MusicShell(
                                                             totalCount = state.favoriteTotal, totalSection = CatalogSection.Favorites,
                                                             onPlayAll = onPlayAllFavorites, onBack = ::popPage,
                                                         )
+                                                        MusicPage.Folders -> if (folderBrowser != null) {
+                                                            FolderBrowserScreen(
+                                                                api = folderBrowser, canManage = state.user?.role == "admin", wide = expanded,
+                                                                coverUrl = coverUrl, onBack = ::popPage,
+                                                                onTrackInfo = { pushDetail(LibraryDetail.TrackPage(it)) },
+                                                                onToggleFavorite = onToggleFavorite, favoriteOverrides = state.favoriteOverrides,
+                                                                initialPath = entry.folderPath, initialTrack = entry.folderTrackId?.let(::TrackId),
+                                                                authorizationTarget = folderAuthorizationTarget,
+                                                                isActive = navigation.current.id == entry.id && !playerComposed,
+                                                                onCatalogChanged = {
+                                                                    catalogEditVersion++
+                                                                    artistItems.refresh(); favoriteItems.refresh(); onRefresh(); onRetrySearch()
+                                                                },
+                                                            )
+                                                        } else { LaunchedEffect(entry.id) { popPage() } }
                                                         MusicPage.Recent -> TrackListScreen("最近播放", state.recent, state, coverUrl, onPlay, onToggleFavorite, ::popPage)
                                                         MusicPage.Albums -> {
                                                             var sort by rememberSaveable { mutableStateOf(AlbumSort.RecentlyUpdated) }
@@ -963,7 +985,7 @@ fun MusicShell(
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
                                                             { pushDetail(LibraryDetail.PlaylistPage(it)) }, onRefresh,
                                                         )
-                                                        MusicDestination.Library -> LibraryMenu(::openPage)
+                                                        MusicDestination.Library -> LibraryMenu(::openPage, folderBrowser != null)
                                                         MusicDestination.Search -> SearchScreen(
                                                             state.search, coverUrl, onSearch, onSearchType, onSubmitSearch, onRetrySearch, onPlay,
                                                             { pushDetail(LibraryDetail.AlbumPage(it)) },
@@ -1775,7 +1797,7 @@ private fun PlaylistCard(
 }
 
 @Composable
-internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit) {
+internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit, foldersEnabled: Boolean = false) {
     Column(
         // Keep the collection surface behind the status bar for progressive blur.
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
@@ -1786,6 +1808,7 @@ internal fun LibraryMenu(onNavigate: (MusicPage) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item { LibraryEntry(FnIcons.Library, "全部歌曲", "浏览音乐库中的歌曲") { onNavigate(MusicPage.Tracks) } }
+            if (foldersEnabled) item { LibraryEntry(Icons.Rounded.Folder, "文件夹", "按目录浏览和批量管理歌曲") { onNavigate(MusicPage.Folders) } }
             item { LibraryEntry(FnIcons.Artist, "全部歌手", "按歌手浏览") { onNavigate(MusicPage.Artists) } }
             item { LibraryEntry(Icons.Rounded.Album, "全部专辑", "按专辑浏览") { onNavigate(MusicPage.Albums) } }
             item { LibraryEntry(Icons.AutoMirrored.Rounded.QueueMusic, "歌单", "浏览和管理歌单") { onNavigate(MusicPage.Playlists) } }
@@ -2271,6 +2294,7 @@ private fun TrackInfoScreen(
     onBack: () -> Unit,
     onAlbum: (Album) -> Unit,
     onArtist: (Artist) -> Unit,
+    onViewInFolder: ((Track) -> Unit)? = null,
     listState: LazyListState = rememberLazyListState(),
 ) {
     var savedMetadata by remember(fallback.id) { mutableStateOf<TrackMetadata?>(null) }
@@ -2303,6 +2327,13 @@ private fun TrackInfoScreen(
                         CoverImage(coverUrl(track.coverId, 640), track.title, Modifier.size(232.dp))
                         Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Text(track.artists.joinToString(" / ") { it.name }.ifBlank { "未知歌手" }, color = FnTextSecondary)
+                    }
+                }
+                if (onViewInFolder != null && !audio?.path.isNullOrEmpty()) item {
+                    TextButton(onClick = { onViewInFolder(track.copy(audioSpec = audio)) }, modifier = Modifier.padding(horizontal = 24.dp)) {
+                        Icon(Icons.Rounded.Folder, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("在文件夹中查看")
                     }
                 }
                 if (state.detailLoading) item { EmptyPane("正在读取音频信息…") }

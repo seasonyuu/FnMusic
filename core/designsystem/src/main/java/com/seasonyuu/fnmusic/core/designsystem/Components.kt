@@ -3,6 +3,7 @@ package com.seasonyuu.fnmusic.core.designsystem
 import coil3.request.allowHardware
 import coil3.toBitmap
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -204,12 +205,14 @@ fun PlaybackToggleIcon(
 
 private enum class PlaybackGlyph { Play, Pause, Buffering }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
     track: Track,
     coverUrl: String?,
     onClick: () -> Unit,
     horizontalPadding: androidx.compose.ui.unit.Dp = 16.dp,
+    onLongClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
@@ -217,7 +220,7 @@ fun TrackRow(
             .fillMaxWidth()
             .padding(horizontal = horizontalPadding / 2)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = horizontalPadding / 2, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
