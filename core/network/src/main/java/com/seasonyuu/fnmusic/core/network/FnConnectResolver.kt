@@ -28,7 +28,6 @@ private data class LocatorEnvelope(val code: Int = -1, val msg: String = "", val
 
 class FnConnectResolver(
     private val client: OkHttpClient,
-    private val cookieJar: MemoryCookieJar,
     private val json: Json,
 ) {
     suspend fun resolveAndActivate(fnId: String): HttpUrl = withContext(Dispatchers.IO) {
@@ -71,7 +70,7 @@ class FnConnectResolver(
         return parsed.takeIf { host.endsWith(".fnos.net") || host.endsWith(".5ddd.com") }
     }
 
-    private fun activate(baseUrl: HttpUrl, fnId: String): HttpUrl {
+    internal fun activate(baseUrl: HttpUrl, fnId: String): HttpUrl {
         val request = Request.Builder()
             .url(baseUrl)
             .header("Accept", "text/html,application/xhtml+xml")
@@ -80,8 +79,18 @@ class FnConnectResolver(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw MusicError.Protocol("relay 激活失败：HTTP ${response.code}")
-            val relayCookie = cookieJar.loadForRequest(baseUrl).any { it.name == "mode" && it.value == "relay" }
-            if (!relayCookie) throw MusicError.Protocol("relay 未返回 mode=relay Cookie")
+            // Older relays set mode=relay during redirects; newer relays serve Music directly.
+            // The shared client still retains any cookies, but they are not a success signal.
+            val finalUrl = response.request.url
+            val contentType = response.body?.contentType()
+            val musicHtml = response.peekBody(2L * 1024 * 1024).string()
+                .contains("<title>飞牛音乐</title>")
+            if (finalUrl.scheme != baseUrl.scheme || finalUrl.host != baseUrl.host ||
+                finalUrl.port != baseUrl.port || finalUrl.encodedPath != baseUrl.encodedPath ||
+                contentType?.type != "text" || contentType.subtype != "html" || !musicHtml
+            ) {
+                throw MusicError.Protocol("relay 未返回飞牛音乐页面")
+            }
         }
         return baseUrl
     }

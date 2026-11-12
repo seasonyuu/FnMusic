@@ -227,7 +227,7 @@ Origin: https://fnos.net
 Referer: https://fnos.net/{fnId}/music/
 ```
 
-首次请求实测返回自跳转，并设置：
+旧版中继首次请求实测返回自跳转，并设置：
 
 ```http
 HTTP/2 302
@@ -242,7 +242,9 @@ HTTP/2 200
 Content-Type: text/html
 ```
 
-如果缺少 relay 握手，直接请求 `{relayHost}` 可能被重定向回 `https://fnos.net/{fnId}/music/`。Android 客户端必须在同一 CookieJar 中完成激活和后续音乐请求。
+2026-11-11 实测：当前中继也可能直接返回 HTTP 200 飞牛音乐 HTML，不再自跳转或设置 `mode=relay`；在全新 CookieJar 中，后续密码登录、用户信息和歌曲列表读取均成功。因此 `mode=relay` 不能再作为激活成功的必要条件。Android 检查最终 URL 仍为目标中继音乐路径、响应为 HTML 且包含飞牛音乐标题，避免把 FN Connect 引导页误判为成功；验证脚本同样检查音乐 HTML。
+
+旧版中继如果缺少 relay 握手，直接请求 `{relayHost}` 可能被重定向回 `https://fnos.net/{fnId}/music/`。Android 客户端仍在同一 CookieJar 中完成激活和后续音乐请求，保留旧版返回的路由 Cookie。
 
 ## 5. 飞牛音乐请求签名
 
@@ -704,7 +706,7 @@ Android 仅在 `/api/v1/sys/config` 的 `serverVersion` **大于等于 1.0.10** 
 
 fnOS 页面独立检查**系统登录及管理员身份**。未登录时，脚本会把原授权 URL 放进登录页的 `redirect_uri`，登录后再回到选择页；音乐应用的 `music-token` 不能代替 fnOS 登录。用户确认时，由 fnOS 写入文件夹权限，然后跳转音乐回调，带 `method=music-app-auth-pick-file`、`appName`、`state`、`status=success|cancel|error`；成功时 `path` 是 JSON 路径数组。Android 只在来源同源、回调路径精确匹配且这些字段通过校验后接受返回；成功后重新读取音乐服务 `authorizedDirectories()`，以服务端列表确认目录已可用。目录列表未更新时保留“重新检查”，也不自动创建音乐库。
 
-FN Connect 中继另需 `mode=relay` **路由 Cookie**。Android 的 OkHttp CookieJar 与 WebView CookieManager 不共享：打开授权 WebView 前，仅给当前中继域名设置 `mode=relay`，不复制 `music-token` 或音乐密码。全新浏览器若没有这个 Cookie，可能先进入 FN Connect 引导页。中继授权入口的首个文档请求即使显示 HTTP 404，浏览器仍可能加载 fnOS 脚本并呈现完整授权页，因此不能单凭该状态拦截；网络错误与证书错误仍需正常处理。以上页面展示和跳转依据当前 Web 静态包及浏览器观察，尚未对真实 NAS 提交新的授权；确认后的服务端可见时机待实机验收。
+旧版 FN Connect 中继另需 `mode=relay` **路由 Cookie**（新版可不返回此 Cookie，见 4.5）。Android 的 OkHttp CookieJar 与 WebView CookieManager 不共享：打开授权 WebView 前，仅给当前中继域名设置 `mode=relay`，不复制 `music-token` 或音乐密码。全新浏览器若没有这个 Cookie，可能先进入 FN Connect 引导页。中继授权入口的首个文档请求即使显示 HTTP 404，浏览器仍可能加载 fnOS 脚本并呈现完整授权页，因此不能单凭该状态拦截；网络错误与证书错误仍需正常处理。以上页面展示和跳转依据当前 Web 静态包及浏览器观察，尚未对真实 NAS 提交新的授权；确认后的服务端可见时机待实机验收。
 
 ## 12. 验证脚本
 

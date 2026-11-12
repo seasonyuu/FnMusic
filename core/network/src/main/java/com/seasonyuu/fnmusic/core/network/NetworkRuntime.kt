@@ -196,7 +196,7 @@ class NetworkRuntime {
         .build()
         .create(MusicApi::class.java)
 
-    val resolver = FnConnectResolver(unsignedClient, cookieJar, json)
+    val resolver = FnConnectResolver(unsignedClient, json)
 
     fun installSessionRecovery(handler: () -> Boolean) {
         sessionRecovery.install(handler)

@@ -212,11 +212,10 @@ def activate_relay(
         ),
         timeout,
     )
-    relay_cookie = any(cookie.name == "mode" and cookie.value == "relay" for cookie in cookies)
     content_type = headers.get("content-type", "")
     music_html = b"<title>\xe9\xa3\x9e\xe7\x89\x9b\xe9\x9f\xb3\xe4\xb9\x90</title>" in body
-    if status != 200 or "text/html" not in content_type or not relay_cookie or not music_html:
-        raise RuntimeError("relay activation did not return Music HTML with mode=relay")
+    if status != 200 or "text/html" not in content_type or not music_html:
+        raise RuntimeError("relay activation did not return Music HTML")
     return status, app_url.rstrip("/")
 
 
@@ -294,7 +293,7 @@ def main() -> int:
         status, music_base_url = activate_relay(
             target, relay_host, relay_port, cookies, opener, args.timeout
         )
-        add_step(steps, "relay mode activation", "PASS", status, "mode=relay cookie present")
+        add_step(steps, "relay mode activation", "PASS", status, "Music HTML confirmed")
 
         dotenv = load_dotenv(args.env_file)
         username = env_value(dotenv, "USERNAME")

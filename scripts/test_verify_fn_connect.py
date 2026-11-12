@@ -127,7 +127,7 @@ class LocatorTests(unittest.TestCase):
 
 
 class RelayAndPrivacyTests(unittest.TestCase):
-    def test_relay_activation_requires_cookie_and_music_html(self):
+    def test_legacy_relay_activation_preserves_cookie(self):
         cookies = http.cookiejar.CookieJar()
 
         def set_cookie(_request, _timeout):
@@ -143,6 +143,26 @@ class RelayAndPrivacyTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(base_url, "https://relay.fnos.net/music")
         self.assertEqual(opener.request.get_header("Origin"), "https://fnos.net")
+
+    def test_relay_activation_without_cookie(self):
+        cookies = http.cookiejar.CookieJar()
+        opener = RecordingOpener(FakeResponse(
+            200, {"Content-Type": "text/html"}, "<title>飞牛音乐</title>".encode()
+        ))
+        target = EntryTarget("https://fnos.net/abcdef/music/", "abcdef", "/music/")
+        self.assertEqual(activate_relay(target, "relay.fnos.net", 443, cookies, opener, 3),
+                         (200, "https://relay.fnos.net/music"))
+        self.assertEqual(list(cookies), [])
+
+    def test_relay_rejects_bootstrap_even_with_cookie(self):
+        cookies = http.cookiejar.CookieJar()
+        cookies.set_cookie(relay_cookie())
+        opener = RecordingOpener(FakeResponse(
+            200, {"Content-Type": "text/html"}, b"<title>FN Connect</title>"
+        ))
+        target = EntryTarget("https://fnos.net/abcdef/music/", "abcdef", "/music/")
+        with self.assertRaises(RuntimeError):
+            activate_relay(target, "relay.fnos.net", 443, cookies, opener, 3)
 
     def test_report_does_not_persist_identifiers_or_addresses(self):
         target = EntryTarget("https://fnos.net/secretid/music/", "secretid", "/music/")
