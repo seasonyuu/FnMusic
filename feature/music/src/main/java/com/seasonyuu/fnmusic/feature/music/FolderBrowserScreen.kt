@@ -215,10 +215,12 @@ private fun FolderTree(state: FolderBrowserState, modifier: Modifier) {
                 TextButton(onClick = { state.navigate(row.path) }, enabled = !row.deleted, modifier = Modifier.weight(1f).semantics { selected = state.path == row.path }) {
                     Icon(Icons.Rounded.Folder, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(row.label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(row.label, Modifier.weight(1f), color = FnTextPrimary.copy(alpha = if (row.deleted) .38f else 1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (row.path in state.treeErrors) TextButton(onClick = { state.loadTree(row.path) }) { Text("加载失败，重试") }
+            if (row.path in state.treeErrors) TextButton(onClick = { state.loadTree(row.path) },
+                colors = ButtonDefaults.textButtonColors(contentColor = FnTextPrimary)) { Text("加载失败，重试") }
         }
     }
 }
