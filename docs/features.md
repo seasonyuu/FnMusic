@@ -16,6 +16,19 @@ The library groups all tracks, artists, albums, playlists, favorites, and recent
 
 Phones use bottom navigation, medium screens use a navigation rail, and large screens use a persistent sidebar.
 
+**Library → 文件夹** appears when the server advertises folder-view support. Browse the
+actual music-library directories, sort by title, added date, or file modification date,
+and select songs and folders together. Wide screens show a collapsible directory tree;
+phones browse one level at a time. Returning to a directory restores its scroll position,
+and song information can jump to the containing folder.
+
+Folder actions include recursive playback, play next, append to the queue, and adding to
+an existing or new playlist. A single queue action includes at most 1,000 songs; playlist
+actions are processed by the server. Administrators can remove items from the library
+while keeping their files, re-add those removed items, or permanently delete files after
+an additional confirmation. Re-adding starts recovery and may require a later refresh.
+Folder browsing does not create offline downloads.
+
 ## Playback and audio output
 
 Media3 provides background playback, notification and lock-screen controls, previous/next controls, position restore, and LRC lyrics. HTTP range streaming uses a 512 MiB LRU media cache. Local output and an experimental AirPlay path are available from the player. AirPlay playback has been verified with a macOS receiver; other receiver types remain unverified. See [local audio output](local-audio-output.md) and [AirPlay](airplay.md) for routing details and device limitations.

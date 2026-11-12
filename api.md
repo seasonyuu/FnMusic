@@ -962,3 +962,56 @@ Android 保留失效歌曲及移除入口，禁止播放和加入队列，整张
 `T_` 映射提示，`O_` 保留 `accessStatus`；SHA-256：
 `a1596e6da2fd2e53b0de4529e91044ab633a37bcb8a6256f1f59d748fd5765ca`。
 本地协议测试覆盖缺省、null、0、1–4、未知值及持久化往返；设备测试使用模拟曲目。
+
+### 文件夹视图（2026-11-12，服务端 1.1.19）
+
+此接口用于按音乐库实际目录浏览与批量处理歌曲，与管理员配置扫描目录的
+`shared-library/create/edit/delete` 分开。Web 的 `/folders` 页面为目录树、
+面包屑和文件夹/歌曲列表；官方 Android 1.1.0 为逐级目录与批量选择。
+
+`GET /api/v1/sys/config` 实测返回 `serverVersion=1.1.19` 和
+`capabilities.folderView=true`。Web 只在该能力明确为 `true` 时开放入口；
+Android 同样处理，缺失、null 或 false 均关闭入口，不根据版本号猜测支持情况。
+
+| 方法 | 路径（相对 `/music`） | 参数 | 证据 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/shared-library/list` | 无；当前用户可访问的库 | V + A + S |
+| GET | `/api/v1/folder-view/list` | `parentPath`、`sort` | V + A + S |
+| POST | `/api/v1/folder-view/playable-tracks` | `folderPaths`、`trackGUIDs` | V + S；只读展开 |
+| POST | `/api/v1/folder-view/add-to-playlist` | 上述选择字段、`playlistGUID` | S |
+| POST | `/api/v1/folder-view/delete` | 上述选择字段、`isPermanent` | S；A 确认对话框，未提交 |
+| POST | `/api/v1/folder-view/recover` | `folderPaths`、`trackGUIDs` | S |
+
+目录列表返回 `data={folder:{name,path,itemCount,folders,tracks},sort}`，无分页参数。
+`folders[]` 包含 `name/path/itemCount/isAdminDeleted`；`itemCount` 是目录下的
+歌曲数，与当前层级 `folders.size + tracks.size` 的项目数不同。
+`tracks[]` 包含 `guid/title/artists/album/coverId/duration/audioSpec/isFavorite/`
+`isAdminDeleted/isCue`，时长单位为毫秒。`audioSpec` 实测含 `format/path/size`。
+目录路径是服务端原始标识，查询时编码，禁止通过 trim 改写文件名两端的空格。
+
+排序字段为 `title`、`createdAt`（添加日期）、`updatedAt`（文件修改日期），
+方向为 `asc/desc`；默认 `title,asc`。服务端返回实际采用的 `sort`。
+根目录 `accessStatus` 的新版 Web 映射为 `0=可用`、`1=目录丢失`、
+`2=无权限`、`3=应用未授权`，未知值仍视为不可访问；此映射不能用于歌曲状态。
+
+`playable-tracks` 在服务端递归展开选中文件夹并返回 `data.tracks`；实测条目仅有
+`guid/title/artists/coverId`，不能假定它带完整音频元数据。Android 按 ID 去重、
+过滤不可用项目并截取最多 1,000 首，播放时复用 metadata 接口补全当前和下一首。
+Web 也采用单次 1,000 首上限；返回恰好 1,000 首时仍提示上限，避免假称目录已全部加入。
+添加到歌单直接提交目录路径，由服务器递归处理，不受本地队列截断影响。
+
+仅管理员可删除或恢复。`isPermanent=false` 仅从音乐库移除并保留文件，项目以
+`isAdminDeleted=true` 呈现；恢复对应“重新加入音乐库”，请求成功仅表示已提交，
+不代表扫描完成。`isPermanent=true` 同时删除歌曲文件，不能通过 recover 撤销。
+Android 永久删除需要再次明确确认，写请求禁用连接重试、重定向和会话恢复重放。
+
+本次真实服务验证只做登录、读取和可播放列表展开；未执行歌单写入、删除、恢复或播放。
+写入形状、失败传播与禁止自动重放由 MockWebServer 验证，真实写生命周期仍需专用测试曲库。
+
+源码证据（相对 `/music/static/assets/`，SHA-256）：
+
+| 资源 | SHA-256 |
+| --- | --- |
+| `5e884898da28047151d0e56f8dc62927-BwvE3acT.js` | `a071fb26c2c4e29a3aa3e6146233772de471a418db7d54df08efa79678cd3a7b` |
+| `fd1fcd61d83c0244c83762ba7832daad-BkjmEqIu.js` | `fc5998e7ed9bd6b0985ee755b397acf700c6fe7a0d302f145a96eeb8ffa7219c` |
+| `8a84e406c08ac9594f47222406598f75-CPd9RrUQ.js` | `67a461be1e8b4d4e4e6b1f431c112483b79a5f860d4043e005ecff131ac512e2` |
