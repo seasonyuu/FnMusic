@@ -260,21 +260,23 @@ class Media3PlayerController(context: Context) : PlayerController {
         playbackHistory = emptyList()
         publishState()
     }
-    override fun playNext(item: PlayableTrack) = withController { controller ->
-        val entry = item.asNewQueueEntry()
+    override fun playNext(item: PlayableTrack) = playNext(listOf(item))
+    override fun playNext(items: List<PlayableTrack>) = withController { controller ->
+        if (items.isEmpty()) return@withController
+        val entries = items.map { it.asNewQueueEntry() }
         if (queue.isEmpty()) {
-            queue = listOf(entry)
+            queue = entries
             playbackSessionId++
             playbackHistory = emptyList()
-            observedCurrent = entry
-            controller.setMediaItem(entry.toMediaItem())
+            observedCurrent = entries.first()
+            controller.setMediaItems(entries.map { it.toMediaItem() })
             controller.prepare()
             controller.play()
         } else {
             val insertAt = (controller.currentMediaItemIndex + 1).coerceIn(0, queue.size)
-            queue = queue.toMutableList().also { it.add(insertAt, entry) }
-            controller.addMediaItem(insertAt, entry.toMediaItem())
-            if (controller.shuffleModeEnabled) editShuffle(controller, QueueSessionCommands.NEXT, listOf(entry.queueEntryId))
+            queue = queue.toMutableList().also { it.addAll(insertAt, entries) }
+            controller.addMediaItems(insertAt, entries.map { it.toMediaItem() })
+            if (controller.shuffleModeEnabled) editShuffle(controller, QueueSessionCommands.NEXT, entries.map { it.queueEntryId })
         }
     }
     override fun append(items: List<PlayableTrack>) = withController { controller ->

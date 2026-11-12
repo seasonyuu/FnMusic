@@ -70,6 +70,7 @@ sealed interface SessionState {
         val serverVersion: String? = null,
         val user: MusicUser? = null,
         val mediasrvVersion: String? = null,
+        val folderViewEnabled: Boolean = false,
     ) : SessionState
 
     data class Error(
@@ -126,9 +127,11 @@ data class Track(
     val createdAt: Long? = null,
     val genres: List<Genre> = emptyList(),
     val accessStatus: Int? = null,
+    val isAdminDeleted: Boolean = false,
+    val isCue: Boolean = false,
 ) {
     // Older servers/cached tracks omit this field; only an explicit nonzero status blocks playback.
-    val isAvailable: Boolean get() = accessStatus == null || accessStatus == 0
+    val isAvailable: Boolean get() = !isAdminDeleted && (accessStatus == null || accessStatus == 0)
 }
 
 @Serializable
@@ -334,6 +337,11 @@ interface PlayerController : PlaybackOutputController {
     fun skipToHistoryItem(index: Int)
     fun clearPlaybackHistory()
     fun playNext(item: PlayableTrack)
+    /** Insert a batch after the current item, preserving its order, including shuffle playback. */
+    fun playNext(items: List<PlayableTrack>) {
+        if (items.isEmpty()) return
+        if (state.value.queue.isEmpty()) play(items) else items.asReversed().forEach { playNext(it) }
+    }
     fun append(items: List<PlayableTrack>)
     /** Reorders the local playback queue. This never changes a saved playlist. */
     fun moveQueueItem(fromIndex: Int, toIndex: Int)

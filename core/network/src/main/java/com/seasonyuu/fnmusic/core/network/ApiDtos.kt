@@ -99,6 +99,8 @@ data class TrackDto(
     val createdAt: Long? = null,
     val genres: List<Genre> = emptyList(),
     val accessStatus: Int? = null,
+    val isAdminDeleted: Boolean = false,
+    val isCue: Boolean = false,
 ) {
     fun toDomain(favoriteOverride: Boolean? = null) = Track(
         id = TrackId(guid),
@@ -115,6 +117,8 @@ data class TrackDto(
         createdAt = createdAt,
         genres = genres,
         accessStatus = accessStatus,
+        isAdminDeleted = isAdminDeleted,
+        isCue = isCue,
     )
 }
 
@@ -181,11 +185,15 @@ data class PlaybackEventDto(
 data class PlaybackPayloadDto(val trackGUID: String)
 
 @Serializable
+data class MusicCapabilitiesDto(val folderView: Boolean? = null)
+
+@Serializable
 data class SystemConfigDto(
     val mediasrvVersion: String? = null,
     val serverGUID: String? = null,
     val serverName: String? = null,
     val serverVersion: String? = null,
+    val capabilities: MusicCapabilitiesDto? = null,
 )
 
 @Serializable
@@ -256,6 +264,22 @@ data class LyricDataDto(
 )
 
 interface MusicApi {
+    @GET("api/v1/shared-library/list")
+    suspend fun folderViewRoots(): ApiEnvelope<PageDto<com.seasonyuu.fnmusic.core.model.MusicFolder>>
+    @GET("api/v1/folder-view/list")
+    suspend fun folderViewContent(@Query("parentPath") path: String, @Query("sort") sort: String): ApiEnvelope<FolderContentDto>
+    @POST("api/v1/folder-view/playable-tracks")
+    suspend fun folderPlayableTracks(@Body body: FolderSelectionRequest): ApiEnvelope<FolderPlayableTracksDto>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/folder-view/add-to-playlist")
+    suspend fun folderAddToPlaylist(@Body body: FolderPlaylistRequest): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/folder-view/delete")
+    suspend fun folderDelete(@Body body: FolderDeleteRequest): ApiEnvelope<JsonElement>
+    @Headers("$NO_SESSION_RECOVERY_HEADER: true")
+    @POST("api/v1/folder-view/recover")
+    suspend fun folderRecover(@Body body: FolderSelectionRequest): ApiEnvelope<JsonElement>
+
     @retrofit2.http.Multipart
     @POST("api/v1/static/cover/playlist")
     suspend fun uploadPlaylistCover(@retrofit2.http.Part file: okhttp3.MultipartBody.Part): ApiEnvelope<PlaylistCoverUploadDto>
