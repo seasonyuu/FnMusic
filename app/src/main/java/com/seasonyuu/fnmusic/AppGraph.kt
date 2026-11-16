@@ -1,6 +1,7 @@
 package com.seasonyuu.fnmusic
 
 import android.content.Context
+import kotlinx.coroutines.flow.first
 import androidx.room.Room
 import com.seasonyuu.fnmusic.core.model.PlayableTrack
 import com.seasonyuu.fnmusic.core.model.Track
@@ -40,6 +41,14 @@ class AppGraph(context: Context) {
         java.io.File(context.filesDir, "amll"), settings, database.lyricsChoices(), catalog::lyrics, online = onlineLyrics,
     )
     val player = Media3PlayerController(context)
+    private val playbackScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    val sleepTimer = com.seasonyuu.fnmusic.core.player.DefaultSleepTimerController(
+        scope = playbackScope,
+        now = android.os.SystemClock::elapsedRealtime,
+        readMinutes = { settings.sleepTimerMinutes.first() },
+        saveMinutes = settings::setSleepTimerMinutes,
+        pause = player::pause,
+    )
 
     fun coverUrl(coverId: String?, size: Int): String? = coverId?.let { network.baseUrlProvider.coverUrl(it, size) }
 

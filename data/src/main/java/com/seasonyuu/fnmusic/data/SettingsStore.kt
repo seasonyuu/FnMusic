@@ -26,6 +26,15 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         context.applicationContext.preferencesDataStoreFile("settings")
     })
 
+    val sleepTimerMinutes: Flow<Int> = dataStore.data.map {
+        it[intPreferencesKey("sleep_timer_minutes")]?.takeIf { minutes -> minutes in 1..1440 } ?: 30
+    }
+
+    suspend fun setSleepTimerMinutes(minutes: Int) {
+        require(minutes in 1..1440)
+        dataStore.edit { it[intPreferencesKey("sleep_timer_minutes")] = minutes }
+    }
+
     val onlineLyricsPreference: Flow<com.seasonyuu.fnmusic.core.model.OnlineLyricsPreference> = dataStore.data.map { values ->
         val sources = values[stringPreferencesKey("online_lyrics_sources")]?.split(',')?.mapNotNull { name ->
             com.seasonyuu.fnmusic.core.model.OnlineLyricsSource.entries.firstOrNull { it.name == name }
