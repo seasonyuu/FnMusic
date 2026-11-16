@@ -67,3 +67,29 @@ clearing the daily-use app.
 Report the checks actually run and their outcome, plus any skipped checks and
 remaining manual acceptance. Rerun affected checks after a fix; a passing run need
 not be repeated unless a later change invalidates it.
+
+## Sleep timer offline acceptance
+
+The debug APK includes `SleepTimerVerificationActivity`, which generates local quiet
+WAV audio and uses the real player, now-playing UI, timer and settings store without
+NAS authentication. It does not select a remote receiver. Starting playback replaces
+the in-memory queue with two fixture tracks; it does not clear application data.
+
+Use only the emulator authorized for the task. For the current task that is the
+already-running `emulator-5554`; do not start another emulator or target a phone.
+Install the debug APK in place, then launch:
+
+```sh
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 shell am start -n com.seasonyuu.fnmusic.debug/com.seasonyuu.fnmusic.SleepTimerVerificationActivity
+```
+
+Check both player menus, default/remembered switch behavior, repeated preset selection,
+hour/minute wheel snapping and the 24-hour boundary, artwork tint updates, preset-label
+transitions, menu countdown updates, and a one-minute timer
+while playing local audio in the background with the screen off. Check light/dark,
+large text and narrow/landscape layouts, then restore display settings. The test
+entry uses the same saved duration as the app, so restore the previous duration and
+leave the timer off after acceptance. Do not run device test tasks with unknown cleanup
+behavior on a daily-use emulator. `SleepTimerSheetTest` can be compiled using
+`:feature:music:assembleDebugAndroidTest` without installing or running its test APK.
