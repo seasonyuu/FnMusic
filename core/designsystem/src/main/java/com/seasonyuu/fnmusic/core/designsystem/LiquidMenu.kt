@@ -83,6 +83,7 @@ data class LiquidMenuItem(
     val enabled: Boolean = true,
     val destructive: Boolean = false,
     val icon: (@Composable () -> Unit)? = null,
+    val trailingText: String? = null,
 ) : LiquidMenuEntry
 
 data class LiquidMenuDivider(override val id: String) : LiquidMenuEntry
@@ -282,7 +283,13 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
         (if (hasSelection) selectionSize + itemSpacing else 0.dp)
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.labelLarge
-    val width = min(200 * d, safe.width)
+    val auxiliaryStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    val trailingWidths = entries.associate { entry ->
+        entry.id to ((entry as? LiquidMenuItem)?.trailingText?.let {
+            measurer.measure(it, auxiliaryStyle).size.width + with(density) { itemSpacing.toPx() }
+        } ?: 0f)
+    }
+    val width = min(200 * d + (trailingWidths.values.maxOrNull() ?: 0f), safe.width)
     val heights =
         entries.map { entry ->
             if (entry is LiquidMenuItem) {
@@ -290,7 +297,7 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                     measurer.measure(
                         entry.text,
                         style,
-                        constraints = Constraints(maxWidth = max(1, (width - with(density) {
+                        constraints = Constraints(maxWidth = max(1, (width - (trailingWidths[entry.id] ?: 0f) - with(density) {
                             (textInset + if (entry.icon != null) iconSize + itemSpacing else 0.dp).toPx()
                         }).toInt())),
                     )
@@ -648,6 +655,11 @@ private fun MenuOverlay(host: MenuHostState, session: MenuSession, window: Size)
                                     }
                                 }
                                 Text(entry.text, modifier = Modifier.weight(1f), style = style, color = LocalContentColor.current)
+                                entry.trailingText?.let { trailing ->
+                                    Text(trailing, style = auxiliaryStyle,
+                                        color = LocalContentColor.current.copy(alpha = LocalContentColor.current.alpha * .65f),
+                                        maxLines = 1)
+                                }
                             }
                         }
                     }

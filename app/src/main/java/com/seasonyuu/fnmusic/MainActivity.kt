@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
                     MusicShell(
                         state = music,
                         playerState = player,
+                        sleepTimer = viewModel.sleepTimer,
                         pagedTracks = viewModel::pagedTracks,
                         pagedAlbums = viewModel::pagedAlbums,
                         pagedArtists = viewModel.pagedArtists,

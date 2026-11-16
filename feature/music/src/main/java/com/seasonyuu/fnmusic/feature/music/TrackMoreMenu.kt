@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,14 +35,36 @@ internal fun PlayerMoreMenu(
     modifier: Modifier = Modifier.size(46.dp),
     onOpenChange: (Boolean) -> Unit = {},
     surfaceColor: Color,
-) = TrackMoreMenu(track, backdrop = backdrop, modifier = modifier,
-    preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f), onOpenChange = onOpenChange, surfaceColor = surfaceColor,
-    actionIds = listOf("artist", "album", "playlist", "lyrics", "info"))
+) {
+    val controller = LocalSleepTimerController.current
+    val state = controller?.state?.collectAsState()?.value
+    var sheetOpen by remember { mutableStateOf(false) }
+    val latestOpenChange by rememberUpdatedState(onOpenChange)
+    LaunchedEffect(sheetOpen) { if (sheetOpen) latestOpenChange(true) }
+    TrackMoreMenu(track, backdrop = backdrop, modifier = modifier,
+        preferAboveAnchor = true, tint = FnTextPrimary.copy(alpha = .82f),
+        onOpenChange = { latestOpenChange(it || sheetOpen) }, surfaceColor = surfaceColor,
+        actionIds = listOf("artist", "album", "playlist", "lyrics", "info"),
+        extraActions = if (controller != null && state != null) listOf(TrackMenuAction(
+            LiquidMenuItem("sleep-timer", "定时关闭", icon = { Icon(Icons.Rounded.Timer, null) },
+                trailingText = if (state.enabled) com.seasonyuu.fnmusic.core.model.formatSleepTimer(state.remainingSeconds) else null),
+            retireSession = true,
+            invoke = { sheetOpen = true },
+        )) else emptyList(),
+    )
+    if (sheetOpen && controller != null && state != null) {
+        SleepTimerSheet(state, controller::enable, controller::start, controller::cancel, surfaceColor = surfaceColor) {
+            sheetOpen = false
+            latestOpenChange(false)
+        }
+    }
+}
 
 @Composable
 internal fun TrackMoreMenu(
     track: Track,
     sourcePlaylist: PlaylistId? = null,
+    extraActions: List<TrackMenuAction> = emptyList(),
     actionIds: List<String>? = null,
     surfaceColor: Color = LocalLiquidMenuSurfaceColor.current,
     backdrop: Backdrop? = LocalTrackMenuBackdrop.current,
@@ -62,6 +85,7 @@ internal fun TrackMoreMenu(
             if (track.isAvailable || action.item.id == "remove-playlist") action
             else action.copy(item = action.item.copy(enabled = false))
         }
+        val menuActions = actions + extraActions
         val notify = rememberUpdatedState(onOpenChange)
         LaunchedEffect(enabled) {
             if (!enabled && expanded) {
@@ -78,9 +102,9 @@ internal fun TrackMoreMenu(
                 backdrop = backdrop ?: LocalAppBarBackdrop.current ?: rememberLayerBackdrop(),
                 transition = LiquidMenuTransition.Transient,
                 preferAboveAnchor = preferAboveAnchor,
-                items = actions.map { it.item },
+                items = menuActions.map { it.item },
                 onSelect = { id ->
-                    val action = actions.firstOrNull { it.item.id == id && it.item.enabled }
+                    val action = menuActions.firstOrNull { it.item.id == id && it.item.enabled }
                     if (action != null) {
                         // Retire the selected session before navigation or a modal sheet takes focus.
                         expanded = false

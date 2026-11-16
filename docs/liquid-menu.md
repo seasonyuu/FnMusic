@@ -201,3 +201,9 @@ the same dominant-color extraction and darkening as album navigation. The bitmap
 comes from the existing background CoverImage load (no additional image request).
 Missing/failed artwork uses the player theme surface. Artwork changes cancel stale
 extraction; tracks sharing an artwork URL retain the same tone.
+
+Player-only sleep-timer entries append an optional `trailingText` countdown to the
+menu item. Auxiliary text uses tabular digits and a subdued foreground; measurement
+reserves its width and expands the preferred menu width within the existing safe
+viewport. Entries without auxiliary text keep the existing width and layout.
+Opening the timer sheet retires the menu session just like the playlist picker.

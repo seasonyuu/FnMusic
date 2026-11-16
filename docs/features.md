@@ -33,6 +33,25 @@ Folder browsing does not create offline downloads.
 
 Media3 provides background playback, notification and lock-screen controls, previous/next controls, position restore, and LRC lyrics. HTTP range streaming uses a 512 MiB LRU media cache. Local output and an experimental AirPlay path are available from the player. AirPlay playback has been verified with a macOS receiver; other receiver types remain unverified. See [local audio output](local-audio-output.md) and [AirPlay](airplay.md) for routing details and device limitations.
 
+### Sleep timer
+
+The now-playing cover and lyrics menus include **定时关闭**. Its sheet offers an
+on/off switch, 10/20/30/45/60/90-minute presets, and a custom two-column wheel picker for hours and minutes (1 minute to 24 hours).
+At 24 hours the minute column is limited to zero. The sheet follows the current
+artwork color and uses the liquid-glass toggle. Quick presets show large numbers;
+only the selected preset reveals a second-line `min` label with a short transition. Enabling uses 30 minutes initially, then the last
+successfully chosen duration. Selecting a preset or confirming custom input restarts
+the countdown; disabling cancels it without pausing playback. Matching presets use the theme accent background only while the timer is on.
+When off, no preset is selected; the last duration appears beside the sheet title.
+
+While active, the menu shows a live `minutes:ss` countdown. At expiry the player is
+paused once, retaining the queue. Closing the sheet, changing tracks, manually pausing,
+and backgrounding the app do not stop the timer. The last duration is saved locally;
+an active timer is not restored after process death or a device restart. Timing uses
+an elapsed clock unaffected by wall-clock changes. No exact-alarm permission or separate
+wake-up mechanism is requested: if Android suspends execution, expiry is handled when
+the process can run again.
+
 ## Profile and administration
 
 The Profile tab shows the current Music user, role, and server. It offers password changes, light/dark/system appearance, independent Liquid Glass controls, Wi-Fi/mobile streaming quality, and temporary playback cache settings. Changing a password clears the old session and remembered password while retaining the server and username. Original streaming is the default; standard quality uses server-side Opus 128 kbps transcoding. Cache capacity and track limits take effect without restarting and do not create permanent downloads.
